@@ -1,0 +1,48 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: #F8FAFC;
+  --foreground: #111827;
+  --primary: #4F46E5;
+  --primary-foreground: #ffffff;
+  --secondary: #6366F1;
+  --accent: #8B5CF6;
+  --success: #10B981;
+  --warning: #F59E0B;
+  --danger: #EF4444;
+  --radius: 0.625rem;
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --border: #E2E8F0;
+  --input: #E2E8F0;
+  --ring: #4F46E5;
+  --muted: #F1F5F9;
+  --muted-foreground: #64748B;
+}
+
+.dark {
+  --background: #111827;
+  --foreground: #F9FAFB;
+  --card: #1F2937;
+  --card-foreground: #F9FAFB;
+  --border: #374151;
+  --input: #374151;
+  --muted: #1F2937;
+  --muted-foreground: #9CA3AF;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  direction: rtl;
+}
+
+/* RTL overrides */
+[dir="rtl"] { text-align: right; }
+[dir="ltr"] { text-align: left; direction: ltr; }
