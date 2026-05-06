@@ -1,0 +1,327 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  TICKET_REQUESTER
+  SYSTEM_OWNER
+  PROGRAMMING_HEAD
+  PROJECT_MANAGER
+  DEVELOPER
+  QA
+  SENIOR_MANAGEMENT
+}
+
+enum TicketStatus {
+  DRAFT
+  NEW
+  AWAITING_INFO
+  AWAITING_APPROVAL
+  APPROVED
+  REJECTED
+  SCHEDULED
+  IN_PROGRESS
+  AWAITING_TESTING
+  AWAITING_OWNER_APPROVAL
+  COMPLETED
+  CLOSED
+  ON_HOLD
+}
+
+enum TicketType {
+  MODIFICATION
+  NEW_FEATURE
+  BUG_FIX
+  UI_IMPROVEMENT
+  PERFORMANCE
+  REPORT_DASHBOARD
+  USER_PERMISSIONS
+  API_INTEGRATION
+  EMERGENCY
+  TECHNICAL_CONSULTATION
+}
+
+enum Priority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  DEFERRED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum NotificationType {
+  TICKET_CREATED
+  INFO_REQUESTED
+  TICKET_APPROVED
+  TICKET_REJECTED
+  TICKET_ASSIGNED
+  STATUS_CHANGED
+  COMMENT_ADDED
+  DEADLINE_APPROACHING
+  TICKET_DELAYED
+  EXECUTION_COMPLETED
+  CLOSURE_APPROVAL_REQUESTED
+}
+
+enum CommentVisibility {
+  PUBLIC
+  INTERNAL
+}
+
+model Company {
+  id          String       @id @default(uuid())
+  name        String
+  nameAr      String?
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  departments Department[]
+  systems     System[]
+  users       User[]
+  tickets     Ticket[]
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  name      String
+  nameAr    String?
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
+}
+
+model System {
+  id          String       @id @default(uuid())
+  name        String
+  nameAr      String?
+  description String?
+  companyId   String
+  company     Company      @relation(fields: [companyId], references: [id])
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  tickets     Ticket[]
+  userSystems UserSystem[]
+}
+
+model User {
+  id                 String             @id @default(uuid())
+  email              String             @unique
+  password           String?
+  firstName          String
+  lastName           String
+  role               UserRole
+  companyId          String?
+  company            Company?           @relation(fields: [companyId], references: [id])
+  departmentId       String?
+  department         Department?        @relation(fields: [departmentId], references: [id])
+  isActive           Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  systems            UserSystem[]
+  ticketsCreated     Ticket[]           @relation("TicketCreator")
+  ticketsOwned       Ticket[]           @relation("TicketOwner")
+  assignments        TicketAssignment[]
+  approvals          TicketApproval[]
+  comments           TicketComment[]
+  notifications      Notification[]
+  invitationsSent    EmailInvitation[]  @relation("InvitationSender")
+  invitationReceived EmailInvitation?   @relation("InvitationReceiver")
+  auditLogs          AuditLog[]
+}
+
+model UserSystem {
+  userId    String
+  systemId  String
+  user      User     @relation(fields: [userId], references: [id])
+  system    System   @relation(fields: [systemId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@id([userId, systemId])
+}
+
+model Ticket {
+  id                   String                @id @default(uuid())
+  title                String
+  description          String
+  reason               String
+  expectedOutcome      String
+  businessImpact       String
+  hasFinancialLoss     Boolean               @default(false)
+  financialLossDetails String?
+  status               TicketStatus          @default(DRAFT)
+  type                 TicketType
+  priority             Priority?
+  finalPriority        Priority?
+  suggestedDeadline    DateTime?
+  scheduledStart       DateTime?
+  estimatedDeadline    DateTime?
+  estimatedHours       Int?
+  difficultyLevel      Int?
+  needsUiUx            Boolean               @default(false)
+  needsBackend         Boolean               @default(false)
+  needsFrontend        Boolean               @default(false)
+  needsTesting         Boolean               @default(false)
+  needsDeployment      Boolean               @default(false)
+  adminNotes           String?
+  closureNotes         String?
+  isArchived           Boolean               @default(false)
+  creatorId            String
+  creator              User                  @relation("TicketCreator", fields: [creatorId], references: [id])
+  systemOwnerId        String?
+  systemOwner          User?                 @relation("TicketOwner", fields: [systemOwnerId], references: [id])
+  systemId             String
+  system               System                @relation(fields: [systemId], references: [id])
+  companyId            String
+  company              Company               @relation(fields: [companyId], references: [id])
+  relatedTicketId      String?
+  relatedTicket        Ticket?               @relation("RelatedTickets", fields: [relatedTicketId], references: [id])
+  relatedTickets       Ticket[]              @relation("RelatedTickets")
+  templateId           String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  comments             TicketComment[]
+  attachments          TicketAttachment[]
+  statusHistory        TicketStatusHistory[]
+  assignments          TicketAssignment[]
+  approvals            TicketApproval[]
+  notifications        Notification[]
+  auditLogs            AuditLog[]
+}
+
+model TicketComment {
+  id          String            @id @default(uuid())
+  content     String
+  visibility  CommentVisibility @default(PUBLIC)
+  ticketId    String
+  ticket      Ticket            @relation(fields: [ticketId], references: [id])
+  authorId    String
+  author      User              @relation(fields: [authorId], references: [id])
+  mentions    String[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  attachments TicketAttachment[]
+}
+
+model TicketAttachment {
+  id           String         @id @default(uuid())
+  fileName     String
+  fileSize     Int
+  mimeType     String
+  url          String
+  ticketId     String?
+  ticket       Ticket?        @relation(fields: [ticketId], references: [id])
+  commentId    String?
+  comment      TicketComment? @relation(fields: [commentId], references: [id])
+  uploadedById String
+  createdAt    DateTime       @default(now())
+}
+
+model TicketStatusHistory {
+  id          String        @id @default(uuid())
+  ticketId    String
+  ticket      Ticket        @relation(fields: [ticketId], references: [id])
+  fromStatus  TicketStatus?
+  toStatus    TicketStatus
+  changedById String
+  reason      String?
+  createdAt   DateTime      @default(now())
+}
+
+model TicketAssignment {
+  id                String    @id @default(uuid())
+  ticketId          String
+  ticket            Ticket    @relation(fields: [ticketId], references: [id])
+  developerId       String
+  developer         User      @relation(fields: [developerId], references: [id])
+  estimatedHours    Int?
+  startDate         DateTime?
+  estimatedDeadline DateTime?
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model TicketApproval {
+  id         String   @id @default(uuid())
+  ticketId   String
+  ticket     Ticket   @relation(fields: [ticketId], references: [id])
+  approverId String
+  approver   User     @relation(fields: [approverId], references: [id])
+  decision   String
+  notes      String?
+  conditions String?
+  createdAt  DateTime @default(now())
+}
+
+model EmailInvitation {
+  id         String           @id @default(uuid())
+  email      String
+  role       UserRole
+  token      String           @unique @default(uuid())
+  status     InvitationStatus @default(PENDING)
+  expiresAt  DateTime
+  senderId   String
+  sender     User             @relation("InvitationSender", fields: [senderId], references: [id])
+  receiverId String?          @unique
+  receiver   User?            @relation("InvitationReceiver", fields: [receiverId], references: [id])
+  companyId  String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  type      NotificationType
+  title     String
+  body      String
+  isRead    Boolean          @default(false)
+  userId    String
+  user      User             @relation(fields: [userId], references: [id])
+  ticketId  String?
+  ticket    Ticket?          @relation(fields: [ticketId], references: [id])
+  metadata  Json?
+  createdAt DateTime         @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String
+  entity    String
+  entityId  String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  ticketId  String?
+  ticket    Ticket?  @relation(fields: [ticketId], references: [id])
+  oldValues Json?
+  newValues Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+}
+
+model TicketTemplate {
+  id          String     @id @default(uuid())
+  name        String
+  nameAr      String?
+  type        TicketType
+  description String?
+  fields      Json?
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
