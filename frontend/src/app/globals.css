@@ -1,37 +1,34 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #F8FAFC;
-  --foreground: #111827;
-  --primary: #4F46E5;
+  --background: #F5F7FA;
+  --foreground: #0F172A;
+  --primary: #4338CA;
   --primary-foreground: #ffffff;
+  --primary-light: #EEF2FF;
   --secondary: #6366F1;
-  --accent: #8B5CF6;
-  --success: #10B981;
-  --warning: #F59E0B;
-  --danger: #EF4444;
-  --radius: 0.625rem;
+  --accent: #7C3AED;
+  --success: #059669;
+  --warning: #D97706;
+  --danger: #DC2626;
+  --radius: 0.75rem;
   --card: #ffffff;
-  --card-foreground: #111827;
+  --card-foreground: #0F172A;
   --border: #E2E8F0;
   --input: #E2E8F0;
-  --ring: #4F46E5;
+  --ring: #4338CA;
   --muted: #F1F5F9;
   --muted-foreground: #64748B;
-}
-
-.dark {
-  --background: #111827;
-  --foreground: #F9FAFB;
-  --card: #1F2937;
-  --card-foreground: #F9FAFB;
-  --border: #374151;
-  --input: #374151;
-  --muted: #1F2937;
-  --muted-foreground: #9CA3AF;
+  --sidebar: #1E1B4B;
+  --sidebar-foreground: #E0E7FF;
+  --sidebar-muted: rgba(255,255,255,0.07);
+  --sidebar-active: rgba(255,255,255,0.15);
+  --sidebar-border: rgba(255,255,255,0.08);
+  --destructive: #DC2626;
 }
 
 * { box-sizing: border-box; }
@@ -39,10 +36,20 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: 'Cairo', 'Segoe UI', system-ui, -apple-system, sans-serif;
   direction: rtl;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* RTL overrides */
 [dir="rtl"] { text-align: right; }
 [dir="ltr"] { text-align: left; direction: ltr; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+
+/* Card shadow */
+.card-shadow { box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04); }
+.card-shadow-md { box-shadow: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -1px rgba(0,0,0,0.04); }

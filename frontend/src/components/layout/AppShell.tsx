@@ -16,9 +16,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated()) return <FullPageLoading />;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen" style={{ background: "#F5F7FA" }}>
       <Sidebar />
-      <main className="mr-64 min-h-screen p-6">
+      <main className="mr-64 min-h-screen p-8 max-w-[1400px]">
         {children}
       </main>
     </div>
