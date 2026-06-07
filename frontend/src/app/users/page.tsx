@@ -30,6 +30,7 @@ interface User {
   role: string;
   isActive: boolean;
   company?: { name: string };
+  companies?: { company: { id: string; name: string } }[];
   createdAt: string;
 }
 
@@ -52,6 +53,10 @@ export default function UsersPage() {
   const queryClient = useQueryClient();
   const [showInvite, setShowInvite] = useState(false);
   const [search, setSearch] = useState('');
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
+  const [editCompanyIds, setEditCompanyIds] = useState<string[]>([]);
 
   const canManage = hasRole('SENIOR_MANAGEMENT', 'PROGRAMMING_HEAD', 'PROJECT_MANAGER');
 
@@ -93,6 +98,24 @@ export default function UsersPage() {
     },
     onError: () => toast.error('فشل تحديث الحالة'),
   });
+
+  const editMutation = useMutation({
+    mutationFn: ({ id, firstName, lastName, companyIds }: { id: string; firstName: string; lastName: string; companyIds: string[] }) =>
+      api.patch(`/users/${id}`, { firstName, lastName, companyIds }),
+    onSuccess: () => {
+      toast.success('تم تحديث بيانات المستخدم');
+      setEditingUser(null);
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message || 'فشل التحديث'),
+  });
+
+  const openEdit = (user: User) => {
+    setEditingUser(user);
+    setEditFirstName(user.firstName);
+    setEditLastName(user.lastName);
+    setEditCompanyIds(user.companies?.map(uc => uc.company.id) || (user.company ? [] : []));
+  };
 
   const users: User[] = data || [];
   const filtered = users.filter(u =>
@@ -231,6 +254,63 @@ export default function UsersPage() {
           </div>
         )}
 
+        {/* Edit User Modal */}
+        {editingUser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(15,23,42,0.5)" }}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+              <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+                <h2 className="text-lg font-bold text-slate-900">تعديل بيانات المستخدم</h2>
+                <button onClick={() => setEditingUser(null)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">الاسم الأول</label>
+                    <input value={editFirstName} onChange={e => setEditFirstName(e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">اسم العائلة</label>
+                    <input value={editLastName} onChange={e => setEditLastName(e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </div>
+                </div>
+
+                {companies.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">الشركات</label>
+                    <div className="border border-slate-200 rounded-xl p-3 space-y-2 max-h-40 overflow-y-auto">
+                      {companies.map((c: any) => (
+                        <label key={c.id} className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 rounded-lg px-2 py-1">
+                          <input
+                            type="checkbox"
+                            checked={editCompanyIds.includes(c.id)}
+                            onChange={e => setEditCompanyIds(e.target.checked ? [...editCompanyIds, c.id] : editCompanyIds.filter(id => id !== c.id))}
+                            className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span className="text-sm text-slate-700">{c.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => editMutation.mutate({ id: editingUser.id, firstName: editFirstName, lastName: editLastName, companyIds: editCompanyIds })}
+                    disabled={!editFirstName.trim() || !editLastName.trim() || editMutation.isPending}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60 transition-all"
+                    style={{ background: "linear-gradient(135deg, #4338CA, #6366F1)" }}
+                  >
+                    {editMutation.isPending ? 'جارٍ الحفظ...' : 'حفظ التغييرات'}
+                  </button>
+                  <button onClick={() => setEditingUser(null)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50">
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Search + Table */}
         <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden" style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
           <div className="px-6 py-4 border-b border-slate-100">
@@ -283,7 +363,11 @@ export default function UsersPage() {
                         {ROLE_LABELS[user.role as keyof typeof ROLE_LABELS] || user.role}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-slate-500 text-sm">{user.company?.name || '—'}</td>
+                    <td className="px-6 py-4 text-slate-500 text-sm">
+                      {user.companies?.length
+                        ? user.companies.map((uc: any) => uc.company.name).join('، ')
+                        : user.company?.name || '—'}
+                    </td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold ${
                         user.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
@@ -294,16 +378,24 @@ export default function UsersPage() {
                     </td>
                     {canManage && (
                       <td className="px-6 py-4">
-                        <button
-                          onClick={() => toggleMutation.mutate({ id: user.id, active: !user.isActive })}
-                          className={`text-xs px-3 py-1.5 rounded-lg border font-semibold transition-all ${
-                            user.isActive
-                              ? 'border-red-200 text-red-600 hover:bg-red-50'
-                              : 'border-emerald-200 text-emerald-600 hover:bg-emerald-50'
-                          }`}
-                        >
-                          {user.isActive ? 'تعطيل' : 'تفعيل'}
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => openEdit(user)}
+                            className="text-xs px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 font-semibold transition-all"
+                          >
+                            تعديل
+                          </button>
+                          <button
+                            onClick={() => toggleMutation.mutate({ id: user.id, active: !user.isActive })}
+                            className={`text-xs px-3 py-1.5 rounded-lg border font-semibold transition-all ${
+                              user.isActive
+                                ? 'border-red-200 text-red-600 hover:bg-red-50'
+                                : 'border-emerald-200 text-emerald-600 hover:bg-emerald-50'
+                            }`}
+                          >
+                            {user.isActive ? 'تعطيل' : 'تفعيل'}
+                          </button>
+                        </div>
                       </td>
                     )}
                   </tr>

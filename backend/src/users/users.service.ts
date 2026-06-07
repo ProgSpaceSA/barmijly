@@ -16,7 +16,7 @@ export class UsersService {
         ...(filters.companyId && { companyId: filters.companyId }),
         ...(filters.isActive !== undefined && { isActive: filters.isActive }),
       },
-      include: { company: true, department: true },
+      include: { company: true, department: true, companies: { include: { company: true } } },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -57,23 +57,25 @@ export class UsersService {
 
   async update(id: string, dto: UpdateUserDto) {
     await this.findOne(id);
-    const { systemIds, ...data } = dto;
+    const { systemIds, companyIds, ...data } = dto as any;
 
     if (systemIds !== undefined) {
       await this.prisma.userSystem.deleteMany({ where: { userId: id } });
+    }
+
+    if (companyIds !== undefined) {
+      await this.prisma.userCompany.deleteMany({ where: { userId: id } });
     }
 
     return this.prisma.user.update({
       where: { id },
       data: {
         ...data,
-        ...(systemIds && {
-          systems: {
-            create: systemIds.map((systemId) => ({ systemId })),
-          },
-        }),
+        ...(data.companyId === undefined && companyIds?.length ? { companyId: companyIds[0] } : {}),
+        ...(systemIds && { systems: { create: systemIds.map((systemId: string) => ({ systemId })) } }),
+        ...(companyIds?.length && { companies: { create: companyIds.map((companyId: string) => ({ companyId })) } }),
       },
-      include: { company: true, department: true, systems: { include: { system: true } } },
+      include: { company: true, department: true, systems: { include: { system: true } }, companies: { include: { company: true } } },
     });
   }
 

@@ -21,6 +21,8 @@ export default function CompaniesPage() {
   const [addingDept, setAddingDept] = useState<string | null>(null);
   const [newDeptName, setNewDeptName] = useState('');
   const [addingSystem, setAddingSystem] = useState<string | null>(null);
+  const [editingSystem, setEditingSystem] = useState<string | null>(null);
+  const [editSystemName, setEditSystemName] = useState('');
   const [newSystemName, setNewSystemName] = useState('');
   const [newSystemDesc, setNewSystemDesc] = useState('');
 
@@ -75,6 +77,16 @@ export default function CompaniesPage() {
       queryClient.invalidateQueries({ queryKey: ['companies'] });
     },
     onError: () => toast.error('فشل حذف النظام'),
+  });
+
+  const editSystem = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => api.patch(`/systems/${id}`, { name }),
+    onSuccess: () => {
+      toast.success('تم تحديث اسم النظام');
+      setEditingSystem(null);
+      queryClient.invalidateQueries({ queryKey: ['companies'] });
+    },
+    onError: () => toast.error('فشل تحديث النظام'),
   });
 
   const companies: Company[] = data?.data || data || [];
@@ -237,19 +249,31 @@ export default function CompaniesPage() {
                         <div className="space-y-2">
                           {company.systems?.map(sys => (
                             <div key={sys.id} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg text-sm">
-                              <div>
-                                <span className="font-medium text-gray-800">{sys.name}</span>
-                                {sys.description && (
-                                  <span className="text-gray-500 text-xs mr-2">— {sys.description}</span>
-                                )}
-                              </div>
-                              {canManage && (
-                                <button
-                                  onClick={() => deleteSystem.mutate(sys.id)}
-                                  className="text-red-500 hover:text-red-700 text-xs"
-                                >
-                                  حذف
-                                </button>
+                              {editingSystem === sys.id ? (
+                                <div className="flex gap-2 flex-1">
+                                  <input
+                                    value={editSystemName}
+                                    onChange={e => setEditSystemName(e.target.value)}
+                                    className="border border-gray-300 rounded-lg px-2 py-1 text-sm flex-1"
+                                    autoFocus
+                                    onKeyDown={e => { if (e.key === 'Enter') editSystem.mutate({ id: sys.id, name: editSystemName }); if (e.key === 'Escape') setEditingSystem(null); }}
+                                  />
+                                  <button onClick={() => editSystem.mutate({ id: sys.id, name: editSystemName })} disabled={!editSystemName.trim() || editSystem.isPending} className="bg-indigo-600 text-white px-3 py-1 rounded-lg text-xs disabled:opacity-50">حفظ</button>
+                                  <button onClick={() => setEditingSystem(null)} className="border border-gray-300 px-2 py-1 rounded-lg text-xs">إلغاء</button>
+                                </div>
+                              ) : (
+                                <>
+                                  <div>
+                                    <span className="font-medium text-gray-800">{sys.name}</span>
+                                    {sys.description && <span className="text-gray-500 text-xs mr-2">— {sys.description}</span>}
+                                  </div>
+                                  {canManage && (
+                                    <div className="flex gap-2">
+                                      <button onClick={() => { setEditingSystem(sys.id); setEditSystemName(sys.name); }} className="text-indigo-500 hover:text-indigo-700 text-xs">تعديل</button>
+                                      <button onClick={() => deleteSystem.mutate(sys.id)} className="text-red-500 hover:text-red-700 text-xs">حذف</button>
+                                    </div>
+                                  )}
+                                </>
                               )}
                             </div>
                           ))}
