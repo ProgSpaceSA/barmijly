@@ -90,6 +90,7 @@ model Company {
   departments Department[]
   systems     System[]
   users       User[]
+  userCompanies UserCompany[]
   tickets     Ticket[]
 }
 
@@ -144,6 +145,7 @@ model User {
   invitationsSent    EmailInvitation[]  @relation("InvitationSender")
   invitationReceived EmailInvitation?   @relation("InvitationReceiver")
   passwordResetTokens PasswordResetToken[]
+  companies           UserCompany[]
   auditLogs          AuditLog[]
 }
 
@@ -338,4 +340,14 @@ model PasswordResetToken {
   expiresAt DateTime
   usedAt    DateTime?
   createdAt DateTime  @default(now())
+}
+
+model UserCompany {
+  userId    String
+  companyId String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([userId, companyId])
 }

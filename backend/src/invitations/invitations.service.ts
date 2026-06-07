@@ -18,19 +18,22 @@ export class InvitationsService {
     const existingUser = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (existingUser) throw new BadRequestException('User with this email already exists');
 
-    const { email, role, companyId, departmentId, systemIds, firstName, lastName } = dto;
+    const { email, role, companyIds, departmentId, systemIds, firstName, lastName } = dto;
+    const primaryCompanyId = companyIds?.[0] ?? null;
 
-    // Create user account (no password yet)
     const newUser = await this.prisma.user.create({
       data: {
         email,
         role,
         firstName: firstName || '',
         lastName: lastName || '',
-        companyId,
+        companyId: primaryCompanyId,
         departmentId,
         ...(systemIds && {
           systems: { create: systemIds.map((sid) => ({ systemId: sid })) },
+        }),
+        ...(companyIds?.length && {
+          companies: { create: companyIds.map((cid) => ({ companyId: cid })) },
         }),
       },
     });
@@ -47,7 +50,7 @@ export class InvitationsService {
         expiresAt,
         senderId: sender.id,
         receiverId: newUser.id,
-        companyId,
+        companyId: primaryCompanyId,
       },
     });
 

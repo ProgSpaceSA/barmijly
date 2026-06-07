@@ -17,7 +17,7 @@ const inviteSchema = z.object({
   firstName: z.string().min(2, 'الاسم الأول مطلوب'),
   lastName: z.string().min(2, 'اسم العائلة مطلوب'),
   role: z.string().min(1, 'الدور مطلوب'),
-  companyId: z.string().optional(),
+  companyIds: z.array(z.string()).optional(),
 });
 
 type InviteForm = z.infer<typeof inviteSchema>;
@@ -73,7 +73,7 @@ export default function UsersPage() {
   const inviteMutation = useMutation({
     mutationFn: (data: InviteForm) => api.post('/invitations', {
       ...data,
-      companyId: data.companyId || undefined,
+      companyIds: data.companyIds?.length ? data.companyIds : undefined,
     }),
     onSuccess: () => {
       toast.success('تم إرسال الدعوة بنجاح');
@@ -192,11 +192,20 @@ export default function UsersPage() {
 
                 {companies.length > 0 && (
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">الشركة (اختياري)</label>
-                    <select {...register('companyId')} className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                      <option value="">بدون شركة</option>
-                      {companies.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">الشركات (اختياري)</label>
+                    <div className="border border-slate-200 rounded-xl p-3 space-y-2 max-h-40 overflow-y-auto">
+                      {companies.map((c: any) => (
+                        <label key={c.id} className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 rounded-lg px-2 py-1">
+                          <input
+                            type="checkbox"
+                            value={c.id}
+                            {...register('companyIds')}
+                            className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span className="text-sm text-slate-700">{c.name}</span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 )}
 

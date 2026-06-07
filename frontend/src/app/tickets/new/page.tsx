@@ -51,16 +51,26 @@ export default function NewTicketPage() {
   const companyId = watch("companyId");
 
   useEffect(() => {
-    if (isRestricted && user?.companyId) {
-      // Lock to user's company — fetch just that one
-      api.get(`/companies/${user.companyId}`).then(r => {
-        setCompanies([r.data]);
-        setValue("companyId", user.companyId!);
+    if (isRestricted) {
+      // Load only user's assigned companies
+      api.get("/auth/me").then(r => {
+        const userCompanies = r.data?.companies?.map((uc: any) => uc.company).filter(Boolean) || [];
+        if (userCompanies.length === 1) {
+          setCompanies(userCompanies);
+          setValue("companyId", userCompanies[0].id);
+        } else if (userCompanies.length > 1) {
+          setCompanies(userCompanies);
+        } else if (r.data?.companyId) {
+          api.get(`/companies/${r.data.companyId}`).then(r2 => {
+            setCompanies([r2.data]);
+            setValue("companyId", r2.data.id);
+          });
+        }
       });
     } else {
       api.get("/companies").then(r => setCompanies(r.data || []));
     }
-  }, [isRestricted, user?.companyId, setValue]);
+  }, [isRestricted, setValue]);
 
   useEffect(() => {
     setSystems([]);
@@ -106,12 +116,8 @@ export default function NewTicketPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className={labelCls}>الشركة *</label>
-                {isRestricted ? (
-                  <input
-                    value={companies[0]?.name ?? ""}
-                    className={inputCls}
-                    disabled
-                  />
+                {isRestricted && companies.length === 1 ? (
+                  <input value={companies[0]?.name ?? ""} className={inputCls} disabled />
                 ) : (
                   <select {...register("companyId")} className={selectCls}>
                     <option value="">اختر شركة...</option>

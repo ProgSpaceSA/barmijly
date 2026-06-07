@@ -11,10 +11,10 @@ export class CreateInvitationDto {
   @IsEnum(UserRole)
   role: UserRole;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ type: [String] })
   @IsOptional()
-  @IsUUID()
-  companyId?: string;
+  @IsUUID('all', { each: true })
+  companyIds?: string[];
 
   @ApiPropertyOptional()
   @IsOptional()

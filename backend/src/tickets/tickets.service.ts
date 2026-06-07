@@ -49,7 +49,9 @@ export class TicketsService {
     } else if (user.role === UserRole.DEVELOPER) {
       where.assignments = { some: { developerId: user.id, isActive: true } };
     } else if (user.role === UserRole.SYSTEM_OWNER) {
-      where.companyId = user.companyId;
+      const userCompanies = await this.prisma.userCompany.findMany({ where: { userId: user.id }, select: { companyId: true } });
+      const companyIds = userCompanies.map(uc => uc.companyId);
+      where.companyId = { in: companyIds };
     }
 
     const [data, total] = await Promise.all([
@@ -97,7 +99,7 @@ export class TicketsService {
       },
     });
     if (!ticket) throw new NotFoundException('Ticket not found');
-    this.enforceVisibility(ticket, user);
+    await this.enforceVisibility(ticket, user);
     return ticket;
   }
 
@@ -337,13 +339,15 @@ export class TicketsService {
     return ticket;
   }
 
-  private enforceVisibility(ticket: any, user: any) {
+  private async enforceVisibility(ticket: any, user: any) {
     const allowedRoles: string[] = [
       UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.DEVELOPER,
       UserRole.QA, UserRole.SENIOR_MANAGEMENT,
     ];
     if (allowedRoles.includes(user.role)) return;
-    if (ticket.creatorId !== user.id && ticket.companyId !== user.companyId) {
+    const userCompanies = await this.prisma.userCompany.findMany({ where: { userId: user.id }, select: { companyId: true } });
+    const companyIds = userCompanies.map(uc => uc.companyId);
+    if (ticket.creatorId !== user.id && !companyIds.includes(ticket.companyId)) {
       throw new ForbiddenException('Access denied');
     }
   }

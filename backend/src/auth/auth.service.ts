@@ -98,7 +98,12 @@ export class AuthService {
   async me(userId: string) {
     return this.prisma.user.findUnique({
       where: { id: userId },
-      include: { company: true, department: true, systems: { include: { system: true } } },
+      include: {
+        company: true,
+        department: true,
+        systems: { include: { system: true } },
+        companies: { include: { company: true } },
+      },
     });
   }
 
