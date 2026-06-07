@@ -8,42 +8,43 @@ export class EmailService {
   private readonly logger = new Logger(EmailService.name);
 
   constructor(private config: ConfigService) {
+    const user = config.get<string>('MAIL_USER');
+    const pass = config.get<string>('MAIL_PASS');
+
     this.transporter = nodemailer.createTransport({
       host: config.get('MAIL_HOST'),
       port: config.get<number>('MAIL_PORT'),
       secure: false,
-      auth: {
-        user: config.get('MAIL_USER'),
-        pass: config.get('MAIL_PASS'),
-      },
+      ...(user && pass ? { auth: { user, pass } } : {}),
     });
   }
 
   async sendInvitation(to: string, token: string, role: string, frontendUrl: string) {
     const link = `${frontendUrl}/accept-invitation?token=${token}`;
-    await this.send(to, 'You have been invited to Barmijli', `
-      <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
-        <h2>مرحباً بك في برمجلي</h2>
-        <p>لقد تمت دعوتك للانضمام إلى نظام إدارة التذاكر <strong>برمجلي</strong> بدور <strong>${role}</strong>.</p>
-        <p>يرجى الضغط على الرابط التالي لإعداد كلمة المرور والانضمام:</p>
-        <a href="${link}" style="
-          display: inline-block; padding: 12px 24px; background: #4F46E5;
-          color: white; text-decoration: none; border-radius: 6px; margin: 16px 0;
-        ">قبول الدعوة</a>
-        <p style="color: #666; font-size: 12px;">الرابط صالح لمدة 48 ساعة.</p>
+    await this.send(to, 'دعوة للانضمام إلى برمجلي', `
+      <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 32px; background: #f8fafc; border-radius: 12px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="display: inline-block; background: #4338CA; color: white; padding: 12px 24px; border-radius: 8px; font-size: 20px; font-weight: bold;">برمجلي</div>
+        </div>
+        <h2 style="color: #1e293b;">مرحباً بك في برمجلي</h2>
+        <p style="color: #475569;">لقد تمت دعوتك للانضمام إلى نظام إدارة طلبات البرمجة <strong>برمجلي</strong> بدور <strong>${role}</strong>.</p>
+        <p style="color: #475569;">اضغط على الزر أدناه لإعداد كلمة المرور والبدء:</p>
+        <div style="text-align: center; margin: 32px 0;">
+          <a href="${link}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #4338CA, #6366F1); color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px;">قبول الدعوة</a>
+        </div>
+        <p style="color: #94a3b8; font-size: 13px; text-align: center;">الرابط صالح لمدة 48 ساعة · إذا لم تطلب هذه الدعوة فتجاهل هذا البريد.</p>
       </div>
     `);
   }
 
   async sendStatusUpdate(to: string, ticketTitle: string, status: string, ticketUrl: string) {
-    await this.send(to, `تحديث حالة التذكرة: ${ticketTitle}`, `
-      <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
-        <h2>تحديث التذكرة</h2>
-        <p>تم تحديث حالة التذكرة <strong>${ticketTitle}</strong> إلى: <strong>${status}</strong></p>
-        <a href="${ticketUrl}" style="
-          display: inline-block; padding: 12px 24px; background: #4F46E5;
-          color: white; text-decoration: none; border-radius: 6px; margin: 16px 0;
-        ">عرض التذكرة</a>
+    await this.send(to, `تحديث التذكرة: ${ticketTitle}`, `
+      <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 32px; background: #f8fafc; border-radius: 12px;">
+        <h2 style="color: #1e293b;">تحديث حالة التذكرة</h2>
+        <p style="color: #475569;">تم تحديث حالة التذكرة <strong>${ticketTitle}</strong> إلى: <strong>${status}</strong></p>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${ticketUrl}" style="display: inline-block; padding: 12px 28px; background: #4338CA; color: white; text-decoration: none; border-radius: 8px; font-weight: bold;">عرض التذكرة</a>
+        </div>
       </div>
     `);
   }
@@ -51,11 +52,12 @@ export class EmailService {
   private async send(to: string, subject: string, html: string) {
     try {
       await this.transporter.sendMail({
-        from: this.config.get('MAIL_FROM'),
+        from: `برمجلي <${this.config.get('MAIL_FROM')}>`,
         to,
         subject,
         html,
       });
+      this.logger.log(`Email sent to ${to}: ${subject}`);
     } catch (err) {
       this.logger.error(`Failed to send email to ${to}: ${err.message}`);
     }

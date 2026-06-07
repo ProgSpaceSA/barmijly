@@ -11,7 +11,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 @ApiTags('Invitations')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER)
+@Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT)
 @Controller('invitations')
 export class InvitationsController {
   constructor(private invitationsService: InvitationsService) {}

@@ -83,6 +83,7 @@ model Company {
   id          String       @id @default(uuid())
   name        String
   nameAr      String?
+  domain      String?
   isActive    Boolean      @default(true)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
@@ -108,6 +109,7 @@ model System {
   id          String       @id @default(uuid())
   name        String
   nameAr      String?
+  domain      String?
   description String?
   companyId   String
   company     Company      @relation(fields: [companyId], references: [id])
@@ -318,6 +320,7 @@ model TicketTemplate {
   id          String     @id @default(uuid())
   name        String
   nameAr      String?
+  domain      String?
   type        TicketType
   description String?
   fields      Json?

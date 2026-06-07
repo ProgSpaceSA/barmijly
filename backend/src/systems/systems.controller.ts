@@ -26,19 +26,19 @@ export class SystemsController {
   }
 
   @Post()
-  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER)
+  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT)
   create(@Body() dto: CreateSystemDto) {
     return this.systemsService.create(dto);
   }
 
   @Patch(':id')
-  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER)
+  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT)
   update(@Param('id') id: string, @Body() dto: UpdateSystemDto) {
     return this.systemsService.update(id, dto);
   }
 
   @Patch(':id/deactivate')
-  @Roles(UserRole.PROGRAMMING_HEAD)
+  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT)
   deactivate(@Param('id') id: string) {
     return this.systemsService.deactivate(id);
   }

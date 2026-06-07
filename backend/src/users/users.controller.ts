@@ -8,6 +8,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
+const MANAGERS = [UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT];
+
 @ApiTags('Users')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -16,7 +18,7 @@ export class UsersController {
   constructor(private usersService: UsersService) {}
 
   @Get()
-  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT)
+  @Roles(...MANAGERS)
   findAll(
     @Query('role') role?: UserRole,
     @Query('companyId') companyId?: string,
@@ -30,37 +32,37 @@ export class UsersController {
   }
 
   @Get('developers')
-  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER)
+  @Roles(...MANAGERS)
   getDevelopers() {
     return this.usersService.getDevelopers();
   }
 
   @Get(':id')
-  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT)
+  @Roles(...MANAGERS)
   findOne(@Param('id') id: string) {
     return this.usersService.findOne(id);
   }
 
   @Post()
-  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER)
+  @Roles(...MANAGERS)
   create(@Body() dto: CreateUserDto) {
     return this.usersService.create(dto);
   }
 
   @Patch(':id')
-  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER)
+  @Roles(...MANAGERS)
   update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
     return this.usersService.update(id, dto);
   }
 
   @Patch(':id/deactivate')
-  @Roles(UserRole.PROGRAMMING_HEAD)
+  @Roles(...MANAGERS)
   deactivate(@Param('id') id: string) {
     return this.usersService.deactivate(id);
   }
 
   @Patch(':id/activate')
-  @Roles(UserRole.PROGRAMMING_HEAD)
+  @Roles(...MANAGERS)
   activate(@Param('id') id: string) {
     return this.usersService.activate(id);
   }

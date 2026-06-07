@@ -67,11 +67,18 @@ export class AuthService {
     });
   }
 
-  private signToken(user: { id: string; email: string; role: string }) {
+  private signToken(user: { id: string; email: string; role: string; firstName?: string; lastName?: string; companyId?: string | null }) {
     const payload = { sub: user.id, email: user.email, role: user.role };
     return {
       access_token: this.jwt.sign(payload),
-      user: { id: user.id, email: user.email, role: user.role },
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        companyId: user.companyId ?? null,
+      },
     };
   }
 }

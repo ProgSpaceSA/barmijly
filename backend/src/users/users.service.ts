@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserRole } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
@@ -37,10 +38,13 @@ export class UsersService {
     const exists = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (exists) throw new ConflictException('Email already in use');
 
-    const { systemIds, ...data } = dto;
+    const { systemIds, password, ...data } = dto;
+    const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
+
     return this.prisma.user.create({
       data: {
         ...data,
+        ...(hashedPassword && { password: hashedPassword }),
         ...(systemIds && {
           systems: {
             create: systemIds.map((systemId) => ({ systemId })),

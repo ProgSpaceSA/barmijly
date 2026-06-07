@@ -26,19 +26,19 @@ export class DepartmentsController {
   }
 
   @Post()
-  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER)
+  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT)
   create(@Body() dto: CreateDepartmentDto) {
     return this.departmentsService.create(dto);
   }
 
   @Patch(':id')
-  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER)
+  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT)
   update(@Param('id') id: string, @Body() dto: UpdateDepartmentDto) {
     return this.departmentsService.update(id, dto);
   }
 
   @Patch(':id/deactivate')
-  @Roles(UserRole.PROGRAMMING_HEAD)
+  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT)
   deactivate(@Param('id') id: string) {
     return this.departmentsService.deactivate(id);
   }

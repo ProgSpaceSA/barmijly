@@ -43,11 +43,11 @@ export default function InvitationsPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['invitations'],
-    queryFn: () => api.get('/users/invitations').then(r => r.data),
+    queryFn: () => api.get('/invitations').then(r => r.data),
   });
 
   const resendMutation = useMutation({
-    mutationFn: (id: string) => api.post(`/users/invitations/${id}/resend`),
+    mutationFn: (id: string) => api.patch(`/invitations/${id}/resend`),
     onSuccess: () => {
       toast.success('تم إعادة إرسال الدعوة');
       queryClient.invalidateQueries({ queryKey: ['invitations'] });
@@ -56,7 +56,7 @@ export default function InvitationsPage() {
   });
 
   const revokeMutation = useMutation({
-    mutationFn: (id: string) => api.delete(`/users/invitations/${id}`),
+    mutationFn: (id: string) => api.patch(`/invitations/${id}/revoke`),
     onSuccess: () => {
       toast.success('تم إلغاء الدعوة');
       queryClient.invalidateQueries({ queryKey: ['invitations'] });

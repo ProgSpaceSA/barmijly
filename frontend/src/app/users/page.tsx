@@ -10,18 +10,17 @@ import { toast } from 'sonner';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { UserPlus, X, Search, Shield, Eye, EyeOff, Users } from 'lucide-react';
+import { UserPlus, X, Search, Shield, Users } from 'lucide-react';
 
-const createSchema = z.object({
+const inviteSchema = z.object({
   email: z.string().email('بريد إلكتروني غير صالح'),
   firstName: z.string().min(2, 'الاسم الأول مطلوب'),
   lastName: z.string().min(2, 'اسم العائلة مطلوب'),
   role: z.string().min(1, 'الدور مطلوب'),
-  password: z.string().min(8, 'كلمة المرور 8 أحرف على الأقل'),
   companyId: z.string().optional(),
 });
 
-type CreateForm = z.infer<typeof createSchema>;
+type InviteForm = z.infer<typeof inviteSchema>;
 
 interface User {
   id: string;
@@ -51,11 +50,10 @@ function getRoleStyle(role: string) {
 export default function UsersPage() {
   const { hasRole } = useAuthStore();
   const queryClient = useQueryClient();
-  const [showCreate, setShowCreate] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
   const [search, setSearch] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
 
-  const canManage = hasRole('SENIOR_MANAGEMENT', 'PROGRAMMING_HEAD');
+  const canManage = hasRole('SENIOR_MANAGEMENT', 'PROGRAMMING_HEAD', 'PROJECT_MANAGER');
 
   const { data, isLoading } = useQuery({
     queryKey: ['users'],
@@ -68,19 +66,22 @@ export default function UsersPage() {
     enabled: canManage,
   });
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<CreateForm>({
-    resolver: zodResolver(createSchema),
+  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<InviteForm>({
+    resolver: zodResolver(inviteSchema),
   });
 
-  const createMutation = useMutation({
-    mutationFn: (data: CreateForm) => api.post('/users', data),
+  const inviteMutation = useMutation({
+    mutationFn: (data: InviteForm) => api.post('/invitations', {
+      ...data,
+      companyId: data.companyId || undefined,
+    }),
     onSuccess: () => {
-      toast.success('تم إنشاء المستخدم بنجاح');
-      setShowCreate(false);
+      toast.success('تم إرسال الدعوة بنجاح');
+      setShowInvite(false);
       reset();
       queryClient.invalidateQueries({ queryKey: ['users'] });
     },
-    onError: (e: any) => toast.error(e.response?.data?.message || 'فشل إنشاء المستخدم'),
+    onError: (e: any) => toast.error(e.response?.data?.message || 'فشل إرسال الدعوة'),
   });
 
   const toggleMutation = useMutation({
@@ -95,9 +96,9 @@ export default function UsersPage() {
 
   const users: User[] = data || [];
   const filtered = users.filter(u =>
-    `${u.firstName} ${u.lastName}`.includes(search) || u.email.includes(search)
+    `${u.firstName} ${u.lastName}`.toLowerCase().includes(search.toLowerCase()) ||
+    u.email.toLowerCase().includes(search.toLowerCase())
   );
-
   const companies = companiesData || [];
 
   const stats = {
@@ -117,12 +118,12 @@ export default function UsersPage() {
           </div>
           {canManage && (
             <button
-              onClick={() => setShowCreate(true)}
+              onClick={() => setShowInvite(true)}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all"
               style={{ background: "linear-gradient(135deg, #4338CA, #6366F1)", boxShadow: "0 4px 12px rgba(67,56,202,0.3)" }}
             >
               <UserPlus className="w-4 h-4" />
-              إضافة مستخدم
+              دعوة مستخدم
             </button>
           )}
         </div>
@@ -141,23 +142,26 @@ export default function UsersPage() {
           ))}
         </div>
 
-        {/* Create Modal */}
-        {showCreate && (
+        {/* Invite Modal */}
+        {showInvite && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(15,23,42,0.5)" }}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" style={{ boxShadow: "0 25px 50px rgba(0,0,0,0.2)" }}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
               <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center">
                     <Shield className="w-5 h-5 text-indigo-600" />
                   </div>
-                  <h2 className="text-lg font-bold text-slate-900">إضافة مستخدم جديد</h2>
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">دعوة مستخدم جديد</h2>
+                    <p className="text-xs text-slate-400 mt-0.5">سيتلقى المستخدم بريداً لإعداد كلمة المرور</p>
+                  </div>
                 </div>
-                <button onClick={() => { setShowCreate(false); reset(); }} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <button onClick={() => { setShowInvite(false); reset(); }} className="text-slate-400 hover:text-slate-600">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <form onSubmit={handleSubmit(d => createMutation.mutate(d))} className="p-6 space-y-4">
+              <form onSubmit={handleSubmit(d => inviteMutation.mutate(d))} className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1.5">الاسم الأول</label>
@@ -186,22 +190,6 @@ export default function UsersPage() {
                   {errors.role && <p className="text-red-500 text-xs mt-1">{errors.role.message}</p>}
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">كلمة المرور</label>
-                  <div className="relative">
-                    <input
-                      {...register('password')}
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder="8 أحرف على الأقل"
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>}
-                </div>
-
                 {companies.length > 0 && (
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1.5">الشركة (اختياري)</label>
@@ -219,11 +207,11 @@ export default function UsersPage() {
                     className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60 transition-all"
                     style={{ background: "linear-gradient(135deg, #4338CA, #6366F1)" }}
                   >
-                    {isSubmitting ? 'جارٍ الإنشاء...' : 'إنشاء المستخدم'}
+                    {isSubmitting ? 'جارٍ الإرسال...' : 'إرسال الدعوة'}
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setShowCreate(false); reset(); }}
+                    onClick={() => { setShowInvite(false); reset(); }}
                     className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 transition-all"
                   >
                     إلغاء

@@ -8,37 +8,8 @@ import { useAuthStore } from '@/store/auth';
 import { toast } from 'sonner';
 
 interface System { id: string; name: string; description?: string; }
-interface Department { id: string; name: string; systems: System[]; }
-interface Company { id: string; name: string; domain?: string; departments: Department[]; }
-
-function SystemRow({ system, deptId, onDelete }: { system: System; deptId: string; onDelete: (id: string) => void }) {
-  return (
-    <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded text-sm">
-      <div>
-        <span className="font-medium">{system.name}</span>
-        {system.description && <span className="text-gray-500 text-xs mr-2">{system.description}</span>}
-      </div>
-      <button onClick={() => onDelete(system.id)} className="text-red-500 hover:text-red-700 text-xs">حذف</button>
-    </div>
-  );
-}
-
-function AddSystemForm({ deptId, onAdd }: { deptId: string; onAdd: (name: string, desc: string) => void }) {
-  const [show, setShow] = useState(false);
-  const [name, setName] = useState('');
-  const [desc, setDesc] = useState('');
-  if (!show) return (
-    <button onClick={() => setShow(true)} className="text-xs text-indigo-600 hover:underline">+ إضافة نظام</button>
-  );
-  return (
-    <div className="flex gap-2 mt-1">
-      <input value={name} onChange={e => setName(e.target.value)} placeholder="اسم النظام" className="border border-gray-300 rounded px-2 py-1 text-xs flex-1" />
-      <input value={desc} onChange={e => setDesc(e.target.value)} placeholder="وصف" className="border border-gray-300 rounded px-2 py-1 text-xs flex-1" />
-      <button onClick={() => { onAdd(name, desc); setName(''); setDesc(''); setShow(false); }} className="bg-indigo-600 text-white px-2 py-1 rounded text-xs">إضافة</button>
-      <button onClick={() => setShow(false)} className="text-gray-500 text-xs px-1">×</button>
-    </div>
-  );
-}
+interface Department { id: string; name: string; }
+interface Company { id: string; name: string; domain?: string; departments: Department[]; systems: System[]; _count?: { users: number; tickets: number }; }
 
 export default function CompaniesPage() {
   const { hasRole } = useAuthStore();
@@ -49,6 +20,9 @@ export default function CompaniesPage() {
   const [expandedCompany, setExpandedCompany] = useState<string | null>(null);
   const [addingDept, setAddingDept] = useState<string | null>(null);
   const [newDeptName, setNewDeptName] = useState('');
+  const [addingSystem, setAddingSystem] = useState<string | null>(null);
+  const [newSystemName, setNewSystemName] = useState('');
+  const [newSystemDesc, setNewSystemDesc] = useState('');
 
   const canManage = hasRole('SENIOR_MANAGEMENT', 'PROGRAMMING_HEAD');
 
@@ -71,7 +45,7 @@ export default function CompaniesPage() {
 
   const addDept = useMutation({
     mutationFn: ({ companyId, name }: { companyId: string; name: string }) =>
-      api.post('/companies/departments', { companyId, name }),
+      api.post('/departments', { companyId, name }),
     onSuccess: () => {
       toast.success('تم إضافة القسم');
       setAddingDept(null);
@@ -82,17 +56,20 @@ export default function CompaniesPage() {
   });
 
   const addSystem = useMutation({
-    mutationFn: ({ departmentId, name, description }: { departmentId: string; name: string; description?: string }) =>
-      api.post('/companies/systems', { departmentId, name, description }),
+    mutationFn: ({ companyId, name, description }: { companyId: string; name: string; description?: string }) =>
+      api.post('/systems', { companyId, name, description }),
     onSuccess: () => {
       toast.success('تم إضافة النظام');
+      setAddingSystem(null);
+      setNewSystemName('');
+      setNewSystemDesc('');
       queryClient.invalidateQueries({ queryKey: ['companies'] });
     },
     onError: () => toast.error('فشل إضافة النظام'),
   });
 
   const deleteSystem = useMutation({
-    mutationFn: (id: string) => api.delete(`/companies/systems/${id}`),
+    mutationFn: (id: string) => api.delete(`/systems/${id}`),
     onSuccess: () => {
       toast.success('تم حذف النظام');
       queryClient.invalidateQueries({ queryKey: ['companies'] });
@@ -186,74 +163,141 @@ export default function CompaniesPage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 text-sm text-gray-500">
+                  <div className="flex items-center gap-4 text-sm text-gray-500">
                     <span>{company.departments?.length || 0} قسم</span>
+                    <span>{company.systems?.length || 0} نظام</span>
+                    {company._count && (
+                      <span>{company._count.users} مستخدم</span>
+                    )}
                     <span className="text-gray-400">{expandedCompany === company.id ? '▲' : '▼'}</span>
                   </div>
                 </button>
 
-                {/* Departments */}
+                {/* Expanded Content */}
                 {expandedCompany === company.id && (
-                  <div className="border-t border-gray-100 px-6 py-4 space-y-4">
-                    {company.departments?.map(dept => (
-                      <div key={dept.id} className="border border-gray-100 rounded-lg p-4">
-                        <h3 className="font-medium text-gray-800 mb-3">{dept.name}</h3>
-                        <div className="space-y-2">
-                          {dept.systems?.map(sys => (
-                            <SystemRow
-                              key={sys.id}
-                              system={sys}
-                              deptId={dept.id}
-                              onDelete={id => deleteSystem.mutate(id)}
-                            />
+                  <div className="border-t border-gray-100 px-6 py-4 space-y-6">
+
+                    {/* Departments Section */}
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">الأقسام</h3>
+                      {company.departments?.length === 0 ? (
+                        <p className="text-sm text-gray-400">لا توجد أقسام</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {company.departments?.map(dept => (
+                            <span key={dept.id} className="bg-indigo-50 text-indigo-700 text-sm px-3 py-1 rounded-full border border-indigo-100">
+                              {dept.name}
+                            </span>
                           ))}
                         </div>
-                        {canManage && (
-                          <div className="mt-2">
-                            <AddSystemForm
-                              deptId={dept.id}
-                              onAdd={(name, desc) => addSystem.mutate({ departmentId: dept.id, name, description: desc || undefined })}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                      )}
+                      {canManage && (
+                        <div className="mt-3">
+                          {addingDept === company.id ? (
+                            <div className="flex gap-2">
+                              <input
+                                value={newDeptName}
+                                onChange={e => setNewDeptName(e.target.value)}
+                                placeholder="اسم القسم الجديد"
+                                className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1"
+                                autoFocus
+                              />
+                              <button
+                                onClick={() => addDept.mutate({ companyId: company.id, name: newDeptName })}
+                                disabled={!newDeptName.trim() || addDept.isPending}
+                                className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50"
+                              >
+                                إضافة
+                              </button>
+                              <button
+                                onClick={() => { setAddingDept(null); setNewDeptName(''); }}
+                                className="border border-gray-300 px-3 py-2 rounded-lg text-sm"
+                              >
+                                إلغاء
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setAddingDept(company.id)}
+                              className="text-sm text-indigo-600 hover:underline"
+                            >
+                              + إضافة قسم
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
 
-                    {canManage && (
-                      <div className="pt-2">
-                        {addingDept === company.id ? (
-                          <div className="flex gap-2">
-                            <input
-                              value={newDeptName}
-                              onChange={e => setNewDeptName(e.target.value)}
-                              placeholder="اسم القسم الجديد"
-                              className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1"
-                              autoFocus
-                            />
+                    {/* Systems Section */}
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">الأنظمة</h3>
+                      {company.systems?.length === 0 ? (
+                        <p className="text-sm text-gray-400">لا توجد أنظمة</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {company.systems?.map(sys => (
+                            <div key={sys.id} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg text-sm">
+                              <div>
+                                <span className="font-medium text-gray-800">{sys.name}</span>
+                                {sys.description && (
+                                  <span className="text-gray-500 text-xs mr-2">— {sys.description}</span>
+                                )}
+                              </div>
+                              {canManage && (
+                                <button
+                                  onClick={() => deleteSystem.mutate(sys.id)}
+                                  className="text-red-500 hover:text-red-700 text-xs"
+                                >
+                                  حذف
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {canManage && (
+                        <div className="mt-3">
+                          {addingSystem === company.id ? (
+                            <div className="flex gap-2">
+                              <input
+                                value={newSystemName}
+                                onChange={e => setNewSystemName(e.target.value)}
+                                placeholder="اسم النظام"
+                                className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1"
+                                autoFocus
+                              />
+                              <input
+                                value={newSystemDesc}
+                                onChange={e => setNewSystemDesc(e.target.value)}
+                                placeholder="وصف (اختياري)"
+                                className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1"
+                              />
+                              <button
+                                onClick={() => addSystem.mutate({ companyId: company.id, name: newSystemName, description: newSystemDesc || undefined })}
+                                disabled={!newSystemName.trim() || addSystem.isPending}
+                                className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50"
+                              >
+                                إضافة
+                              </button>
+                              <button
+                                onClick={() => { setAddingSystem(null); setNewSystemName(''); setNewSystemDesc(''); }}
+                                className="border border-gray-300 px-3 py-2 rounded-lg text-sm"
+                              >
+                                إلغاء
+                              </button>
+                            </div>
+                          ) : (
                             <button
-                              onClick={() => addDept.mutate({ companyId: company.id, name: newDeptName })}
-                              disabled={!newDeptName.trim() || addDept.isPending}
-                              className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50"
+                              onClick={() => setAddingSystem(company.id)}
+                              className="text-sm text-indigo-600 hover:underline"
                             >
-                              إضافة
+                              + إضافة نظام
                             </button>
-                            <button
-                              onClick={() => { setAddingDept(null); setNewDeptName(''); }}
-                              className="border border-gray-300 px-3 py-2 rounded-lg text-sm"
-                            >
-                              إلغاء
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setAddingDept(company.id)}
-                            className="text-sm text-indigo-600 hover:underline"
-                          >
-                            + إضافة قسم
-                          </button>
-                        )}
-                      </div>
-                    )}
+                          )}
+                        </div>
+                      )}
+                    </div>
+
                   </div>
                 )}
               </div>

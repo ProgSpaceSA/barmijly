@@ -9,7 +9,7 @@ export class CompaniesService {
 
   findAll() {
     return this.prisma.company.findMany({
-      include: { _count: { select: { users: true, systems: true, tickets: true } } },
+      include: { departments: { orderBy: { name: "asc" } }, systems: { orderBy: { name: "asc" } }, _count: { select: { users: true, tickets: true } } },
       orderBy: { name: 'asc' },
     });
   }
