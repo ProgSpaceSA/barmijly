@@ -8,6 +8,7 @@ import api from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { toast } from "sonner";
 import { Eye, EyeOff, Layers, ArrowLeft } from "lucide-react";
+import Link from "next/link";
 
 const schema = z.object({
   email: z.string().email("بريد إلكتروني غير صالح"),
@@ -120,6 +121,9 @@ export default function LoginPage() {
                 </button>
               </div>
               {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>}
+            <div className="text-left mt-1">
+              <Link href="/forgot-password" className="text-xs text-indigo-600 hover:underline">نسيت كلمة المرور؟</Link>
+            </div>
             </div>
 
             <button

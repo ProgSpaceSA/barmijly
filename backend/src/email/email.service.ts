@@ -37,6 +37,24 @@ export class EmailService {
     `);
   }
 
+  async sendPasswordReset(to: string, firstName: string, token: string, frontendUrl: string) {
+    const link = `${frontendUrl}/reset-password?token=${token}`;
+    await this.send(to, "إعادة تعيين كلمة المرور - برمجلي", `
+      <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 32px; background: #f8fafc; border-radius: 12px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="display: inline-block; background: #4338CA; color: white; padding: 12px 24px; border-radius: 8px; font-size: 20px; font-weight: bold;">برمجلي</div>
+        </div>
+        <h2 style="color: #1e293b;">مرحباً ${firstName}،</h2>
+        <p style="color: #475569;">تلقينا طلباً لإعادة تعيين كلمة المرور الخاصة بحسابك.</p>
+        <p style="color: #475569;">اضغط على الزر أدناه لإنشاء كلمة مرور جديدة:</p>
+        <div style="text-align: center; margin: 32px 0;">
+          <a href="${link}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #4338CA, #6366F1); color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px;">إعادة تعيين كلمة المرور</a>
+        </div>
+        <p style="color: #94a3b8; font-size: 13px; text-align: center;">الرابط صالح لمدة 30 دقيقة فقط · إذا لم تطلب هذا فتجاهل البريد.</p>
+      </div>
+    `);
+  }
+
   async sendStatusUpdate(to: string, ticketTitle: string, status: string, ticketUrl: string) {
     await this.send(to, `تحديث التذكرة: ${ticketTitle}`, `
       <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 32px; background: #f8fafc; border-radius: 12px;">

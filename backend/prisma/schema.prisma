@@ -143,6 +143,7 @@ model User {
   notifications      Notification[]
   invitationsSent    EmailInvitation[]  @relation("InvitationSender")
   invitationReceived EmailInvitation?   @relation("InvitationReceiver")
+  passwordResetTokens PasswordResetToken[]
   auditLogs          AuditLog[]
 }
 
@@ -327,4 +328,14 @@ model TicketTemplate {
   isActive    Boolean    @default(true)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  token     String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
 }
