@@ -39,4 +39,9 @@ export class CreateUserDto {
   @IsOptional()
   @IsUUID('all', { each: true })
   systemIds?: string[];
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsUUID('all', { each: true })
+  companyIds?: string[];
 }
