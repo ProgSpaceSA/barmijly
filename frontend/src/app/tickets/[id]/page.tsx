@@ -293,13 +293,24 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const [newTask, setNewTask] = useState({ title: "", description: "", assignedToId: "" });
   const [savingTask, setSavingTask] = useState(false);
   const [tasksExpanded, setTasksExpanded] = useState(false);
+  const [taskFiles, setTaskFiles] = useState<File[]>([]);
+  const taskFileRef = useRef<HTMLInputElement>(null);
 
   const createTask = async () => {
     if (!newTask.title.trim() || !newTask.assignedToId) return;
     setSavingTask(true);
     try {
-      await api.post(`/tickets/${id}/tasks`, newTask);
+      const created = await api.post(`/tickets/${id}/tasks`, newTask);
+      const taskId = created.data?.id;
+      if (taskId && taskFiles.length) {
+        for (const file of taskFiles) {
+          const fd = new FormData();
+          fd.append("file", file);
+          await api.post(`/attachments/upload?taskId=${taskId}`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+        }
+      }
       setNewTask({ title: "", description: "", assignedToId: "" });
+      setTaskFiles([]);
       setTaskForm(false);
       refetchTasks();
     } finally { setSavingTask(false); }
@@ -648,6 +659,28 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 {t.assignedTo?.firstName} {t.assignedTo?.lastName}
                               </span>
                             </div>
+                            {/* Task attachments */}
+                            {(t.attachments ?? []).length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mt-2">
+                                {(t.attachments as any[]).filter(a => isImg(a.mimeType)).map((a: any) => (
+                                  <button key={a.id} onClick={() => setLightboxUrl(`${FILE_BASE}${a.url}`)}>
+                                    <img src={`${FILE_BASE}${a.url}`} alt={a.fileName}
+                                      className="w-14 h-11 object-cover rounded-lg hover:opacity-90 transition-opacity"
+                                      style={{ border: "1px solid var(--border)" }} />
+                                  </button>
+                                ))}
+                                {(t.attachments as any[]).filter(a => !isImg(a.mimeType)).map((a: any) => (
+                                  <a key={a.id} href={`${FILE_BASE}${a.url}`} target="_blank" rel="noreferrer"
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-colors"
+                                    style={{ background: "var(--card)", color: "var(--muted-foreground)", border: "1px solid var(--border)" }}
+                                    onMouseEnter={e => (e.currentTarget.style.color = "#4F46E5")}
+                                    onMouseLeave={e => (e.currentTarget.style.color = "var(--muted-foreground)")}>
+                                    <FileText className="w-3 h-3 shrink-0" />
+                                    <span className="truncate max-w-28">{a.fileName}</span>
+                                  </a>
+                                ))}
+                              </div>
+                            )}
                           </div>
                           {isManager && (
                             <button onClick={() => deleteTask(t.id)}
@@ -701,13 +734,51 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                           ))}
                         </SelectContent>
                       </Select>
+
+                      {/* Task file attachments */}
+                      <input ref={taskFileRef} type="file" multiple className="hidden"
+                        onChange={e => { setTaskFiles(prev => [...prev, ...Array.from(e.target.files ?? [])]); e.target.value = ""; }} />
+                      {taskFiles.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {taskFiles.map((f, i) => (
+                            f.type.startsWith("image/") ? (
+                              <div key={i} className="relative group">
+                                <img src={URL.createObjectURL(f)} alt={f.name}
+                                  className="w-14 h-12 object-cover rounded-lg"
+                                  style={{ border: "1px solid var(--border)" }} />
+                                <button onClick={() => setTaskFiles(prev => prev.filter((_, idx) => idx !== i))}
+                                  className="absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white"
+                                  style={{ background: "#EF4444" }}>
+                                  <X className="w-2.5 h-2.5" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div key={i} className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs"
+                                style={{ background: "var(--muted)", color: "var(--muted-foreground)", border: "1px solid var(--border)" }}>
+                                <FileText className="w-3 h-3 shrink-0" style={{ color: "#4F46E5" }} />
+                                <span className="truncate max-w-24">{f.name}</span>
+                                <button onClick={() => setTaskFiles(prev => prev.filter((_, idx) => idx !== i))}
+                                  className="hover:text-red-500 transition-colors"><X className="w-3 h-3" /></button>
+                              </div>
+                            )
+                          ))}
+                        </div>
+                      )}
+
                       <div className="flex gap-2">
+                        <button onClick={() => taskFileRef.current?.click()}
+                          className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-medium transition-colors"
+                          style={{ color: "var(--muted-foreground)", border: "1px solid var(--border)", background: "var(--muted)" }}
+                          onMouseEnter={e => (e.currentTarget.style.color = "#4F46E5")}
+                          onMouseLeave={e => (e.currentTarget.style.color = "var(--muted-foreground)")}>
+                          <Paperclip className="w-3.5 h-3.5" /> مرفق
+                        </button>
                         <button onClick={createTask} disabled={savingTask || !newTask.title.trim() || !newTask.assignedToId}
                           className="flex-1 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
                           style={{ background: "linear-gradient(135deg, #4F46E5, #6C5CE7)" }}>
-                          {savingTask ? "جارٍ الحفظ..." : "إنشاء"}
+                          {savingTask ? "جارٍ الرفع..." : "إنشاء"}
                         </button>
-                        <button onClick={() => { setTaskForm(false); setNewTask({ title: "", description: "", assignedToId: "" }); }}
+                        <button onClick={() => { setTaskForm(false); setNewTask({ title: "", description: "", assignedToId: "" }); setTaskFiles([]); }}
                           className="px-4 py-2 rounded-xl text-sm font-medium transition-colors"
                           style={{ color: "var(--muted-foreground)", background: "var(--muted)" }}>
                           إلغاء
@@ -834,8 +905,8 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                     onBlur={e => { setTimeout(() => setMentionQuery(null), 200); e.target.style.borderColor = "var(--border)"; }}
                   />
                   {mentionQuery !== null && filteredMentions.length > 0 && (
-                    <div className="absolute bottom-full mb-1 right-0 left-0 z-50 rounded-xl overflow-hidden shadow-lg"
-                      style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                    <div className="absolute top-full mt-1 right-0 left-0 z-50 rounded-xl shadow-lg"
+                      style={{ background: "var(--card)", border: "1px solid var(--border)", maxHeight: "200px", overflowY: "auto" }}>
                       {filteredMentions.map(u => (
                         <button key={u.id} onMouseDown={() => insertMention(u)}
                           className="w-full flex items-center gap-3 px-3 py-2 text-sm text-right transition-colors"
@@ -860,15 +931,28 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                 {pendingFiles.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2">
                     {pendingFiles.map((f, i) => (
-                      <div key={i} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
-                        style={{ background: "var(--muted)", color: "var(--muted-foreground)", border: "1px solid var(--border)" }}>
-                        <FileText className="w-3.5 h-3.5 shrink-0" style={{ color: "#4F46E5" }} />
-                        <span className="truncate max-w-32">{f.name}</span>
-                        <button onClick={() => setPendingFiles(prev => prev.filter((_, idx) => idx !== i))}
-                          className="hover:text-red-500 transition-colors">
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
+                      f.type.startsWith("image/") ? (
+                        <div key={i} className="relative group">
+                          <img src={URL.createObjectURL(f)} alt={f.name}
+                            className="w-16 h-14 object-cover rounded-lg"
+                            style={{ border: "1px solid var(--border)" }} />
+                          <button onClick={() => setPendingFiles(prev => prev.filter((_, idx) => idx !== i))}
+                            className="absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white"
+                            style={{ background: "#EF4444" }}>
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div key={i} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
+                          style={{ background: "var(--muted)", color: "var(--muted-foreground)", border: "1px solid var(--border)" }}>
+                          <FileText className="w-3.5 h-3.5 shrink-0" style={{ color: "#4F46E5" }} />
+                          <span className="truncate max-w-32">{f.name}</span>
+                          <button onClick={() => setPendingFiles(prev => prev.filter((_, idx) => idx !== i))}
+                            className="hover:text-red-500 transition-colors">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )
                     ))}
                   </div>
                 )}

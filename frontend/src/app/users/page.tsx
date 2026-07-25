@@ -351,14 +351,14 @@ export default function UsersPage() {
                     {canManage && (
                       <td className="px-6 py-4">
                         <div className="flex gap-2">
-                          <button onClick={() => openEdit(user)}
+                          <button onClick={e => { e.stopPropagation(); openEdit(user); }}
                             className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all"
                             style={{ border: '1px solid rgba(79,70,229,0.3)', color: '#4F46E5' }}
                             onMouseEnter={e => (e.currentTarget.style.background = 'rgba(79,70,229,0.08)')}
                             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                             تعديل
                           </button>
-                          <button onClick={() => toggleMutation.mutate({ id: user.id, active: !user.isActive })}
+                          <button onClick={e => { e.stopPropagation(); toggleMutation.mutate({ id: user.id, active: !user.isActive }); }}
                             className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all"
                             style={{ border: user.isActive ? '1px solid rgba(220,38,38,0.3)' : '1px solid rgba(5,150,105,0.3)', color: user.isActive ? '#DC2626' : '#059669' }}
                             onMouseEnter={e => (e.currentTarget.style.background = user.isActive ? 'rgba(220,38,38,0.06)' : 'rgba(5,150,105,0.06)')}

@@ -43,9 +43,10 @@ export class AttachmentsController {
     file: Express.Multer.File,
     @Query('ticketId') ticketId: string,
     @Query('commentId') commentId: string,
+    @Query('taskId') taskId: string,
     @CurrentUser() user: any,
   ) {
-    return this.attachmentsService.upload(file, ticketId, commentId, user);
+    return this.attachmentsService.upload(file, ticketId, commentId, taskId, user);
   }
 
   @Delete(':id')

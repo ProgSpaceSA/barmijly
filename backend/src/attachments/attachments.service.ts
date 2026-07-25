@@ -14,11 +14,11 @@ export class AttachmentsService {
     if (!fs.existsSync(this.uploadDir)) fs.mkdirSync(this.uploadDir, { recursive: true });
   }
 
-  async upload(file: Express.Multer.File, ticketId: string | undefined, commentId: string | undefined, user: any) {
-    if (!ticketId && !commentId) throw new BadRequestException('Must provide ticketId or commentId');
+  async upload(file: Express.Multer.File, ticketId: string | undefined, commentId: string | undefined, taskId: string | undefined, user: any) {
+    if (!ticketId && !commentId && !taskId) throw new BadRequestException('Must provide ticketId, commentId, or taskId');
     const url = `/uploads/${file.filename}`;
     return this.prisma.ticketAttachment.create({
-      data: { fileName: file.originalname, fileSize: file.size, mimeType: file.mimetype, url, ticketId, commentId, uploadedById: user.id },
+      data: { fileName: file.originalname, fileSize: file.size, mimeType: file.mimetype, url, ticketId: ticketId || null, commentId: commentId || null, taskId: taskId || null, uploadedById: user.id },
     });
   }
 

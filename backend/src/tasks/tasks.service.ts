@@ -23,8 +23,9 @@ export class TasksService {
     const task = await this.prisma.ticketTask.create({
       data: { ticketId, title: dto.title, description: dto.description, assignedToId: dto.assignedToId, createdById: user.id },
       include: {
-        assignedTo: { select: { id: true, firstName: true, lastName: true } },
-        createdBy:  { select: { id: true, firstName: true, lastName: true } },
+        assignedTo:  { select: { id: true, firstName: true, lastName: true } },
+        createdBy:   { select: { id: true, firstName: true, lastName: true } },
+        attachments: true,
       },
     });
 
@@ -44,8 +45,9 @@ export class TasksService {
     return this.prisma.ticketTask.findMany({
       where: { ticketId },
       include: {
-        assignedTo: { select: { id: true, firstName: true, lastName: true } },
-        createdBy:  { select: { id: true, firstName: true, lastName: true } },
+        assignedTo:  { select: { id: true, firstName: true, lastName: true } },
+        createdBy:   { select: { id: true, firstName: true, lastName: true } },
+        attachments: true,
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -72,8 +74,9 @@ export class TasksService {
       where: { id },
       data,
       include: {
-        assignedTo: { select: { id: true, firstName: true, lastName: true } },
-        createdBy:  { select: { id: true, firstName: true, lastName: true } },
+        assignedTo:  { select: { id: true, firstName: true, lastName: true } },
+        createdBy:   { select: { id: true, firstName: true, lastName: true } },
+        attachments: true,
       },
     });
   }
