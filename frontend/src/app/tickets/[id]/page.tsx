@@ -1072,7 +1072,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
       <div
         style={{
           position: "fixed",
-          top: mentionRect.bottom + 4,
+          bottom: window.innerHeight - mentionRect.top + 4,
           left: mentionRect.left,
           width: mentionRect.width,
           zIndex: 9999,
