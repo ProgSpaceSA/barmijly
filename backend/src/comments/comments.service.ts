@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { EmailService } from '../email/email.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { UserRole, NotificationType } from '@prisma/client';
 
@@ -9,6 +11,8 @@ export class CommentsService {
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
+    private email: EmailService,
+    private config: ConfigService,
   ) {}
 
   async create(ticketId: string, dto: CreateCommentDto, user: any) {
@@ -40,12 +44,27 @@ export class CommentsService {
     }
 
     if (dto.mentions && dto.mentions.length > 0) {
-      await this.notifications.notifyMany(dto.mentions.filter((id: string) => id !== user.id), {
+      const mentionedIds = dto.mentions.filter((id: string) => id !== user.id);
+
+      await this.notifications.notifyMany(mentionedIds, {
         type: NotificationType.COMMENT_ADDED,
         title: 'You were mentioned in a comment',
         body: `${user.firstName} ${user.lastName} mentioned you in "${ticket.title}"`,
         ticketId,
       });
+
+      const mentionedUsers = await this.prisma.user.findMany({
+        where: { id: { in: mentionedIds } },
+        select: { email: true },
+      });
+
+      const frontendUrl = this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+      const ticketUrl = `${frontendUrl}/tickets/${ticketId}`;
+      const mentionerName = `${user.firstName} ${user.lastName}`;
+
+      for (const u of mentionedUsers) {
+        await this.email.sendMentionEmail(u.email, mentionerName, ticket.title, ticketUrl);
+      }
     }
 
     return comment;

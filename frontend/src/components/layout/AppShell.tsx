@@ -1,5 +1,6 @@
 "use client";
 import { Sidebar } from "./Sidebar";
+import { CommandPalette } from "@/components/shared/CommandPalette";
 import { useAuthStore } from "@/store/auth";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -16,7 +17,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated()) return <FullPageLoading />;
 
   return (
-    <div className="min-h-screen" style={{ background: "#F5F7FA" }}>
+    <div className="min-h-screen" style={{ background: "var(--background)" }}>
+      <CommandPalette />
       <Sidebar />
       <main className="mr-64 min-h-screen p-8 max-w-[1400px]">
         {children}

@@ -66,4 +66,9 @@ export class CreateTicketDto {
   @IsOptional()
   @IsUUID()
   templateId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  coverImageUrl?: string;
 }

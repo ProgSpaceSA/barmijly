@@ -34,6 +34,24 @@ export class UsersService {
     return user;
   }
 
+  async getUserComments(userId: string) {
+    await this.findOne(userId);
+    return this.prisma.ticketComment.findMany({
+      where: {
+        OR: [
+          { authorId: userId },
+          { mentions: { has: userId } },
+        ],
+      },
+      include: {
+        author: { select: { id: true, firstName: true, lastName: true } },
+        ticket: { select: { id: true, title: true, ticketNumber: true, status: true } },
+        attachments: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async create(dto: CreateUserDto) {
     const exists = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (exists) throw new ConflictException('Email already in use');

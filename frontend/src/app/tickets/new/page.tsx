@@ -1,6 +1,6 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -9,7 +9,7 @@ import { useCreateTicket } from "@/hooks/useTickets";
 import api from "@/lib/api";
 import { Switch } from "@/components/ui/switch";
 import { TICKET_TYPE_LABELS } from "@/lib/constants";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ImagePlus, Paperclip, X, FileText } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 
 const schema = z.object({
@@ -26,12 +26,89 @@ const schema = z.object({
   priority: z.string().optional(),
 });
 
-const inputCls = "w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all placeholder:text-slate-400 disabled:bg-slate-50 disabled:text-slate-400";
-const selectCls = "w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all appearance-none cursor-pointer disabled:bg-slate-50 disabled:text-slate-400";
-const labelCls = "block text-sm font-semibold text-slate-700 mb-1.5";
-const errorCls = "text-red-500 text-xs mt-1";
-
 const RESTRICTED_ROLES = ["TICKET_REQUESTER", "SYSTEM_OWNER"];
+
+function formatBytes(b: number) {
+  if (b < 1024) return `${b} B`;
+  if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / 1048576).toFixed(1)} MB`;
+}
+
+const fieldStyle: React.CSSProperties = {
+  background: "var(--muted)",
+  border: "1px solid var(--border)",
+  color: "var(--foreground)",
+};
+
+function FormInput({ register, name, error, ...rest }: any) {
+  return (
+    <div>
+      <input
+        {...register(name)}
+        {...rest}
+        className="w-full rounded-xl px-4 py-2.5 text-sm outline-none transition-all disabled:opacity-40"
+        style={fieldStyle}
+        onFocus={(e: any) => (e.target.style.borderColor = "#4F46E5")}
+        onBlur={(e: any) => (e.target.style.borderColor = "var(--border)")}
+      />
+      {error && <p className="text-red-500 text-xs mt-1">{error.message}</p>}
+    </div>
+  );
+}
+
+function FormTextarea({ register, name, error, rows = 3, placeholder }: any) {
+  return (
+    <div>
+      <textarea
+        {...register(name)}
+        rows={rows}
+        placeholder={placeholder}
+        className="w-full rounded-xl px-4 py-2.5 text-sm outline-none resize-none transition-all"
+        style={fieldStyle}
+        onFocus={(e: any) => (e.target.style.borderColor = "#4F46E5")}
+        onBlur={(e: any) => (e.target.style.borderColor = "var(--border)")}
+      />
+      {error && <p className="text-red-500 text-xs mt-1">{error.message}</p>}
+    </div>
+  );
+}
+
+function FormSelect({ register, name, error, children, disabled }: any) {
+  return (
+    <div>
+      <select
+        {...register(name)}
+        disabled={disabled}
+        className="w-full rounded-xl px-4 py-2.5 text-sm outline-none cursor-pointer appearance-none disabled:opacity-40"
+        style={fieldStyle}
+        onFocus={(e: any) => (e.target.style.borderColor = "#4F46E5")}
+        onBlur={(e: any) => (e.target.style.borderColor = "var(--border)")}
+      >
+        {children}
+      </select>
+      {error && <p className="text-red-500 text-xs mt-1">{error.message}</p>}
+    </div>
+  );
+}
+
+function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+      <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--border)" }}>
+        <h2 className="font-bold text-sm" style={{ color: "var(--foreground)" }}>{title}</h2>
+      </div>
+      <div className="p-6 space-y-5">{children}</div>
+    </div>
+  );
+}
+
+function Label({ children }: { children: React.ReactNode }) {
+  return (
+    <label className="block text-xs font-semibold mb-1.5" style={{ color: "var(--muted-foreground)" }}>
+      {children}
+    </label>
+  );
+}
 
 export default function NewTicketPage() {
   const router = useRouter();
@@ -39,6 +116,12 @@ export default function NewTicketPage() {
   const { mutateAsync: createTicket } = useCreateTicket();
   const [companies, setCompanies] = useState<any[]>([]);
   const [systems, setSystems] = useState<any[]>([]);
+
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const coverInputRef = useRef<HTMLInputElement>(null);
+  const attachInputRef = useRef<HTMLInputElement>(null);
 
   const isRestricted = RESTRICTED_ROLES.includes(user?.role ?? "");
 
@@ -52,7 +135,6 @@ export default function NewTicketPage() {
 
   useEffect(() => {
     if (isRestricted) {
-      // Load only user's assigned companies
       api.get("/auth/me").then(r => {
         const userCompanies = r.data?.companies?.map((uc: any) => uc.company).filter(Boolean) || [];
         if (userCompanies.length === 1) {
@@ -80,9 +162,40 @@ export default function NewTicketPage() {
     }
   }, [companyId, setValue]);
 
+  const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCoverFile(file);
+    setCoverPreview(URL.createObjectURL(file));
+  };
+
+  const handleAttachChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    setAttachments(prev => [...prev, ...files]);
+    e.target.value = "";
+  };
+
+  const removeAttachment = (idx: number) => setAttachments(prev => prev.filter((_, i) => i !== idx));
+
+  const uploadFile = async (file: File, ticketId: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await api.post(`/attachments/upload?ticketId=${ticketId}`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return res.data;
+  };
+
   const onSubmit = async (data: any) => {
     const ticket = await createTicket(data);
-    router.push(`/tickets/${ticket.id}`);
+    const ticketId = ticket.id;
+    const uploads: Promise<any>[] = [];
+    if (coverFile) {
+      uploads.push(uploadFile(coverFile, ticketId).then(att => api.patch(`/tickets/${ticketId}`, { coverImageUrl: att.url })));
+    }
+    for (const file of attachments) uploads.push(uploadFile(file, ticketId));
+    if (uploads.length > 0) await Promise.all(uploads);
+    router.push(`/tickets/${ticketId}`);
   };
 
   return (
@@ -90,136 +203,167 @@ export default function NewTicketPage() {
       <div className="max-w-3xl">
         {/* Header */}
         <div className="flex items-center gap-4 mb-6">
-          <button
-            onClick={() => router.back()}
-            className="flex items-center gap-1.5 text-slate-500 hover:text-slate-800 text-sm font-medium transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            رجوع
+          <button onClick={() => router.back()} className="flex items-center gap-1.5 text-sm transition-colors"
+            style={{ color: "var(--muted-foreground)" }}
+            onMouseEnter={e => (e.currentTarget.style.color = "var(--foreground)")}
+            onMouseLeave={e => (e.currentTarget.style.color = "var(--muted-foreground)")}>
+            <ArrowLeft className="w-4 h-4" /> رجوع
           </button>
-          <div className="h-5 w-px bg-slate-200" />
-          <h1 className="text-2xl font-bold text-slate-900">تذكرة جديدة</h1>
+          <div className="h-5 w-px" style={{ background: "var(--border)" }} />
+          <h1 className="text-xl font-bold" style={{ color: "var(--foreground)" }}>تذكرة جديدة</h1>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
 
           {/* Section 1: Basic Info */}
-          <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-5" style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
-            <h2 className="font-bold text-slate-800 text-base pb-3 border-b border-slate-100">معلومات أساسية</h2>
-
+          <FormSection title="معلومات أساسية">
             <div>
-              <label className={labelCls}>عنوان الطلب *</label>
-              <input {...register("title")} className={inputCls} placeholder="وصف موجز للطلب" />
-              {errors.title && <p className={errorCls}>{errors.title.message as string}</p>}
+              <Label>عنوان الطلب *</Label>
+              <FormInput register={register} name="title" placeholder="وصف موجز للطلب" error={errors.title} />
             </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className={labelCls}>الشركة *</label>
+                <Label>الشركة *</Label>
                 {isRestricted && companies.length === 1 ? (
-                  <input value={companies[0]?.name ?? ""} className={inputCls} disabled />
+                  <input value={companies[0]?.name ?? ""} disabled
+                    className="w-full rounded-xl px-4 py-2.5 text-sm opacity-40" style={fieldStyle} />
                 ) : (
-                  <select {...register("companyId")} className={selectCls}>
+                  <FormSelect register={register} name="companyId" error={errors.companyId}>
                     <option value="">اختر شركة...</option>
                     {companies.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+                  </FormSelect>
                 )}
-                {errors.companyId && <p className={errorCls}>{errors.companyId.message as string}</p>}
               </div>
-
               <div>
-                <label className={labelCls}>النظام *</label>
-                <select {...register("systemId")} className={selectCls} disabled={!companyId}>
+                <Label>النظام *</Label>
+                <FormSelect register={register} name="systemId" disabled={!companyId} error={errors.systemId}>
                   <option value="">اختر النظام...</option>
                   {systems.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-                {errors.systemId && <p className={errorCls}>{errors.systemId.message as string}</p>}
+                </FormSelect>
               </div>
-
               <div>
-                <label className={labelCls}>نوع الطلب *</label>
-                <select {...register("type")} className={selectCls}>
+                <Label>نوع الطلب *</Label>
+                <FormSelect register={register} name="type" error={errors.type}>
                   <option value="">اختر نوع الطلب...</option>
-                  {Object.entries(TICKET_TYPE_LABELS).map(([k, v]) => (
-                    <option key={k} value={k}>{v}</option>
-                  ))}
-                </select>
-                {errors.type && <p className={errorCls}>{errors.type.message as string}</p>}
+                  {Object.entries(TICKET_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </FormSelect>
               </div>
-
               <div>
-                <label className={labelCls}>الأولوية المقترحة</label>
-                <select {...register("priority")} className={selectCls}>
+                <Label>الأولوية المقترحة</Label>
+                <FormSelect register={register} name="priority">
                   <option value="">اختياري</option>
                   <option value="CRITICAL">حرجة</option>
                   <option value="HIGH">عالية</option>
                   <option value="MEDIUM">متوسطة</option>
                   <option value="LOW">منخفضة</option>
                   <option value="DEFERRED">مؤجلة</option>
-                </select>
+                </FormSelect>
               </div>
             </div>
-          </div>
+          </FormSection>
 
           {/* Section 2: Details */}
-          <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-5" style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
-            <h2 className="font-bold text-slate-800 text-base pb-3 border-b border-slate-100">تفاصيل الطلب</h2>
-
+          <FormSection title="تفاصيل الطلب">
             <div>
-              <label className={labelCls}>الوصف التفصيلي *</label>
-              <textarea rows={4} {...register("description")} className={inputCls} placeholder="اشرح الطلب بالتفصيل..." />
-              {errors.description && <p className={errorCls}>{errors.description.message as string}</p>}
+              <Label>الوصف التفصيلي *</Label>
+              <FormTextarea register={register} name="description" rows={4} placeholder="اشرح الطلب بالتفصيل..." error={errors.description} />
+            </div>
+            <div>
+              <Label>سبب الطلب / المشكلة *</Label>
+              <FormTextarea register={register} name="reason" rows={3} placeholder="ما السبب الذي يدفعك لهذا الطلب؟" error={errors.reason} />
+            </div>
+            <div>
+              <Label>النتيجة المطلوبة *</Label>
+              <FormTextarea register={register} name="expectedOutcome" rows={3} placeholder="ما النتيجة التي تتوقعها بعد التنفيذ؟" error={errors.expectedOutcome} />
+            </div>
+            <div>
+              <Label>التأثير على العمل *</Label>
+              <FormTextarea register={register} name="businessImpact" rows={2} placeholder="كيف يؤثر هذا الطلب على سير العمل؟" error={errors.businessImpact} />
             </div>
 
-            <div>
-              <label className={labelCls}>سبب الطلب / المشكلة *</label>
-              <textarea rows={3} {...register("reason")} className={inputCls} placeholder="ما السبب الذي يدفعك لهذا الطلب؟" />
-              {errors.reason && <p className={errorCls}>{errors.reason.message as string}</p>}
-            </div>
-
-            <div>
-              <label className={labelCls}>النتيجة المطلوبة *</label>
-              <textarea rows={3} {...register("expectedOutcome")} className={inputCls} placeholder="ما النتيجة التي تتوقعها بعد التنفيذ؟" />
-              {errors.expectedOutcome && <p className={errorCls}>{errors.expectedOutcome.message as string}</p>}
-            </div>
-
-            <div>
-              <label className={labelCls}>التأثير على العمل *</label>
-              <textarea rows={2} {...register("businessImpact")} className={inputCls} placeholder="كيف يؤثر هذا الطلب على سير العمل؟" />
-              {errors.businessImpact && <p className={errorCls}>{errors.businessImpact.message as string}</p>}
-            </div>
-
-            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
+            {/* Financial loss toggle */}
+            <div className="flex items-center justify-between p-4 rounded-xl" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
               <div>
-                <p className="text-sm font-semibold text-slate-700">هل يوجد ضرر مالي؟</p>
-                <p className="text-xs text-slate-500 mt-0.5">توقف النظام أو خسائر مالية مباشرة</p>
+                <p className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>هل يوجد ضرر مالي؟</p>
+                <p className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>توقف النظام أو خسائر مالية مباشرة</p>
               </div>
               <Switch checked={!!hasFinancialLoss} onCheckedChange={v => setValue("hasFinancialLoss", v)} />
             </div>
 
             {hasFinancialLoss && (
               <div>
-                <label className={labelCls}>تفاصيل الضرر المالي</label>
-                <textarea rows={2} {...register("financialLossDetails")} className={inputCls} placeholder="اشرح الضرر المالي..." />
+                <Label>تفاصيل الضرر المالي</Label>
+                <FormTextarea register={register} name="financialLossDetails" rows={2} placeholder="اشرح الضرر المالي..." />
               </div>
             )}
-          </div>
+          </FormSection>
 
-          {/* Actions */}
+          {/* Section 3: Cover Image */}
+          <FormSection title="صورة الغلاف">
+            <input ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={handleCoverChange} />
+            {coverPreview ? (
+              <div className="relative rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+                <img src={coverPreview} alt="cover" className="w-full h-48 object-cover" />
+                <button type="button" onClick={() => { setCoverFile(null); setCoverPreview(null); }}
+                  className="absolute top-2 left-2 p-1 rounded-full text-white transition-colors"
+                  style={{ background: "rgba(0,0,0,0.6)" }}>
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => coverInputRef.current?.click()}
+                className="w-full h-32 rounded-xl flex flex-col items-center justify-center gap-2 border-2 border-dashed transition-all"
+                style={{ borderColor: "var(--border)", color: "var(--muted-foreground)" }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = "#4F46E5"; e.currentTarget.style.color = "#4F46E5"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--muted-foreground)"; }}>
+                <ImagePlus className="w-6 h-6" />
+                <span className="text-sm">اضغط لرفع صورة الغلاف</span>
+                <span className="font-brm text-xs opacity-60">PNG, JPG — حد أقصى 10 MB</span>
+              </button>
+            )}
+          </FormSection>
+
+          {/* Section 4: Attachments */}
+          <FormSection title="المرفقات">
+            <input ref={attachInputRef} type="file" multiple className="hidden" onChange={handleAttachChange} />
+            {attachments.length > 0 && (
+              <div className="space-y-2">
+                {attachments.map((file, idx) => (
+                  <div key={idx} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: "var(--muted)" }}>
+                    <FileText className="w-4 h-4 shrink-0" style={{ color: "#4F46E5" }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate" style={{ color: "var(--foreground)" }}>{file.name}</p>
+                      <p className="font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>{formatBytes(file.size)}</p>
+                    </div>
+                    <button type="button" onClick={() => removeAttachment(idx)} className="transition-colors"
+                      style={{ color: "var(--muted-foreground)" }}
+                      onMouseEnter={e => (e.currentTarget.style.color = "#EF4444")}
+                      onMouseLeave={e => (e.currentTarget.style.color = "var(--muted-foreground)")}>
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button type="button" onClick={() => attachInputRef.current?.click()}
+              className="flex items-center gap-2 text-sm font-medium transition-colors"
+              style={{ color: "#4F46E5" }}>
+              <Paperclip className="w-4 h-4" /> إضافة مرفق
+            </button>
+          </FormSection>
+
+          {/* Submit */}
           <div className="flex gap-3 pb-8">
-            <button
-              type="submit"
-              disabled={isSubmitting}
+            <button type="submit" disabled={isSubmitting}
               className="flex-1 py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-60 transition-all"
-              style={{ background: "linear-gradient(135deg, #4338CA, #6366F1)", boxShadow: "0 4px 12px rgba(67,56,202,0.3)" }}
-            >
+              style={{ background: "linear-gradient(135deg, #4F46E5, #6C5CE7)", boxShadow: "0 4px 12px rgba(79,70,229,0.3)" }}>
               {isSubmitting ? "جارٍ الإنشاء..." : "إنشاء كمسودة"}
             </button>
-            <button
-              type="button"
-              onClick={() => router.back()}
-              className="px-6 py-3 rounded-xl text-sm font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 transition-all"
-            >
+            <button type="button" onClick={() => router.back()}
+              className="px-6 py-3 rounded-xl text-sm font-semibold transition-all"
+              style={{ border: "1px solid var(--border)", color: "var(--muted-foreground)" }}
+              onMouseEnter={e => (e.currentTarget.style.background = "var(--muted)")}
+              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
               إلغاء
             </button>
           </div>

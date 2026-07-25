@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -7,7 +7,7 @@ import * as z from "zod";
 import api from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { toast } from "sonner";
-import { Eye, EyeOff, Layers, ArrowLeft } from "lucide-react";
+import { Eye, EyeOff, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
 const schema = z.object({
@@ -15,6 +15,56 @@ const schema = z.object({
   password: z.string().min(6, "كلمة المرور قصيرة"),
 });
 type FormData = z.infer<typeof schema>;
+
+function DotGrid() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const resize = () => {
+      canvas.width = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    let t = 0;
+    let raf: number;
+    const draw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const spacing = 28;
+      const cols = Math.ceil(canvas.width / spacing) + 1;
+      const rows = Math.ceil(canvas.height / spacing) + 1;
+      t += 0.003;
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const ox = Math.sin(t + r * 0.4 + c * 0.3) * 3;
+          const oy = Math.cos(t + c * 0.4 + r * 0.25) * 3;
+          const x = c * spacing + ox;
+          const y = r * spacing + oy;
+          ctx.beginPath();
+          ctx.arc(x, y, 1, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(129,140,248,0.18)";
+          ctx.fill();
+        }
+      }
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => { window.removeEventListener("resize", resize); cancelAnimationFrame(raf); };
+  }, []);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+    />
+  );
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -37,114 +87,139 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex" style={{ fontFamily: "'Cairo', sans-serif" }}>
+    <div className="min-h-screen flex" dir="rtl" style={{ fontFamily: "'Cairo', sans-serif" }}>
+      {/* Left panel — deep ink with dot-grid */}
       <div
         className="hidden lg:flex lg:w-1/2 flex-col justify-between p-12 relative overflow-hidden"
-        style={{ background: "linear-gradient(135deg, #1E1B4B 0%, #312E81 50%, #4338CA 100%)" }}
+        style={{ background: "linear-gradient(135deg, #09091A 0%, #12122A 50%, #191940 100%)" }}
       >
-        <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full" style={{ background: "rgba(255,255,255,0.05)" }} />
-        <div className="absolute -bottom-32 -right-16 w-80 h-80 rounded-full" style={{ background: "rgba(255,255,255,0.05)" }} />
+        <DotGrid />
 
         <div className="relative z-10 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(255,255,255,0.15)" }}>
-            <Layers className="w-6 h-6 text-white" />
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(99,102,241,0.3)", border: "1px solid rgba(99,102,241,0.4)" }}>
+            <span className="text-white font-bold text-lg" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>B</span>
           </div>
           <span className="text-white font-bold text-xl">برمجلي</span>
         </div>
 
         <div className="relative z-10">
-          <h2 className="text-4xl font-bold text-white leading-snug mb-4">
+          <p className="font-brm text-xs mb-4" style={{ color: "rgba(129,140,248,0.7)" }}>// ticket management system</p>
+          <h2 className="text-4xl font-bold leading-snug mb-4" style={{ color: "#E2E8F0" }}>
             نظام إدارة<br />طلبات البرمجة
           </h2>
-          <p className="text-indigo-200 text-lg leading-relaxed">
+          <p className="text-lg leading-relaxed" style={{ color: "rgba(224,231,255,0.55)" }}>
             تتبع طلبات التطوير، وأدر فريقك، وتابع التقدم — كل ذلك في مكان واحد.
           </p>
-          <div className="mt-10 grid grid-cols-3 gap-4">
+          <div className="mt-10 grid grid-cols-3 gap-3">
             {[
-              { label: "تتبع التذاكر", desc: "من الطلب حتى التسليم" },
-              { label: "إدارة الفريق", desc: "أدوار وصلاحيات دقيقة" },
-              { label: "تقارير لحظية", desc: "بيانات واضحة دائماً" },
+              { label: "تتبع التذاكر", code: "track()" },
+              { label: "إدارة الفريق", code: "manage()" },
+              { label: "تقارير لحظية", code: "report()" },
             ].map(f => (
-              <div key={f.label} className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.1)" }}>
-                <p className="text-white font-semibold text-sm">{f.label}</p>
-                <p className="text-indigo-200 text-xs mt-1">{f.desc}</p>
+              <div
+                key={f.label}
+                className="rounded-xl p-4"
+                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+              >
+                <p className="font-brm text-xs mb-1" style={{ color: "rgba(129,140,248,0.7)" }}>{f.code}</p>
+                <p className="text-sm font-semibold" style={{ color: "rgba(224,231,255,0.8)" }}>{f.label}</p>
               </div>
             ))}
           </div>
         </div>
 
-        <p className="relative z-10 text-indigo-300 text-sm">© {new Date().getFullYear()} برمجلي · جميع الحقوق محفوظة</p>
+        <p className="relative z-10 font-brm text-xs" style={{ color: "rgba(224,231,255,0.2)" }}>
+          © {new Date().getFullYear()} barmijly.ai
+        </p>
       </div>
 
-      <div className="flex-1 flex items-center justify-center p-6" style={{ background: "#F8FAFC" }}>
+      {/* Right panel — login form */}
+      <div className="flex-1 flex flex-col items-center justify-center p-6" style={{ background: "var(--background)" }}>
         <div className="w-full max-w-sm">
-          <div className="lg:hidden flex items-center gap-2 mb-8">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "#4338CA" }}>
-              <Layers className="w-5 h-5 text-white" />
+          {/* Mobile logo */}
+          <div className="lg:hidden flex items-center gap-2 mb-8 justify-center">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "#4F46E5" }}>
+              <span className="font-brm text-white font-bold text-sm">B</span>
             </div>
-            <span className="font-bold text-xl" style={{ color: "#1E1B4B" }}>برمجلي</span>
+            <span className="font-bold text-xl" style={{ color: "var(--foreground)" }}>برمجلي</span>
           </div>
 
-          <h1 className="text-2xl font-bold text-slate-900 mb-1">تسجيل الدخول</h1>
-          <p className="text-slate-500 text-sm mb-8">أدخل بياناتك للوصول إلى حسابك</p>
+          <h1 className="text-2xl font-bold mb-1" style={{ color: "var(--foreground)" }}>تسجيل الدخول</h1>
+          <p className="text-sm mb-8" style={{ color: "var(--muted-foreground)" }}>أدخل بياناتك للوصول إلى حسابك</p>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">البريد الإلكتروني</label>
+              <label className="block text-sm font-semibold mb-1.5" style={{ color: "var(--foreground)" }}>البريد الإلكتروني</label>
               <input
                 {...register("email")}
                 type="email"
                 dir="ltr"
                 placeholder="name@company.com"
-                className="w-full border rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all placeholder:text-slate-400"
-                style={{ borderColor: "#E2E8F0" }}
+                className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all placeholder:opacity-40"
+                style={{
+                  background: "var(--card)",
+                  border: "1px solid var(--border)",
+                  color: "var(--foreground)",
+                }}
+                onFocus={e => (e.target.style.borderColor = "#4F46E5")}
+                onBlur={e => (e.target.style.borderColor = "var(--border)")}
               />
               {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">كلمة المرور</label>
+              <label className="block text-sm font-semibold mb-1.5" style={{ color: "var(--foreground)" }}>كلمة المرور</label>
               <div className="relative">
                 <input
                   {...register("password")}
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
-                  className="w-full border rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all placeholder:text-slate-400"
-                  style={{ borderColor: "#E2E8F0" }}
+                  className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all placeholder:opacity-40"
+                  style={{
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
+                    color: "var(--foreground)",
+                  }}
+                  onFocus={e => (e.target.style.borderColor = "#4F46E5")}
+                  onBlur={e => (e.target.style.borderColor = "var(--border)")}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 transition-colors"
+                  style={{ color: "var(--muted-foreground)" }}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
               {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>}
-            <div className="text-left mt-1">
-              <Link href="/forgot-password" className="text-xs text-indigo-600 hover:underline">نسيت كلمة المرور؟</Link>
-            </div>
+              <div className="text-left mt-1.5">
+                <Link href="/forgot-password" className="text-xs hover:underline" style={{ color: "#4F46E5" }}>
+                  نسيت كلمة المرور؟
+                </Link>
+              </div>
             </div>
 
             <button
               type="submit"
               disabled={isSubmitting}
               className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold text-white transition-all mt-2 disabled:opacity-60"
-              style={{ background: "linear-gradient(135deg, #4338CA, #6366F1)", boxShadow: "0 4px 14px rgba(67,56,202,0.35)" }}
+              style={{ background: "linear-gradient(135deg, #4F46E5, #6C5CE7)", boxShadow: "0 4px 14px rgba(79,70,229,0.35)" }}
             >
               {isSubmitting ? (
-                <>
-                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="white" strokeWidth="4"/>
-                    <path className="opacity-75" fill="white" d="M4 12a8 8 0 018-8v8z"/>
-                  </svg>
-                  جار الدخول...
-                </>
+                <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> جارٍ الدخول...</>
               ) : (
                 <>دخول <ArrowLeft className="w-4 h-4" /></>
               )}
             </button>
           </form>
+
+          <p className="text-center text-sm mt-6" style={{ color: "var(--muted-foreground)" }}>
+            مطور جديد؟{" "}
+            <Link href="/signup-request" className="font-medium hover:underline" style={{ color: "#4F46E5" }}>
+              اطلب الانضمام
+            </Link>
+          </p>
         </div>
       </div>
     </div>

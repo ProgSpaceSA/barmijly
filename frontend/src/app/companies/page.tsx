@@ -6,10 +6,15 @@ import api from '@/lib/api';
 import { AppShell } from '@/components/layout/AppShell';
 import { useAuthStore } from '@/store/auth';
 import { toast } from 'sonner';
+import Link from 'next/link';
+import { Building2, ChevronDown, ChevronUp, Plus, X, Monitor, FolderOpen, ExternalLink } from 'lucide-react';
 
 interface System { id: string; name: string; description?: string; }
 interface Department { id: string; name: string; }
 interface Company { id: string; name: string; domain?: string; departments: Department[]; systems: System[]; _count?: { users: number; tickets: number }; }
+
+const inputCls = 'w-full rounded-xl px-3 py-2.5 text-sm outline-none transition-all';
+const inputStyle = { background: 'var(--muted)', border: '1px solid var(--border)', color: 'var(--foreground)' };
 
 export default function CompaniesPage() {
   const { hasRole } = useAuthStore();
@@ -35,57 +40,31 @@ export default function CompaniesPage() {
 
   const addCompany = useMutation({
     mutationFn: (d: { name: string; domain?: string }) => api.post('/companies', d),
-    onSuccess: () => {
-      toast.success('تم إضافة الشركة');
-      setShowAddCompany(false);
-      setNewCompanyName('');
-      setNewCompanyDomain('');
-      queryClient.invalidateQueries({ queryKey: ['companies'] });
-    },
+    onSuccess: () => { toast.success('تم إضافة الشركة'); setShowAddCompany(false); setNewCompanyName(''); setNewCompanyDomain(''); queryClient.invalidateQueries({ queryKey: ['companies'] }); },
     onError: () => toast.error('فشل إضافة الشركة'),
   });
 
   const addDept = useMutation({
-    mutationFn: ({ companyId, name }: { companyId: string; name: string }) =>
-      api.post('/departments', { companyId, name }),
-    onSuccess: () => {
-      toast.success('تم إضافة القسم');
-      setAddingDept(null);
-      setNewDeptName('');
-      queryClient.invalidateQueries({ queryKey: ['companies'] });
-    },
+    mutationFn: ({ companyId, name }: { companyId: string; name: string }) => api.post('/departments', { companyId, name }),
+    onSuccess: () => { toast.success('تم إضافة القسم'); setAddingDept(null); setNewDeptName(''); queryClient.invalidateQueries({ queryKey: ['companies'] }); },
     onError: () => toast.error('فشل إضافة القسم'),
   });
 
   const addSystem = useMutation({
-    mutationFn: ({ companyId, name, description }: { companyId: string; name: string; description?: string }) =>
-      api.post('/systems', { companyId, name, description }),
-    onSuccess: () => {
-      toast.success('تم إضافة النظام');
-      setAddingSystem(null);
-      setNewSystemName('');
-      setNewSystemDesc('');
-      queryClient.invalidateQueries({ queryKey: ['companies'] });
-    },
+    mutationFn: ({ companyId, name, description }: { companyId: string; name: string; description?: string }) => api.post('/systems', { companyId, name, description }),
+    onSuccess: () => { toast.success('تم إضافة النظام'); setAddingSystem(null); setNewSystemName(''); setNewSystemDesc(''); queryClient.invalidateQueries({ queryKey: ['companies'] }); },
     onError: () => toast.error('فشل إضافة النظام'),
   });
 
   const deleteSystem = useMutation({
     mutationFn: (id: string) => api.delete(`/systems/${id}`),
-    onSuccess: () => {
-      toast.success('تم حذف النظام');
-      queryClient.invalidateQueries({ queryKey: ['companies'] });
-    },
+    onSuccess: () => { toast.success('تم حذف النظام'); queryClient.invalidateQueries({ queryKey: ['companies'] }); },
     onError: () => toast.error('فشل حذف النظام'),
   });
 
   const editSystem = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => api.patch(`/systems/${id}`, { name }),
-    onSuccess: () => {
-      toast.success('تم تحديث اسم النظام');
-      setEditingSystem(null);
-      queryClient.invalidateQueries({ queryKey: ['companies'] });
-    },
+    onSuccess: () => { toast.success('تم تحديث اسم النظام'); setEditingSystem(null); queryClient.invalidateQueries({ queryKey: ['companies'] }); },
     onError: () => toast.error('فشل تحديث النظام'),
   });
 
@@ -95,54 +74,55 @@ export default function CompaniesPage() {
     <AppShell>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-900">الشركات والأنظمة</h1>
+          <div>
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--foreground)' }}>الشركات والأنظمة</h1>
+            <p className="text-sm mt-0.5" style={{ color: 'var(--muted-foreground)' }}>{companies.length} شركة مسجلة</p>
+          </div>
           {canManage && (
-            <button
-              onClick={() => setShowAddCompany(true)}
-              className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 text-sm font-medium"
-            >
-              + إضافة شركة
+            <button onClick={() => setShowAddCompany(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white"
+              style={{ background: 'linear-gradient(135deg, #4F46E5, #6C5CE7)', boxShadow: '0 4px 12px rgba(79,70,229,0.3)' }}>
+              <Plus className="w-4 h-4" /> إضافة شركة
             </button>
           )}
         </div>
 
         {/* Add Company Modal */}
         {showAddCompany && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-              <h2 className="text-lg font-bold mb-4">إضافة شركة جديدة</h2>
-              <div className="space-y-3">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
+            <div className="palette-modal w-full max-w-md rounded-2xl overflow-hidden" style={{ background: 'var(--card)', border: '1px solid var(--border)', boxShadow: '0 24px 64px rgba(0,0,0,0.3)' }}>
+              <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: '1px solid var(--border)' }}>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(79,70,229,0.12)' }}>
+                    <Building2 className="w-5 h-5" style={{ color: '#4F46E5' }} />
+                  </div>
+                  <h2 className="font-bold text-base" style={{ color: 'var(--foreground)' }}>إضافة شركة جديدة</h2>
+                </div>
+                <button onClick={() => setShowAddCompany(false)} style={{ color: 'var(--muted-foreground)' }}><X className="w-5 h-5" /></button>
+              </div>
+              <div className="p-6 space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">اسم الشركة</label>
-                  <input
-                    value={newCompanyName}
-                    onChange={e => setNewCompanyName(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                    placeholder="مثال: شركة الخليج للتقنية"
-                  />
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--muted-foreground)' }}>اسم الشركة</label>
+                  <input value={newCompanyName} onChange={e => setNewCompanyName(e.target.value)} className={inputCls} style={inputStyle} placeholder="مثال: شركة الخليج للتقنية"
+                    onFocus={e => (e.target.style.borderColor = '#4F46E5')} onBlur={e => (e.target.style.borderColor = 'var(--border)')} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">النطاق (اختياري)</label>
-                  <input
-                    value={newCompanyDomain}
-                    onChange={e => setNewCompanyDomain(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                    placeholder="example.com"
-                    dir="ltr"
-                  />
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--muted-foreground)' }}>النطاق (اختياري)</label>
+                  <input value={newCompanyDomain} onChange={e => setNewCompanyDomain(e.target.value)} className={inputCls} style={inputStyle} placeholder="example.com" dir="ltr"
+                    onFocus={e => (e.target.style.borderColor = '#4F46E5')} onBlur={e => (e.target.style.borderColor = 'var(--border)')} />
                 </div>
                 <div className="flex gap-3 pt-2">
-                  <button
-                    onClick={() => addCompany.mutate({ name: newCompanyName, domain: newCompanyDomain || undefined })}
+                  <button onClick={() => addCompany.mutate({ name: newCompanyName, domain: newCompanyDomain || undefined })}
                     disabled={!newCompanyName.trim() || addCompany.isPending}
-                    className="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
-                  >
+                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60"
+                    style={{ background: 'linear-gradient(135deg, #4F46E5, #6C5CE7)' }}>
                     إضافة
                   </button>
-                  <button
-                    onClick={() => { setShowAddCompany(false); setNewCompanyName(''); setNewCompanyDomain(''); }}
-                    className="flex-1 border border-gray-300 py-2 rounded-lg text-sm font-medium"
-                  >
+                  <button onClick={() => { setShowAddCompany(false); setNewCompanyName(''); setNewCompanyDomain(''); }}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
+                    style={{ border: '1px solid var(--border)', color: 'var(--muted-foreground)' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                     إلغاء
                   </button>
                 </div>
@@ -152,176 +132,141 @@ export default function CompaniesPage() {
         )}
 
         {isLoading ? (
-          <div className="text-center text-gray-500 py-12">جارٍ التحميل...</div>
+          <div className="text-center py-12 font-brm text-sm" style={{ color: 'var(--muted-foreground)' }}>loading...</div>
         ) : companies.length === 0 ? (
-          <div className="text-center text-gray-400 py-12">لا توجد شركات مضافة</div>
+          <div className="text-center py-16" style={{ color: 'var(--muted-foreground)' }}>
+            <Building2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
+            <p className="font-brm text-sm">$ no companies found_</p>
+          </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {companies.map(company => (
-              <div key={company.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div key={company.id} className="rounded-xl overflow-hidden" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
                 {/* Company Header */}
-                <button
-                  onClick={() => setExpandedCompany(expandedCompany === company.id ? null : company.id)}
-                  className="w-full flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition-colors"
-                >
+                <button onClick={() => setExpandedCompany(expandedCompany === company.id ? null : company.id)}
+                  className="w-full flex items-center justify-between px-6 py-4 transition-colors text-right"
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center text-indigo-700 font-bold text-sm">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-indigo-400 text-sm shrink-0"
+                      style={{ background: 'rgba(79,70,229,0.12)' }}>
                       {company.name[0]}
                     </div>
                     <div className="text-right">
-                      <div className="font-semibold text-gray-900">{company.name}</div>
-                      {company.domain && (
-                        <div className="text-xs text-gray-500" dir="ltr">{company.domain}</div>
-                      )}
+                      <div className="font-semibold" style={{ color: 'var(--foreground)' }}>{company.name}</div>
+                      {company.domain && <div className="font-brm text-xs" style={{ color: 'var(--muted-foreground)' }} dir="ltr">{company.domain}</div>}
                     </div>
                   </div>
-                  <div className="flex items-center gap-4 text-sm text-gray-500">
-                    <span>{company.departments?.length || 0} قسم</span>
-                    <span>{company.systems?.length || 0} نظام</span>
-                    {company._count && (
-                      <span>{company._count.users} مستخدم</span>
-                    )}
-                    <span className="text-gray-400">{expandedCompany === company.id ? '▲' : '▼'}</span>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                      <span className="flex items-center gap-1"><FolderOpen className="w-3 h-3" /> {company.departments?.length || 0} قسم</span>
+                      <span className="flex items-center gap-1"><Monitor className="w-3 h-3" /> {company.systems?.length || 0} نظام</span>
+                      {company._count && <span>{company._count.users} مستخدم</span>}
+                    </div>
+                    <Link href={`/companies/${company.id}`}
+                      onClick={e => e.stopPropagation()}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all"
+                      style={{ color: '#4F46E5', background: 'rgba(79,70,229,0.08)' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(79,70,229,0.15)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'rgba(79,70,229,0.08)')}>
+                      <ExternalLink className="w-3 h-3" /> التذاكر
+                    </Link>
+                    {expandedCompany === company.id
+                      ? <ChevronUp className="w-4 h-4" style={{ color: 'var(--muted-foreground)' }} />
+                      : <ChevronDown className="w-4 h-4" style={{ color: 'var(--muted-foreground)' }} />}
                   </div>
                 </button>
 
                 {/* Expanded Content */}
                 {expandedCompany === company.id && (
-                  <div className="border-t border-gray-100 px-6 py-4 space-y-6">
-
-                    {/* Departments Section */}
+                  <div className="px-6 py-5 space-y-6" style={{ borderTop: '1px solid var(--border)' }}>
+                    {/* Departments */}
                     <div>
-                      <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">الأقسام</h3>
-                      {company.departments?.length === 0 ? (
-                        <p className="text-sm text-gray-400">لا توجد أقسام</p>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          {company.departments?.map(dept => (
-                            <span key={dept.id} className="bg-indigo-50 text-indigo-700 text-sm px-3 py-1 rounded-full border border-indigo-100">
-                              {dept.name}
-                            </span>
-                          ))}
-                        </div>
-                      )}
+                      <h3 className="font-brm text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--muted-foreground)' }}>// الأقسام</h3>
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {company.departments?.length === 0
+                          ? <span className="text-sm" style={{ color: 'var(--muted-foreground)' }}>لا توجد أقسام</span>
+                          : company.departments?.map(dept => (
+                              <span key={dept.id} className="text-sm px-3 py-1 rounded-full"
+                                style={{ background: 'rgba(79,70,229,0.1)', color: '#6366F1', border: '1px solid rgba(79,70,229,0.2)' }}>
+                                {dept.name}
+                              </span>
+                            ))
+                        }
+                      </div>
                       {canManage && (
-                        <div className="mt-3">
-                          {addingDept === company.id ? (
-                            <div className="flex gap-2">
-                              <input
-                                value={newDeptName}
-                                onChange={e => setNewDeptName(e.target.value)}
-                                placeholder="اسم القسم الجديد"
-                                className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1"
-                                autoFocus
-                              />
-                              <button
-                                onClick={() => addDept.mutate({ companyId: company.id, name: newDeptName })}
-                                disabled={!newDeptName.trim() || addDept.isPending}
-                                className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50"
-                              >
-                                إضافة
-                              </button>
-                              <button
-                                onClick={() => { setAddingDept(null); setNewDeptName(''); }}
-                                className="border border-gray-300 px-3 py-2 rounded-lg text-sm"
-                              >
-                                إلغاء
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => setAddingDept(company.id)}
-                              className="text-sm text-indigo-600 hover:underline"
-                            >
-                              + إضافة قسم
-                            </button>
-                          )}
-                        </div>
+                        addingDept === company.id ? (
+                          <div className="flex gap-2">
+                            <input value={newDeptName} onChange={e => setNewDeptName(e.target.value)} placeholder="اسم القسم الجديد"
+                              className="rounded-xl px-3 py-2 text-sm flex-1 outline-none" style={inputStyle} autoFocus />
+                            <button onClick={() => addDept.mutate({ companyId: company.id, name: newDeptName })} disabled={!newDeptName.trim()}
+                              className="px-4 py-2 rounded-xl text-sm text-white disabled:opacity-50" style={{ background: '#4F46E5' }}>إضافة</button>
+                            <button onClick={() => { setAddingDept(null); setNewDeptName(''); }}
+                              className="px-3 py-2 rounded-xl text-sm" style={{ border: '1px solid var(--border)', color: 'var(--muted-foreground)' }}>إلغاء</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setAddingDept(company.id)} className="text-sm flex items-center gap-1" style={{ color: '#4F46E5' }}>
+                            <Plus className="w-3.5 h-3.5" /> إضافة قسم
+                          </button>
+                        )
                       )}
                     </div>
 
-                    {/* Systems Section */}
+                    {/* Systems */}
                     <div>
-                      <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">الأنظمة</h3>
-                      {company.systems?.length === 0 ? (
-                        <p className="text-sm text-gray-400">لا توجد أنظمة</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {company.systems?.map(sys => (
-                            <div key={sys.id} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg text-sm">
-                              {editingSystem === sys.id ? (
-                                <div className="flex gap-2 flex-1">
-                                  <input
-                                    value={editSystemName}
-                                    onChange={e => setEditSystemName(e.target.value)}
-                                    className="border border-gray-300 rounded-lg px-2 py-1 text-sm flex-1"
-                                    autoFocus
-                                    onKeyDown={e => { if (e.key === 'Enter') editSystem.mutate({ id: sys.id, name: editSystemName }); if (e.key === 'Escape') setEditingSystem(null); }}
-                                  />
-                                  <button onClick={() => editSystem.mutate({ id: sys.id, name: editSystemName })} disabled={!editSystemName.trim() || editSystem.isPending} className="bg-indigo-600 text-white px-3 py-1 rounded-lg text-xs disabled:opacity-50">حفظ</button>
-                                  <button onClick={() => setEditingSystem(null)} className="border border-gray-300 px-2 py-1 rounded-lg text-xs">إلغاء</button>
-                                </div>
-                              ) : (
-                                <>
-                                  <div>
-                                    <span className="font-medium text-gray-800">{sys.name}</span>
-                                    {sys.description && <span className="text-gray-500 text-xs mr-2">— {sys.description}</span>}
+                      <h3 className="font-brm text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--muted-foreground)' }}>// الأنظمة</h3>
+                      <div className="space-y-2 mb-3">
+                        {company.systems?.length === 0
+                          ? <span className="text-sm" style={{ color: 'var(--muted-foreground)' }}>لا توجد أنظمة</span>
+                          : company.systems?.map(sys => (
+                              <div key={sys.id} className="flex items-center justify-between py-2 px-3 rounded-lg text-sm"
+                                style={{ background: 'var(--muted)' }}>
+                                {editingSystem === sys.id ? (
+                                  <div className="flex gap-2 flex-1">
+                                    <input value={editSystemName} onChange={e => setEditSystemName(e.target.value)}
+                                      className="rounded-lg px-2 py-1 text-sm flex-1 outline-none" style={inputStyle} autoFocus
+                                      onKeyDown={e => { if (e.key === 'Enter') editSystem.mutate({ id: sys.id, name: editSystemName }); if (e.key === 'Escape') setEditingSystem(null); }} />
+                                    <button onClick={() => editSystem.mutate({ id: sys.id, name: editSystemName })} disabled={!editSystemName.trim()}
+                                      className="px-3 py-1 rounded-lg text-xs text-white disabled:opacity-50" style={{ background: '#4F46E5' }}>حفظ</button>
+                                    <button onClick={() => setEditingSystem(null)} className="px-2 py-1 rounded-lg text-xs" style={{ border: '1px solid var(--border)', color: 'var(--muted-foreground)' }}>إلغاء</button>
                                   </div>
-                                  {canManage && (
-                                    <div className="flex gap-2">
-                                      <button onClick={() => { setEditingSystem(sys.id); setEditSystemName(sys.name); }} className="text-indigo-500 hover:text-indigo-700 text-xs">تعديل</button>
-                                      <button onClick={() => deleteSystem.mutate(sys.id)} className="text-red-500 hover:text-red-700 text-xs">حذف</button>
+                                ) : (
+                                  <>
+                                    <div>
+                                      <span className="font-medium" style={{ color: 'var(--foreground)' }}>{sys.name}</span>
+                                      {sys.description && <span className="text-xs mr-2" style={{ color: 'var(--muted-foreground)' }}>— {sys.description}</span>}
                                     </div>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                                    {canManage && (
+                                      <div className="flex gap-3">
+                                        <button onClick={() => { setEditingSystem(sys.id); setEditSystemName(sys.name); }} className="text-xs" style={{ color: '#4F46E5' }}>تعديل</button>
+                                        <button onClick={() => deleteSystem.mutate(sys.id)} className="text-xs" style={{ color: '#EF4444' }}>حذف</button>
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            ))
+                        }
+                      </div>
                       {canManage && (
-                        <div className="mt-3">
-                          {addingSystem === company.id ? (
-                            <div className="flex gap-2">
-                              <input
-                                value={newSystemName}
-                                onChange={e => setNewSystemName(e.target.value)}
-                                placeholder="اسم النظام"
-                                className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1"
-                                autoFocus
-                              />
-                              <input
-                                value={newSystemDesc}
-                                onChange={e => setNewSystemDesc(e.target.value)}
-                                placeholder="وصف (اختياري)"
-                                className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1"
-                              />
-                              <button
-                                onClick={() => addSystem.mutate({ companyId: company.id, name: newSystemName, description: newSystemDesc || undefined })}
-                                disabled={!newSystemName.trim() || addSystem.isPending}
-                                className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50"
-                              >
-                                إضافة
-                              </button>
-                              <button
-                                onClick={() => { setAddingSystem(null); setNewSystemName(''); setNewSystemDesc(''); }}
-                                className="border border-gray-300 px-3 py-2 rounded-lg text-sm"
-                              >
-                                إلغاء
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => setAddingSystem(company.id)}
-                              className="text-sm text-indigo-600 hover:underline"
-                            >
-                              + إضافة نظام
-                            </button>
-                          )}
-                        </div>
+                        addingSystem === company.id ? (
+                          <div className="flex gap-2">
+                            <input value={newSystemName} onChange={e => setNewSystemName(e.target.value)} placeholder="اسم النظام"
+                              className="rounded-xl px-3 py-2 text-sm flex-1 outline-none" style={inputStyle} autoFocus />
+                            <input value={newSystemDesc} onChange={e => setNewSystemDesc(e.target.value)} placeholder="وصف (اختياري)"
+                              className="rounded-xl px-3 py-2 text-sm flex-1 outline-none" style={inputStyle} />
+                            <button onClick={() => addSystem.mutate({ companyId: company.id, name: newSystemName, description: newSystemDesc || undefined })}
+                              disabled={!newSystemName.trim()} className="px-4 py-2 rounded-xl text-sm text-white disabled:opacity-50" style={{ background: '#4F46E5' }}>إضافة</button>
+                            <button onClick={() => { setAddingSystem(null); setNewSystemName(''); setNewSystemDesc(''); }}
+                              className="px-3 py-2 rounded-xl text-sm" style={{ border: '1px solid var(--border)', color: 'var(--muted-foreground)' }}>إلغاء</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setAddingSystem(company.id)} className="text-sm flex items-center gap-1" style={{ color: '#4F46E5' }}>
+                            <Plus className="w-3.5 h-3.5" /> إضافة نظام
+                          </button>
+                        )
                       )}
                     </div>
-
                   </div>
                 )}
               </div>

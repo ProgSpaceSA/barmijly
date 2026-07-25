@@ -1,37 +1,96 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import { SkeletonList } from "@/components/shared/LoadingSpinner";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { StatusBadge, PriorityBadge } from "@/components/shared/StatusBadge";
+import { RelativeTime } from "@/components/shared/RelativeTime";
 import { useTickets } from "@/hooks/useTickets";
 import { useAuthStore } from "@/store/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { TICKET_STATUS_LABELS, TICKET_TYPE_LABELS } from "@/lib/constants";
-import { Plus, Search, Ticket, Calendar, User } from "lucide-react";
+import { Plus, Search, User } from "lucide-react";
 import Link from "next/link";
-import { format } from "date-fns";
-import { ar } from "date-fns/locale";
+import api from "@/lib/api";
 
-const STATUSES = Object.entries(TICKET_STATUS_LABELS);
+const STATUS_BAR_COLORS: Record<string, string> = {
+  DRAFT:                   "#94A3B8",
+  NEW:                     "#3B82F6",
+  AWAITING_INFO:           "#F59E0B",
+  AWAITING_APPROVAL:       "#F97316",
+  APPROVED:                "#10B981",
+  REJECTED:                "#EF4444",
+  SCHEDULED:               "#8B5CF6",
+  IN_PROGRESS:             "#22C55E",
+  AWAITING_TESTING:        "#06B6D4",
+  AWAITING_OWNER_APPROVAL: "#14B8A6",
+  COMPLETED:               "#10B981",
+  CLOSED:                  "#6B7280",
+  ON_HOLD:                 "#94A3B8",
+};
+
+const QUICK_STATUSES = [
+  { key: "", label: "الكل" },
+  { key: "NEW",               label: TICKET_STATUS_LABELS.NEW },
+  { key: "IN_PROGRESS",       label: TICKET_STATUS_LABELS.IN_PROGRESS },
+  { key: "AWAITING_TESTING",  label: TICKET_STATUS_LABELS.AWAITING_TESTING },
+  { key: "COMPLETED",         label: TICKET_STATUS_LABELS.COMPLETED },
+  { key: "CLOSED",            label: TICKET_STATUS_LABELS.CLOSED },
+];
+
+function FilterPill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap"
+      style={{
+        background: active ? "var(--card)" : "transparent",
+        color: active ? "var(--foreground)" : "var(--muted-foreground)",
+        boxShadow: active ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
 
 export default function TicketsPage() {
   const router = useRouter();
   const { user } = useAuthStore();
   const [filters, setFilters] = useState<Record<string, string>>({});
+  const [activeStatus, setActiveStatus] = useState("");
+  const [activeCompany, setActiveCompany] = useState("");
   const { data, isLoading } = useTickets(filters);
 
-  const canCreate = user?.role && !["SENIOR_MANAGEMENT"].includes(user.role);
+  const { data: companies } = useQuery({
+    queryKey: ["companies-list"],
+    queryFn: () => api.get("/companies").then(r => r.data as any[]),
+    staleTime: 60_000,
+  });
+
+  const canCreate = user?.role && !["SENIOR_MANAGEMENT", "DEVELOPER", "QA"].includes(user.role);
 
   const setFilter = (key: string, val: string) => {
-    setFilters(prev => val ? { ...prev, [key]: val } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== key)));
+    setFilters(prev =>
+      val ? { ...prev, [key]: val } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== key))
+    );
   };
+
+  const setStatusFilter = (status: string) => {
+    setActiveStatus(status);
+    setFilter("status", status);
+  };
+
+  const setCompanyFilter = (companyId: string) => {
+    setActiveCompany(companyId);
+    setFilter("companyId", companyId);
+  };
+
+  const companyList: any[] = Array.isArray(companies) ? companies : (companies as any)?.data ?? [];
 
   return (
     <AppShell>
@@ -45,77 +104,127 @@ export default function TicketsPage() {
         ) : undefined}
       />
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-6">
-        <div className="relative flex-1 min-w-48">
-          <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="بحث..." className="pr-9" onChange={e => setFilter("search", e.target.value)} />
-        </div>
-        <Select onValueChange={(v: string | null) => setFilter("status", v === "ALL" ? "" : (v || ""))}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="الحالة" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">جميع الحالات</SelectItem>
-            {STATUSES.map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select onValueChange={(v: string | null) => setFilter("priority", v === "ALL" ? "" : (v || ""))}>
-          <SelectTrigger className="w-36"><SelectValue placeholder="الأولوية" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">جميع الأولويات</SelectItem>
-            {[["CRITICAL","حرجة"],["HIGH","عالية"],["MEDIUM","متوسطة"],["LOW","منخفضة"],["DEFERRED","مؤجلة"]].map(([k,v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
-          </SelectContent>
-        </Select>
+      {/* Search */}
+      <div className="relative mb-4">
+        <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "var(--muted-foreground)" }} />
+        <Input
+          placeholder="بحث في التذاكر... (أو Ctrl+K)"
+          className="pr-9"
+          onChange={e => setFilter("search", e.target.value)}
+        />
       </div>
 
-      {isLoading ? <LoadingSpinner /> : !data?.data?.length ? (
-        <EmptyState icon={Ticket} title="لا توجد تذاكر" description="لم يتم العثور على تذاكر بهذه الفلاتر"
-          action={canCreate ? { label: "إنشاء تذكرة", onClick: () => router.push("/tickets/new") } : undefined} />
+      {/* Company filter */}
+      {companyList.length > 0 && (
+        <div className="mb-3">
+          <p className="font-brm text-xs mb-2 uppercase tracking-widest" style={{ color: "var(--muted-foreground)" }}>
+            // الشركات
+          </p>
+          <div className="flex flex-wrap gap-1.5 p-1 rounded-xl w-fit" style={{ background: "var(--muted)" }}>
+            <FilterPill label="الكل" active={activeCompany === ""} onClick={() => setCompanyFilter("")} />
+            {companyList.map((c: any) => (
+              <FilterPill
+                key={c.id}
+                label={c.name}
+                active={activeCompany === c.id}
+                onClick={() => setCompanyFilter(c.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Status filter */}
+      <div className="mb-6">
+        <p className="font-brm text-xs mb-2 uppercase tracking-widest" style={{ color: "var(--muted-foreground)" }}>
+          // الحالة
+        </p>
+        <div className="flex flex-wrap gap-1.5 p-1 rounded-xl w-fit" style={{ background: "var(--muted)" }}>
+          {QUICK_STATUSES.map(({ key, label }) => (
+            <FilterPill key={key} label={label} active={activeStatus === key} onClick={() => setStatusFilter(key)} />
+          ))}
+        </div>
+      </div>
+
+      {isLoading ? (
+        <SkeletonList count={6} />
+      ) : !data?.data?.length ? (
+        <EmptyState
+          title="لا توجد تذاكر"
+          command="list tickets --filter active"
+          description="لم يتم العثور على تذاكر بهذه الفلاتر"
+          action={canCreate ? { label: "إنشاء تذكرة", onClick: () => router.push("/tickets/new") } : undefined}
+        />
       ) : (
-        <div className="space-y-3">
-          {data.data.map((ticket: any) => (
-            <Link key={ticket.id} href={`/tickets/${ticket.id}`}>
-              <Card className="hover:shadow-md transition-shadow cursor-pointer">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <StatusBadge status={ticket.status} />
-                        <PriorityBadge priority={ticket.finalPriority || ticket.priority} />
-                        <span className="text-xs text-muted-foreground">{TICKET_TYPE_LABELS[ticket.type]}</span>
-                      </div>
-                      <h3 className="font-semibold text-foreground truncate">{ticket.title}</h3>
-                      <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
-                        <span className="flex items-center gap-1">
-                          <User className="w-3 h-3" />
-                          {ticket.creator?.firstName} {ticket.creator?.lastName}
-                        </span>
-                        <span>{ticket.system?.name}</span>
-                        <span>{ticket.company?.name}</span>
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {format(new Date(ticket.createdAt), "d MMM yyyy", { locale: ar })}
-                        </span>
-                      </div>
-                    </div>
-                    {ticket.assignments?.[0] && (
-                      <div className="text-xs text-muted-foreground shrink-0">
-                        <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary">
-                          {ticket.assignments[0].developer?.firstName?.[0]}
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          {data.data.map((ticket: any) => {
+            const barColor = STATUS_BAR_COLORS[ticket.status] ?? "#94A3B8";
+            const brmId = ticket.ticketNumber
+              ? `BRM-${String(ticket.ticketNumber).padStart(4, "0")}`
+              : null;
+
+            return (
+              <Link key={ticket.id} href={`/tickets/${ticket.id}`} style={{ display: "block" }}>
+                <div
+                  className="rounded-xl flex overflow-hidden transition-all hover:shadow-md"
+                  style={{
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                  }}
+                >
+                  <div className="w-1 shrink-0 self-stretch" style={{ background: barColor, borderRadius: "0 4px 4px 0" }} />
+
+                  <div className="flex-1 p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                          <StatusBadge status={ticket.status} />
+                          <PriorityBadge priority={ticket.finalPriority || ticket.priority} />
+                          {brmId && (
+                            <span className="font-brm text-xs px-2 py-0.5 rounded-md" style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>
+                              {brmId}
+                            </span>
+                          )}
+                          <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>{TICKET_TYPE_LABELS[ticket.type]}</span>
+                        </div>
+                        <h3 className="font-semibold truncate" style={{ color: "var(--foreground)" }}>{ticket.title}</h3>
+                        <div className="flex items-center gap-4 mt-2 flex-wrap">
+                          <span className="flex items-center gap-1 text-xs" style={{ color: "var(--muted-foreground)" }}>
+                            <User className="w-3 h-3" />
+                            {ticket.creator?.firstName} {ticket.creator?.lastName}
+                          </span>
+                          <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>{ticket.system?.name}</span>
+                          <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>{ticket.company?.name}</span>
+                          <RelativeTime date={ticket.createdAt} />
                         </div>
                       </div>
-                    )}
+                      {ticket.assignments?.[0] && (
+                        <div
+                          className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-indigo-600 text-sm shrink-0"
+                          style={{ background: "rgba(79,70,229,0.1)" }}
+                        >
+                          {ticket.assignments[0].developer?.firstName?.[0]}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
+                </div>
+              </Link>
+            );
+          })}
 
-          {/* Pagination */}
           {data.totalPages > 1 && (
             <div className="flex justify-center gap-2 pt-4">
               {Array.from({ length: data.totalPages }, (_, i) => i + 1).map(p => (
-                <Button key={p} variant={String(p) === (filters.page || "1") ? "default" : "outline"} size="sm"
-                  onClick={() => setFilter("page", String(p))}>{p}</Button>
+                <Button
+                  key={p}
+                  variant={String(p) === (filters.page || "1") ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFilter("page", String(p))}
+                >
+                  {p}
+                </Button>
               ))}
             </div>
           )}

@@ -1,13 +1,39 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { TicketStatus, Priority } from '@prisma/client';
+import { TicketStatus, Priority, UserRole } from '@prisma/client';
+
+const MANAGER_ROLES = [UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT];
 
 @Injectable()
 export class ReportsService {
   constructor(private prisma: PrismaService) {}
 
-  async getDashboardStats(companyId?: string) {
-    const where = companyId ? { companyId } : {};
+  private async buildVisibilityWhere(userId: string, role: UserRole, companyId?: string) {
+    if ((MANAGER_ROLES as string[]).includes(role)) {
+      return companyId ? { companyId } : {};
+    }
+    if (role === UserRole.DEVELOPER) {
+      const assignments = await this.prisma.ticketAssignment.findMany({
+        where: { developerId: userId, isActive: true },
+        select: { ticketId: true },
+      });
+      const ticketIds = assignments.map((a) => a.ticketId);
+      return { id: { in: ticketIds } };
+    }
+    if (role === UserRole.SYSTEM_OWNER) {
+      const userCompanies = await this.prisma.userCompany.findMany({
+        where: { userId },
+        select: { companyId: true },
+      });
+      const companyIds = userCompanies.map((uc) => uc.companyId);
+      return { companyId: { in: companyIds } };
+    }
+    // TICKET_REQUESTER — only their own tickets
+    return { creatorId: userId };
+  }
+
+  async getDashboardStats(userId: string, role: UserRole, companyId?: string) {
+    const where = await this.buildVisibilityWhere(userId, role, companyId);
 
     const [
       totalTickets,
@@ -52,8 +78,6 @@ export class ReportsService {
   }
 
   async getDeveloperStats(from?: Date, to?: Date) {
-    const dateFilter = from && to ? { createdAt: { gte: from, lte: to } } : {};
-
     const developers = await this.prisma.user.findMany({
       where: { role: 'DEVELOPER', isActive: true },
       select: {
@@ -117,7 +141,6 @@ export class ReportsService {
   }
 
   async getCompanyStats(companyId?: string) {
-    const where = companyId ? { companyId } : {};
     return this.prisma.company.findMany({
       where: companyId ? { id: companyId } : {},
       include: {
@@ -126,10 +149,11 @@ export class ReportsService {
     });
   }
 
-  async getOverdueTickets(companyId?: string) {
+  async getOverdueTickets(userId: string, role: UserRole, companyId?: string) {
+    const where = await this.buildVisibilityWhere(userId, role, companyId);
     return this.prisma.ticket.findMany({
       where: {
-        ...(companyId && { companyId }),
+        ...where,
         isArchived: false,
         estimatedDeadline: { lt: new Date() },
         status: { notIn: [TicketStatus.CLOSED, TicketStatus.COMPLETED, TicketStatus.REJECTED] },
@@ -137,6 +161,7 @@ export class ReportsService {
       include: {
         creator: { select: { id: true, firstName: true, lastName: true } },
         system: true,
+        company: true,
         assignments: { where: { isActive: true }, include: { developer: { select: { id: true, firstName: true, lastName: true } } } },
       },
       orderBy: { estimatedDeadline: 'asc' },

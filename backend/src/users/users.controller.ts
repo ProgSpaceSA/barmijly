@@ -37,6 +37,12 @@ export class UsersController {
     return this.usersService.getDevelopers();
   }
 
+  @Get(':id/comments')
+  @Roles(...MANAGERS)
+  getUserComments(@Param('id') id: string) {
+    return this.usersService.getUserComments(id);
+  }
+
   @Get(':id')
   @Roles(...MANAGERS)
   findOne(@Param('id') id: string) {

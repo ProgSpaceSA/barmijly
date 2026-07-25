@@ -72,11 +72,24 @@ enum NotificationType {
   TICKET_DELAYED
   EXECUTION_COMPLETED
   CLOSURE_APPROVAL_REQUESTED
+  TASK_ASSIGNED
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
 }
 
 enum CommentVisibility {
   PUBLIC
   INTERNAL
+}
+
+enum SignupRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 model Company {
@@ -147,6 +160,9 @@ model User {
   passwordResetTokens PasswordResetToken[]
   companies           UserCompany[]
   auditLogs          AuditLog[]
+  signupRequestsReviewed SignupRequest[]
+  tasksAssigned      TicketTask[] @relation("TaskAssignee")
+  tasksCreated       TicketTask[] @relation("TaskCreator")
 }
 
 model UserSystem {
@@ -185,6 +201,8 @@ model Ticket {
   adminNotes           String?
   closureNotes         String?
   isArchived           Boolean               @default(false)
+  coverImageUrl        String?
+  ticketNumber         Int                   @unique @default(autoincrement())
   creatorId            String
   creator              User                  @relation("TicketCreator", fields: [creatorId], references: [id])
   systemOwnerId        String?
@@ -206,6 +224,7 @@ model Ticket {
   approvals            TicketApproval[]
   notifications        Notification[]
   auditLogs            AuditLog[]
+  tasks                TicketTask[]
 }
 
 model TicketComment {
@@ -350,4 +369,31 @@ model UserCompany {
   createdAt DateTime @default(now())
 
   @@id([userId, companyId])
+}
+
+model SignupRequest {
+  id           String              @id @default(uuid())
+  firstName    String
+  lastName     String
+  email        String              @unique
+  status       SignupRequestStatus @default(PENDING)
+  reviewedById String?
+  reviewedBy   User?               @relation(fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+  createdAt    DateTime            @default(now())
+}
+
+model TicketTask {
+  id           String     @id @default(cuid())
+  ticketId     String
+  ticket       Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?
+  assignedToId String
+  assignedTo   User       @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  createdById  String
+  createdBy    User       @relation("TaskCreator", fields: [createdById], references: [id])
+  status       TaskStatus @default(OPEN)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 }

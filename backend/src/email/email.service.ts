@@ -55,6 +55,22 @@ export class EmailService {
     `);
   }
 
+  async sendMentionEmail(to: string, mentionerName: string, ticketTitle: string, ticketUrl: string) {
+    await this.send(to, `تم ذكرك في تذكرة: ${ticketTitle}`, `
+      <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 32px; background: #f8fafc; border-radius: 12px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="display: inline-block; background: #4338CA; color: white; padding: 12px 24px; border-radius: 8px; font-size: 20px; font-weight: bold;">برمجلي</div>
+        </div>
+        <h2 style="color: #1e293b;">تم ذكرك في تعليق</h2>
+        <p style="color: #475569;">قام <strong>${mentionerName}</strong> بذكرك في تعليق على التذكرة: <strong>${ticketTitle}</strong></p>
+        <div style="text-align: center; margin: 32px 0;">
+          <a href="${ticketUrl}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #4338CA, #6366F1); color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px;">عرض التذكرة</a>
+        </div>
+        <p style="color: #94a3b8; font-size: 13px; text-align: center;">برمجلي · نظام إدارة طلبات البرمجة</p>
+      </div>
+    `);
+  }
+
   async sendStatusUpdate(to: string, ticketTitle: string, status: string, ticketUrl: string) {
     await this.send(to, `تحديث التذكرة: ${ticketTitle}`, `
       <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 32px; background: #f8fafc; border-radius: 12px;">

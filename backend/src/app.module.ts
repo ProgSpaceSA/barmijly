@@ -16,6 +16,8 @@ import { EmailModule } from './email/email.module';
 import { AuditModule } from './audit/audit.module';
 import { InvitationsModule } from './invitations/invitations.module';
 import { ReportsModule } from './reports/reports.module';
+import { SignupRequestsModule } from './signup-requests/signup-requests.module';
+import { TasksModule } from './tasks/tasks.module';
 
 @Module({
   imports: [
@@ -38,6 +40,8 @@ import { ReportsModule } from './reports/reports.module';
     AuditModule,
     InvitationsModule,
     ReportsModule,
+    SignupRequestsModule,
+    TasksModule,
   ],
 })
 export class AppModule {}
