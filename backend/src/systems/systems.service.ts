@@ -37,4 +37,18 @@ export class SystemsService {
     await this.findOne(id);
     return this.prisma.system.update({ where: { id }, data: { isActive: false } });
   }
+
+  async addUser(systemId: string, userId: string) {
+    return this.prisma.userSystem.upsert({
+      where: { userId_systemId: { userId, systemId } },
+      update: {},
+      create: { userId, systemId },
+    });
+  }
+
+  async removeUser(systemId: string, userId: string) {
+    return this.prisma.userSystem.delete({
+      where: { userId_systemId: { userId, systemId } },
+    });
+  }
 }

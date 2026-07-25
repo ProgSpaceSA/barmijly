@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { SystemsService } from './systems.service';
@@ -41,5 +41,17 @@ export class SystemsController {
   @Roles(UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT)
   deactivate(@Param('id') id: string) {
     return this.systemsService.deactivate(id);
+  }
+
+  @Post(':id/users')
+  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER)
+  addUser(@Param('id') id: string, @Body('userId') userId: string) {
+    return this.systemsService.addUser(id, userId);
+  }
+
+  @Delete(':id/users/:userId')
+  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER)
+  removeUser(@Param('id') id: string, @Param('userId') userId: string) {
+    return this.systemsService.removeUser(id, userId);
   }
 }

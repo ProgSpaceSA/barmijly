@@ -280,12 +280,19 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const tasks: any[] = tasksData ?? [];
   const myTasks = tasks.filter(t => t.assignedTo?.id === user?.id);
 
+  const { data: systemData } = useQuery({
+    queryKey: ["system", ticket?.systemId],
+    queryFn: () => api.get(`/systems/${ticket!.systemId}`).then(r => r.data),
+    enabled: !!ticket?.systemId,
+  });
+  const developerList: any[] = (systemData?.userSystems ?? [])
+    .filter((us: any) => us.user?.role === "DEVELOPER" && us.user?.isActive !== false)
+    .map((us: any) => us.user);
+
   const [taskForm, setTaskForm] = useState(false);
   const [newTask, setNewTask] = useState({ title: "", description: "", assignedToId: "" });
   const [savingTask, setSavingTask] = useState(false);
   const [tasksExpanded, setTasksExpanded] = useState(false);
-
-  const developerList = userList.filter(u => u.role === "DEVELOPER");
 
   const createTask = async () => {
     if (!newTask.title.trim() || !newTask.assignedToId) return;

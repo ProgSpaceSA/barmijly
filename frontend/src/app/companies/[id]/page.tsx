@@ -1,6 +1,6 @@
 "use client";
-import { use } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { use, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
@@ -8,8 +8,10 @@ import { StatusBadge, PriorityBadge } from "@/components/shared/StatusBadge";
 import { RelativeTime } from "@/components/shared/RelativeTime";
 import { SkeletonList, SkeletonStat } from "@/components/shared/LoadingSpinner";
 import { TICKET_TYPE_LABELS } from "@/lib/constants";
+import { useAuthStore } from "@/store/auth";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import api from "@/lib/api";
-import { ArrowLeft, Globe, Monitor, FolderOpen, Users } from "lucide-react";
+import { ArrowLeft, Globe, Monitor, FolderOpen, Users, Plus, X, ChevronDown, ChevronUp } from "lucide-react";
 
 const STATUS_BAR: Record<string, string> = {
   DRAFT:"#94A3B8", NEW:"#3B82F6", AWAITING_INFO:"#F59E0B",
@@ -27,9 +29,146 @@ function StatBox({ label, value }: { label: string; value: number | undefined })
   );
 }
 
+function SystemCard({ system, allDevs, isManager }: { system: any; allDevs: any[]; isManager: boolean }) {
+  const qc = useQueryClient();
+  const [expanded, setExpanded] = useState(false);
+  const [addingDev, setAddingDev] = useState(false);
+  const [selectedDev, setSelectedDev] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const { data: sysData, refetch } = useQuery({
+    queryKey: ["system", system.id],
+    queryFn: () => api.get(`/systems/${system.id}`).then(r => r.data),
+    enabled: expanded,
+  });
+
+  const assignedDevs: any[] = sysData?.userSystems?.filter((us: any) => us.user?.role === "DEVELOPER") ?? [];
+  const assignedIds = new Set(assignedDevs.map((us: any) => us.user?.id));
+  const availableDevs = allDevs.filter(d => !assignedIds.has(d.id));
+
+  const handleAdd = async () => {
+    if (!selectedDev) return;
+    setSaving(true);
+    try {
+      await api.post(`/systems/${system.id}/users`, { userId: selectedDev });
+      setSelectedDev(null);
+      setAddingDev(false);
+      refetch();
+      qc.invalidateQueries({ queryKey: ["company"] });
+    } finally { setSaving(false); }
+  };
+
+  const handleRemove = async (userId: string) => {
+    await api.delete(`/systems/${system.id}/users/${userId}`);
+    refetch();
+  };
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="w-full flex items-center justify-between px-4 py-3 text-right transition-colors"
+        style={{ borderBottom: expanded ? "1px solid var(--border)" : "none" }}
+        onMouseEnter={e => (e.currentTarget.style.background = "var(--muted)")}
+        onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+            style={{ background: "rgba(79,70,229,0.1)" }}>
+            <Monitor className="w-3.5 h-3.5" style={{ color: "#4F46E5" }} />
+          </div>
+          <div className="text-right">
+            <p className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{system.name}</p>
+            {system.domain && (
+              <p className="font-brm text-xs" style={{ color: "var(--muted-foreground)" }} dir="ltr">{system.domain}</p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {!expanded && sysData && (
+            <span className="text-xs px-2 py-0.5 rounded-full"
+              style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>
+              {assignedDevs.length} مطور
+            </span>
+          )}
+          {expanded ? <ChevronUp className="w-4 h-4" style={{ color: "var(--muted-foreground)" }} />
+                    : <ChevronDown className="w-4 h-4" style={{ color: "var(--muted-foreground)" }} />}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="p-4 space-y-3">
+          {/* Assigned devs */}
+          <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--muted-foreground)" }}>
+            المطورون المكلَّفون
+          </p>
+          {assignedDevs.length === 0 ? (
+            <p className="font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>$ no developers assigned_</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {assignedDevs.map((us: any) => (
+                <div key={us.user?.id}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm"
+                  style={{ background: "rgba(79,70,229,0.08)", color: "#4F46E5", border: "1px solid rgba(79,70,229,0.15)" }}>
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold"
+                    style={{ background: "rgba(79,70,229,0.2)" }}>
+                    {us.user?.firstName?.[0]}
+                  </div>
+                  {us.user?.firstName} {us.user?.lastName}
+                  {isManager && (
+                    <button onClick={() => handleRemove(us.user?.id)}
+                      className="transition-colors hover:text-red-500 mr-0.5">
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add developer (managers only) */}
+          {isManager && (
+            addingDev ? (
+              <div className="flex gap-2 items-center">
+                <Select value={selectedDev ?? ""} onValueChange={(v: string | null) => v && setSelectedDev(v)}>
+                  <SelectTrigger className="flex-1 h-8 text-sm"><SelectValue placeholder="اختر مطوراً" /></SelectTrigger>
+                  <SelectContent>
+                    {availableDevs.length === 0 ? (
+                      <div className="px-3 py-2 text-xs" style={{ color: "var(--muted-foreground)" }}>لا يوجد مطورون متاحون</div>
+                    ) : availableDevs.map(d => (
+                      <SelectItem key={d.id} value={d.id}>{d.firstName} {d.lastName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <button onClick={handleAdd} disabled={!selectedDev || saving}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50"
+                  style={{ background: "#4F46E5" }}>
+                  {saving ? "..." : "إضافة"}
+                </button>
+                <button onClick={() => { setAddingDev(false); setSelectedDev(null); }}
+                  className="px-2 py-1.5 rounded-lg text-xs transition-colors"
+                  style={{ color: "var(--muted-foreground)", background: "var(--muted)" }}>
+                  إلغاء
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setAddingDev(true)}
+                className="flex items-center gap-1.5 text-xs font-medium transition-colors"
+                style={{ color: "#4F46E5" }}>
+                <Plus className="w-3.5 h-3.5" /> تعيين مطور
+              </button>
+            )
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CompanyDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  const { user } = useAuthStore();
+  const isManager = user?.role === "PROGRAMMING_HEAD" || user?.role === "PROJECT_MANAGER";
 
   const { data: company, isLoading: companyLoading } = useQuery({
     queryKey: ["company", id],
@@ -41,7 +180,15 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
     queryFn: () => api.get(`/tickets?companyId=${id}&limit=50`).then(r => r.data),
   });
 
+  const { data: allUsersData } = useQuery({
+    queryKey: ["users-list"],
+    queryFn: () => api.get("/users").then(r => r.data),
+    staleTime: 60_000,
+    enabled: isManager,
+  });
+
   const tickets: any[] = ticketsData?.data ?? [];
+  const allDevs: any[] = (allUsersData ?? []).filter((u: any) => u.role === "DEVELOPER");
 
   return (
     <AppShell>
@@ -93,18 +240,6 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                       <Users className="w-3.5 h-3.5" /> {company._count?.users ?? 0} مستخدم
                     </span>
                   </div>
-
-                  {/* Systems */}
-                  {company.systems?.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-3">
-                      {company.systems.map((s: any) => (
-                        <span key={s.id} className="flex items-center gap-1 px-2 py-0.5 rounded-md text-xs"
-                          style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>
-                          <Monitor className="w-3 h-3" /> {s.name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
@@ -116,6 +251,20 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
               <StatBox label="مكتملة"           value={tickets.filter((t: any) => t.status === "COMPLETED").length} />
               <StatBox label="مغلقة"            value={tickets.filter((t: any) => t.status === "CLOSED").length} />
             </div>
+
+            {/* Systems with developer assignment */}
+            {company.systems?.length > 0 && (
+              <div>
+                <p className="font-brm text-xs uppercase tracking-widest mb-3" style={{ color: "var(--muted-foreground)" }}>
+                  // الأنظمة والمطورون
+                </p>
+                <div className="space-y-2">
+                  {company.systems.map((s: any) => (
+                    <SystemCard key={s.id} system={s} allDevs={allDevs} isManager={isManager} />
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
 
@@ -157,9 +306,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                             </div>
                             <h3 className="font-semibold truncate" style={{ color: "var(--foreground)" }}>{ticket.title}</h3>
                             <div className="flex gap-4 mt-1.5 text-xs flex-wrap" style={{ color: "var(--muted-foreground)" }}>
-                              <span className="flex items-center gap-1">
-                                {ticket.creator?.firstName} {ticket.creator?.lastName}
-                              </span>
+                              <span>{ticket.creator?.firstName} {ticket.creator?.lastName}</span>
                               <span>{ticket.system?.name}</span>
                               <RelativeTime date={ticket.createdAt} />
                             </div>
