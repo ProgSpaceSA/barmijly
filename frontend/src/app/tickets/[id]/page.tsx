@@ -1,5 +1,6 @@
 "use client";
 import { use, useRef, useState, useEffect, useCallback, useReducer } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { SkeletonList } from "@/components/shared/LoadingSpinner";
@@ -261,9 +262,18 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStart, setMentionStart] = useState(0);
   const [selectedMentions, setSelectedMentions] = useState<any[]>([]);
+  const [mentionRect, setMentionRect] = useState<DOMRect | null>(null);
   const attachInputRef = useRef<HTMLInputElement>(null);
   const commentFileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (mentionQuery !== null && textareaRef.current) {
+      setMentionRect(textareaRef.current.getBoundingClientRect());
+    } else {
+      setMentionRect(null);
+    }
+  }, [mentionQuery]);
 
   const { data: allUsers } = useQuery({
     queryKey: ["users-list"],
@@ -904,27 +914,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                     onFocus={e => (e.target.style.borderColor = "#4F46E5")}
                     onBlur={e => { setTimeout(() => setMentionQuery(null), 200); e.target.style.borderColor = "var(--border)"; }}
                   />
-                  {mentionQuery !== null && filteredMentions.length > 0 && (
-                    <div className="absolute top-full mt-1 right-0 left-0 z-50 rounded-xl shadow-lg"
-                      style={{ background: "var(--card)", border: "1px solid var(--border)", maxHeight: "200px", overflowY: "auto" }}>
-                      {filteredMentions.map(u => (
-                        <button key={u.id} onMouseDown={() => insertMention(u)}
-                          className="w-full flex items-center gap-3 px-3 py-2 text-sm text-right transition-colors"
-                          style={{ color: "var(--foreground)" }}
-                          onMouseEnter={e => (e.currentTarget.style.background = "var(--muted)")}
-                          onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
-                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-                            style={{ background: "rgba(79,70,229,0.18)", color: "#818CF8" }}>
-                            {u.firstName?.[0]}{u.lastName?.[0]}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-medium truncate">{u.firstName} {u.lastName}</p>
-                            <p className="font-brm text-xs truncate" style={{ color: "var(--muted-foreground)" }}>{u.email}</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  {/* portal dropdown rendered outside the clipping card */}
                 </div>
 
                 {/* Pending comment files preview */}
@@ -1075,6 +1065,42 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         url={lightboxUrl}
         onClose={() => setLightboxUrl(null)}
       />
+    )}
+
+    {/* Mentions dropdown portal — escapes all overflow:hidden ancestors */}
+    {mentionQuery !== null && filteredMentions.length > 0 && mentionRect && createPortal(
+      <div
+        style={{
+          position: "fixed",
+          top: mentionRect.bottom + 4,
+          left: mentionRect.left,
+          width: mentionRect.width,
+          zIndex: 9999,
+          background: "var(--card)",
+          border: "1px solid var(--border)",
+          borderRadius: "12px",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+          maxHeight: "220px",
+          overflowY: "auto",
+        }}>
+        {filteredMentions.map(u => (
+          <button key={u.id} onMouseDown={() => insertMention(u)}
+            className="w-full flex items-center gap-3 px-3 py-2 text-sm text-right transition-colors"
+            style={{ color: "var(--foreground)" }}
+            onMouseEnter={e => (e.currentTarget.style.background = "var(--muted)")}
+            onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+              style={{ background: "rgba(79,70,229,0.18)", color: "#818CF8" }}>
+              {u.firstName?.[0]}{u.lastName?.[0]}
+            </div>
+            <div className="min-w-0">
+              <p className="font-medium truncate">{u.firstName} {u.lastName}</p>
+              <p className="font-brm text-xs truncate" style={{ color: "var(--muted-foreground)" }}>{u.email}</p>
+            </div>
+          </button>
+        ))}
+      </div>,
+      document.body
     )}
     </>
   );
