@@ -35,6 +35,7 @@ function SystemCard({ system, allDevs, isManager }: { system: any; allDevs: any[
   const [addingDev, setAddingDev] = useState(false);
   const [selectedDev, setSelectedDev] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const { data: sysData, refetch } = useQuery({
     queryKey: ["system", system.id],
@@ -49,18 +50,25 @@ function SystemCard({ system, allDevs, isManager }: { system: any; allDevs: any[
   const handleAdd = async () => {
     if (!selectedDev) return;
     setSaving(true);
+    setError(null);
     try {
       await api.post(`/systems/${system.id}/users`, { userId: selectedDev });
       setSelectedDev(null);
       setAddingDev(false);
       refetch();
       qc.invalidateQueries({ queryKey: ["company"] });
+    } catch {
+      setError("فشل التعيين، حاول مرة أخرى");
     } finally { setSaving(false); }
   };
 
   const handleRemove = async (userId: string) => {
-    await api.delete(`/systems/${system.id}/users/${userId}`);
-    refetch();
+    try {
+      await api.delete(`/systems/${system.id}/users/${userId}`);
+      refetch();
+    } catch {
+      setError("فشل الحذف، حاول مرة أخرى");
+    }
   };
 
   return (
@@ -123,6 +131,10 @@ function SystemCard({ system, allDevs, isManager }: { system: any; allDevs: any[
                 </div>
               ))}
             </div>
+          )}
+
+          {error && (
+            <p className="text-xs font-medium" style={{ color: "#DC2626" }}>{error}</p>
           )}
 
           {/* Add developer (managers only) */}
