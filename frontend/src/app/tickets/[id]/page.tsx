@@ -336,11 +336,30 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     refetchTasks();
   };
 
-  const filteredMentions = mentionQuery !== null
+  // Users who can see this ticket:
+  // - any manager / QA / senior role (sees all tickets)
+  // - the ticket creator
+  // - the system owner (if set)
+  // - assigned developers
+  // - SYSTEM_OWNERs from the same company
+  // - NOT other requesters or unrelated developers
+  const ALL_ACCESS_ROLES = new Set(["PROGRAMMING_HEAD", "PROJECT_MANAGER", "QA", "SENIOR_MANAGEMENT"]);
+  const assignedDevIds = new Set((ticket?.assignments ?? []).map((a: any) => a.developerId ?? a.developer?.id));
+  const mentionableUsers = ticket
     ? userList.filter(u =>
+        ALL_ACCESS_ROLES.has(u.role) ||
+        u.id === ticket.creatorId ||
+        u.id === ticket.systemOwnerId ||
+        assignedDevIds.has(u.id) ||
+        (u.role === "SYSTEM_OWNER" && u.companyId === ticket.companyId)
+      )
+    : userList;
+
+  const filteredMentions = mentionQuery !== null
+    ? mentionableUsers.filter(u =>
         `${u.firstName} ${u.lastName}`.toLowerCase().includes(mentionQuery.toLowerCase()) ||
         u.email?.toLowerCase().includes(mentionQuery.toLowerCase())
-      ).slice(0, 6)
+      ).slice(0, 8)
     : [];
 
   const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
