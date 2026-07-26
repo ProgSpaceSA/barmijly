@@ -1,7 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { AppShell } from "@/components/layout/AppShell";
@@ -19,8 +19,8 @@ const schema = z.object({
   expectedOutcome: z.string().min(10, "النتيجة المتوقعة مطلوبة"),
   businessImpact: z.string().min(5, "التأثير على العمل مطلوب"),
   type: z.string().min(1, "نوع الطلب مطلوب"),
-  systemId: z.string().min(1, "النظام مطلوب"),
-  companyId: z.string().min(1, "الشركة مطلوبة"),
+  systemId: z.string().uuid("الرجاء اختيار النظام"),
+  companyId: z.string().uuid("الرجاء اختيار الشركة"),
   hasFinancialLoss: z.boolean().optional(),
   financialLossDetails: z.string().optional(),
   priority: z.string().optional(),
@@ -110,12 +110,28 @@ function Label({ children }: { children: React.ReactNode }) {
   );
 }
 
+function BlockedMessage({ icon, title, body, onBack }: { icon: string; title: string; body: string; onBack: () => void }) {
+  return (
+    <div className="rounded-2xl p-8 text-center" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+      <div className="text-4xl mb-4">{icon}</div>
+      <h2 className="text-lg font-bold mb-2" style={{ color: "var(--foreground)" }}>{title}</h2>
+      <p className="text-sm mb-6 leading-relaxed" style={{ color: "var(--muted-foreground)" }}>{body}</p>
+      <button onClick={onBack} className="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all"
+        style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }}>
+        رجوع
+      </button>
+    </div>
+  );
+}
+
 export default function NewTicketPage() {
   const router = useRouter();
   const { user } = useAuthStore();
   const { mutateAsync: createTicket } = useCreateTicket();
   const [companies, setCompanies] = useState<any[]>([]);
   const [systems, setSystems] = useState<any[]>([]);
+  const [companiesLoaded, setCompaniesLoaded] = useState(false);
+  const [systemsLoaded, setSystemsLoaded] = useState(false);
 
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
@@ -125,7 +141,7 @@ export default function NewTicketPage() {
 
   const isRestricted = RESTRICTED_ROLES.includes(user?.role ?? "");
 
-  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm({
+  const { register, handleSubmit, watch, setValue, reset, control, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(schema),
     defaultValues: { hasFinancialLoss: false, type: "", companyId: "", systemId: "", priority: "" },
   });
@@ -133,34 +149,57 @@ export default function NewTicketPage() {
   const hasFinancialLoss = watch("hasFinancialLoss");
   const companyId = watch("companyId");
 
+  // Track whether restricted-user flow already loaded systems (to skip the watch-based reload)
+  const skipSystemsReload = useRef(false);
+
+  // Restricted users: load company + systems together, then reset form at once
   useEffect(() => {
-    if (isRestricted) {
-      api.get("/auth/me").then(r => {
-        const userCompanies = r.data?.companies?.map((uc: any) => uc.company).filter(Boolean) || [];
+    if (!isRestricted) {
+      api.get("/companies").then(r => setCompanies(r.data || [])).finally(() => setCompaniesLoaded(true));
+      return;
+    }
+    (async () => {
+      try {
+        const r = await api.get("/auth/me");
+        let userCompanies: any[] = (r.data?.companies ?? []).map((uc: any) => uc.company).filter(Boolean);
+        if (userCompanies.length === 0 && r.data?.companyId) {
+          const r2 = await api.get(`/companies/${r.data.companyId}`);
+          if (r2.data) userCompanies = [r2.data];
+        }
+        setCompanies(userCompanies);
+        setCompaniesLoaded(true);
+
         if (userCompanies.length === 1) {
-          setCompanies(userCompanies);
-          setValue("companyId", userCompanies[0].id);
-        } else if (userCompanies.length > 1) {
-          setCompanies(userCompanies);
-        } else if (r.data?.companyId) {
-          api.get(`/companies/${r.data.companyId}`).then(r2 => {
-            setCompanies([r2.data]);
-            setValue("companyId", r2.data.id);
+          const company = userCompanies[0];
+          const sysRes = await api.get(`/systems?companyId=${company.id}`);
+          const sysList: any[] = sysRes.data || [];
+          setSystems(sysList);
+          setSystemsLoaded(true);
+          skipSystemsReload.current = true;
+          // reset sets all values at once — Controller picks them up immediately
+          reset({
+            hasFinancialLoss: false, type: "", priority: "",
+            companyId: company.id,
+            systemId: sysList.length === 1 ? sysList[0].id : "",
           });
         }
-      });
-    } else {
-      api.get("/companies").then(r => setCompanies(r.data || []));
-    }
-  }, [isRestricted, setValue]);
+      } catch { setCompaniesLoaded(true); }
+    })();
+  }, [isRestricted, reset]);
 
+  // Non-restricted users: load systems when they pick a company
   useEffect(() => {
+    if (isRestricted) return;
     setSystems([]);
+    setSystemsLoaded(false);
     setValue("systemId", "");
-    if (companyId) {
-      api.get(`/systems?companyId=${companyId}`).then(r => setSystems(r.data || []));
-    }
-  }, [companyId, setValue]);
+    if (!companyId) return;
+    api.get(`/systems?companyId=${companyId}`).then(r => {
+      const list: any[] = r.data || [];
+      setSystems(list);
+      if (list.length === 1) setValue("systemId", list[0].id, { shouldDirty: true });
+    }).finally(() => setSystemsLoaded(true));
+  }, [companyId, isRestricted, setValue]);
 
   const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -213,7 +252,24 @@ export default function NewTicketPage() {
           <h1 className="text-xl font-bold" style={{ color: "var(--foreground)" }}>تذكرة جديدة</h1>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        {/* No company assigned — blocked */}
+        {isRestricted && companiesLoaded && companies.length === 0 && (
+          <BlockedMessage icon="🏢"
+            title="الحساب غير مرتبط بشركة"
+            body="لا يمكنك رفع تذكرة لأن حسابك غير مرتبط بأي شركة. يرجى التواصل مع مدير النظام لإضافتك إلى شركة."
+            onBack={() => router.back()} />
+        )}
+
+        {/* Has company but no systems — blocked */}
+        {isRestricted && systemsLoaded && companies.length > 0 && systems.length === 0 && (
+          <BlockedMessage icon="⚙️"
+            title="لا توجد أنظمة مخصصة لك"
+            body="لم يتم تحديد الأنظمة التي ترفع عليها تذاكر، يرجى طلب من مدير النظام تعيين الأنظمة الخاصة بك."
+            onBack={() => router.back()} />
+        )}
+
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4"
+          style={{ display: isRestricted && ((companiesLoaded && companies.length === 0) || (systemsLoaded && companies.length > 0 && systems.length === 0)) ? "none" : undefined }}>
 
           {/* Section 1: Basic Info */}
           <FormSection title="معلومات أساسية">
@@ -236,10 +292,30 @@ export default function NewTicketPage() {
               </div>
               <div>
                 <Label>النظام *</Label>
-                <FormSelect register={register} name="systemId" disabled={!companyId} error={errors.systemId}>
-                  <option value="">اختر النظام...</option>
-                  {systems.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </FormSelect>
+                <Controller
+                  name="systemId"
+                  control={control}
+                  render={({ field, fieldState }) => (
+                    <div>
+                      <select
+                        value={field.value}
+                        onChange={(e) => field.onChange(e.target.value)}
+                        onBlur={(e: any) => { field.onBlur(); e.target.style.borderColor = "var(--border)"; }}
+                        disabled={!companyId || systems.length === 1}
+                        className="w-full rounded-xl px-4 py-2.5 text-sm outline-none cursor-pointer appearance-none disabled:opacity-40"
+                        style={fieldStyle}
+                        onFocus={(e: any) => (e.target.style.borderColor = "#4F46E5")}
+                      >
+                        <option value="">اختر النظام...</option>
+                        {systems.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                      {companyId && systemsLoaded && systems.length === 0
+                        ? <p className="text-amber-500 text-xs mt-1">لا توجد أنظمة لهذه الشركة — يرجى إضافة نظام أولاً</p>
+                        : fieldState.error && <p className="text-red-500 text-xs mt-1">{fieldState.error.message}</p>
+                      }
+                    </div>
+                  )}
+                />
               </div>
               <div>
                 <Label>نوع الطلب *</Label>

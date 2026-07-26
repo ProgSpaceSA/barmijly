@@ -1,9 +1,11 @@
 import {
   Injectable, NotFoundException, ForbiddenException, BadRequestException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuditService } from '../audit/audit.service';
+import { EmailService } from '../email/email.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { ApproveTicketDto, ApprovalDecision } from './dto/approve-ticket.dto';
@@ -18,6 +20,8 @@ export class TicketsService {
     private prisma: PrismaService,
     private notifications: NotificationsService,
     private audit: AuditService,
+    private email: EmailService,
+    private config: ConfigService,
   ) {}
 
   async findAll(user: any, filters: FilterTicketsDto) {
@@ -321,6 +325,14 @@ export class TicketsService {
         data: { ticketId: ticket.id, fromStatus: ticket.status, toStatus, changedById: userId, reason },
       }),
     ]);
+
+    // Notify ticket creator by email
+    const creator = await this.prisma.user.findUnique({ where: { id: ticket.creatorId }, select: { email: true } });
+    if (creator?.email) {
+      const frontendUrl = this.config.get<string>('FRONTEND_URL', 'https://barmijly.ai');
+      this.email.sendStatusUpdate(creator.email, ticket.title, toStatus, `${frontendUrl}/tickets/${ticket.id}`);
+    }
+
     return updated;
   }
 

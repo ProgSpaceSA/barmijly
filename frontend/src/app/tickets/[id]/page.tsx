@@ -295,9 +295,8 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     queryFn: () => api.get(`/systems/${ticket!.systemId}`).then(r => r.data),
     enabled: !!ticket?.systemId,
   });
-  const developerList: any[] = (systemData?.userSystems ?? [])
-    .filter((us: any) => us.user?.role === "DEVELOPER" && us.user?.isActive !== false)
-    .map((us: any) => us.user);
+  const developerList: any[] = (allUsers ?? [])
+    .filter((u: any) => u.role === "DEVELOPER" && u.isActive !== false);
 
   const [taskForm, setTaskForm] = useState(false);
   const [newTask, setNewTask] = useState({ title: "", description: "", assignedToId: "" });

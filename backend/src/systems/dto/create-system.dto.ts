@@ -16,6 +16,11 @@ export class CreateSystemDto {
   @IsString()
   description?: string;
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  domain?: string;
+
   @ApiProperty()
   @IsUUID()
   companyId: string;

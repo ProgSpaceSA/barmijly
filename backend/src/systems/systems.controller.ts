@@ -44,13 +44,13 @@ export class SystemsController {
   }
 
   @Post(':id/users')
-  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER)
+  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT)
   addUser(@Param('id') id: string, @Body('userId') userId: string) {
     return this.systemsService.addUser(id, userId);
   }
 
   @Delete(':id/users/:userId')
-  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER)
+  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT)
   removeUser(@Param('id') id: string, @Param('userId') userId: string) {
     return this.systemsService.removeUser(id, userId);
   }

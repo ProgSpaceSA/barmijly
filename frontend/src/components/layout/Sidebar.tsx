@@ -89,6 +89,9 @@ export function Sidebar() {
             <p className="text-xs font-semibold truncate" style={{ color: "var(--sidebar-foreground)" }}>
               {user?.firstName} {user?.lastName}
             </p>
+            <p className="truncate" style={{ fontSize: "0.6rem", color: "var(--sidebar-foreground-dim)" }}>
+              {user?.email}
+            </p>
             <p className="font-brm truncate" style={{ fontSize: "0.6rem", color: "var(--sidebar-foreground-dim)" }}>
               {ROLE_LABELS[user?.role ?? ""] ?? user?.role}
             </p>
