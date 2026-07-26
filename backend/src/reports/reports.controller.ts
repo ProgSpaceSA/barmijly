@@ -14,11 +14,13 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 export class ReportsController {
   constructor(private reportsService: ReportsService) {}
 
+  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT, UserRole.DEVELOPER, UserRole.QA, UserRole.SYSTEM_OWNER)
   @Get('dashboard')
   getDashboard(@CurrentUser() user: any, @Query('companyId') companyId?: string) {
     return this.reportsService.getDashboardStats(user.id, user.role, companyId);
   }
 
+  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT, UserRole.DEVELOPER, UserRole.QA, UserRole.SYSTEM_OWNER)
   @Get('overdue')
   getOverdue(@CurrentUser() user: any, @Query('companyId') companyId?: string) {
     return this.reportsService.getOverdueTickets(user.id, user.role, companyId);
