@@ -33,7 +33,8 @@ function AcceptForm() {
       const me = await api.get("/auth/me", { headers: { Authorization: `Bearer ${access_token}` } });
       setAuth(access_token, me.data);
       toast.success("تم تفعيل الحساب بنجاح");
-      router.replace("/dashboard");
+      // Hard redirect so Zustand persist fully hydrates from localStorage before AppShell mounts
+      window.location.href = "/dashboard";
     } catch (e: any) {
       toast.error(e.response?.data?.message || "الرابط غير صالح أو منتهي");
     }
