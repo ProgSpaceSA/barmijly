@@ -249,7 +249,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const qc = useQueryClient();
   const { data: ticket, isLoading } = useTicket(id);
   const actions = useTicketAction(id);
-  const { mutateAsync: addComment } = useAddComment(id);
+  const { mutateAsync: addComment, isPending: commentPending } = useAddComment(id);
 
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [comment, setComment] = useState("");
@@ -988,10 +988,10 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                       <Paperclip className="w-3.5 h-3.5" /> مرفق
                     </button>
                   </div>
-                  <button onClick={handleComment} disabled={!comment.trim() && !pendingFiles.length}
+                  <button onClick={handleComment} disabled={(!comment.trim() && !pendingFiles.length) || commentPending || uploading}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
                     style={{ background: "linear-gradient(135deg, #4F46E5, #6C5CE7)" }}>
-                    {uploading ? "جارٍ الرفع..." : <><Send className="w-3.5 h-3.5" /> إرسال</>}
+                    {(commentPending || uploading) ? "جارٍ الإرسال..." : <><Send className="w-3.5 h-3.5" /> إرسال</>}
                   </button>
                 </div>
               </div>
@@ -1036,7 +1036,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
               <p className="font-brm text-xs mb-3" style={{ color: "var(--muted-foreground)" }}>// الإجراءات</p>
 
               {ticket.status === "DRAFT" && ticket.creatorId === user?.id && (
-                <ActionBtn onClick={() => actions.submit.mutate(undefined)}>إرسال للمراجعة</ActionBtn>
+                <ActionBtn onClick={() => actions.submit.mutate(undefined)} disabled={actions.submit.isPending}>
+                  {actions.submit.isPending ? "..." : "إرسال للمراجعة"}
+                </ActionBtn>
               )}
 
               {ticket.status === "NEW" && isHead && (
@@ -1045,20 +1047,28 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                     placeholder="ملاحظات (اختياري)" rows={2}
                     className="w-full rounded-xl px-3 py-2 text-xs outline-none resize-none mb-2"
                     style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }} />
-                  <ActionBtn onClick={() => actions.approve.mutate({ decision: "APPROVED", notes: approvalNotes })}>اعتماد</ActionBtn>
-                  <ActionBtn variant="outline" onClick={() => actions.approve.mutate({ decision: "NEEDS_INFO", notes: approvalNotes })}>طلب معلومات</ActionBtn>
-                  <ActionBtn variant="danger" onClick={() => actions.approve.mutate({ decision: "REJECTED", notes: approvalNotes })}>رفض</ActionBtn>
+                  <ActionBtn onClick={() => actions.approve.mutate({ decision: "APPROVED", notes: approvalNotes })} disabled={actions.approve.isPending}>
+                    {actions.approve.isPending ? "..." : "اعتماد"}
+                  </ActionBtn>
+                  <ActionBtn variant="outline" onClick={() => actions.approve.mutate({ decision: "NEEDS_INFO", notes: approvalNotes })} disabled={actions.approve.isPending}>طلب معلومات</ActionBtn>
+                  <ActionBtn variant="danger" onClick={() => actions.approve.mutate({ decision: "REJECTED", notes: approvalNotes })} disabled={actions.approve.isPending}>رفض</ActionBtn>
                 </>
               )}
 
               {ticket.status === "SCHEDULED" && isDeveloper && (
-                <ActionBtn onClick={() => actions.startWork.mutate(undefined)}>بدء العمل</ActionBtn>
+                <ActionBtn onClick={() => actions.startWork.mutate(undefined)} disabled={actions.startWork.isPending}>
+                  {actions.startWork.isPending ? "..." : "بدء العمل"}
+                </ActionBtn>
               )}
               {ticket.status === "IN_PROGRESS" && isDeveloper && (
-                <ActionBtn onClick={() => actions.submitForTesting.mutate(undefined)}>إرسال للاختبار</ActionBtn>
+                <ActionBtn onClick={() => actions.submitForTesting.mutate(undefined)} disabled={actions.submitForTesting.isPending}>
+                  {actions.submitForTesting.isPending ? "..." : "إرسال للاختبار"}
+                </ActionBtn>
               )}
               {(ticket.status === "AWAITING_TESTING" || ticket.status === "AWAITING_OWNER_APPROVAL") && (isQA || isRequester) && (
-                <ActionBtn onClick={() => actions.approveCompletion.mutate(undefined)}>اعتماد الإكمال</ActionBtn>
+                <ActionBtn onClick={() => actions.approveCompletion.mutate(undefined)} disabled={actions.approveCompletion.isPending}>
+                  {actions.approveCompletion.isPending ? "..." : "اعتماد الإكمال"}
+                </ActionBtn>
               )}
               {ticket.status === "COMPLETED" && isManager && (
                 <>
@@ -1066,11 +1076,15 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                     placeholder="ملاحظات الإغلاق *" rows={2}
                     className="w-full rounded-xl px-3 py-2 text-xs outline-none resize-none mb-2"
                     style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }} />
-                  <ActionBtn onClick={() => actions.close.mutate({ closureNotes })} disabled={!closureNotes.trim()}>إغلاق التذكرة</ActionBtn>
+                  <ActionBtn onClick={() => actions.close.mutate({ closureNotes })} disabled={!closureNotes.trim() || actions.close.isPending}>
+                    {actions.close.isPending ? "..." : "إغلاق التذكرة"}
+                  </ActionBtn>
                 </>
               )}
               {["CLOSED", "REJECTED"].includes(ticket.status) && isManager && (
-                <ActionBtn variant="outline" onClick={() => actions.reopen.mutate(undefined)}>إعادة الفتح</ActionBtn>
+                <ActionBtn variant="outline" onClick={() => actions.reopen.mutate(undefined)} disabled={actions.reopen.isPending}>
+                  {actions.reopen.isPending ? "..." : "إعادة الفتح"}
+                </ActionBtn>
               )}
               {isManager && !ticket.isArchived && (
                 confirmArchive ? (
