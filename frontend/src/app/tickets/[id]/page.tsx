@@ -1065,7 +1065,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                   {actions.submitForTesting.isPending ? "..." : "إرسال للاختبار"}
                 </ActionBtn>
               )}
-              {(ticket.status === "AWAITING_TESTING" || ticket.status === "AWAITING_OWNER_APPROVAL") && (isQA || isRequester || user?.role === "PROJECT_MANAGER") && (
+              {(ticket.status === "AWAITING_TESTING" || ticket.status === "AWAITING_OWNER_APPROVAL") && (isQA || isRequester || isManager) && (
                 <ActionBtn onClick={() => actions.approveCompletion.mutate(undefined)} disabled={actions.approveCompletion.isPending}>
                   {actions.approveCompletion.isPending ? "..." : "اعتماد الإكمال"}
                 </ActionBtn>

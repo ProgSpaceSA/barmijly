@@ -289,13 +289,15 @@ export class TicketsService {
       throw new BadRequestException('Ticket is not awaiting testing/approval');
     }
 
-    // QA or PROJECT_MANAGER confirming the testing step → move to owner approval
-    if (user.role === UserRole.QA || (user.role === UserRole.PROJECT_MANAGER && ticket.status === TicketStatus.AWAITING_TESTING)) {
+    const isManagerRole = user.role === UserRole.PROJECT_MANAGER || user.role === UserRole.PROGRAMMING_HEAD;
+
+    // QA or manager confirming the testing step → move to owner approval
+    if (user.role === UserRole.QA || (isManagerRole && ticket.status === TicketStatus.AWAITING_TESTING)) {
       return this.changeStatus(ticket, TicketStatus.AWAITING_OWNER_APPROVAL, user.id);
     }
 
-    // PROJECT_MANAGER can also confirm the owner approval step → COMPLETED
-    if (user.role === UserRole.PROJECT_MANAGER && ticket.status === TicketStatus.AWAITING_OWNER_APPROVAL) {
+    // Manager can also confirm the owner approval step → COMPLETED
+    if (isManagerRole && ticket.status === TicketStatus.AWAITING_OWNER_APPROVAL) {
       return this.changeStatus(ticket, TicketStatus.COMPLETED, user.id);
     }
 
