@@ -257,6 +257,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const [approvalNotes, setApprovalNotes] = useState("");
   const [closureNotes, setClosureNotes] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useState(false);
   const [copied, setCopied] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
@@ -397,7 +398,8 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   };
 
   const isHead     = user?.role === "PROGRAMMING_HEAD";
-  const isManager  = user?.role === "PROJECT_MANAGER" || isHead;
+  const isSenior   = user?.role === "SENIOR_MANAGEMENT";
+  const isManager  = user?.role === "PROJECT_MANAGER" || isHead || isSenior;
   const isDeveloper = user?.role === "DEVELOPER";
   const isQA       = user?.role === "QA";
   const isRequester = user?.role === "TICKET_REQUESTER";
@@ -1069,8 +1071,37 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
               {["CLOSED", "REJECTED"].includes(ticket.status) && isManager && (
                 <ActionBtn variant="outline" onClick={() => actions.reopen.mutate(undefined)}>إعادة الفتح</ActionBtn>
               )}
-              {isManager && (
-                <ActionBtn variant="ghost" onClick={() => actions.archive.mutate(undefined)}>أرشفة</ActionBtn>
+              {isManager && !ticket.isArchived && (
+                confirmArchive ? (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { actions.archive.mutate(undefined); setConfirmArchive(false); }}
+                      disabled={actions.archive.isPending}
+                      className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
+                      style={{ background: "rgba(239,68,68,0.1)", color: "#EF4444", border: "1px solid rgba(239,68,68,0.3)" }}
+                    >
+                      {actions.archive.isPending ? "..." : "تأكيد"}
+                    </button>
+                    <button
+                      onClick={() => setConfirmArchive(false)}
+                      className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
+                      style={{ border: "1px solid var(--border)", color: "var(--muted-foreground)" }}
+                    >
+                      إلغاء
+                    </button>
+                  </div>
+                ) : (
+                  <ActionBtn variant="ghost" onClick={() => setConfirmArchive(true)}>أرشفة</ActionBtn>
+                )
+              )}
+              {isManager && ticket.isArchived && (
+                <ActionBtn
+                  variant="outline"
+                  onClick={() => actions.unarchive.mutate(undefined)}
+                  disabled={actions.unarchive.isPending}
+                >
+                  {actions.unarchive.isPending ? "..." : "إلغاء الأرشفة"}
+                </ActionBtn>
               )}
             </div>
           </div>

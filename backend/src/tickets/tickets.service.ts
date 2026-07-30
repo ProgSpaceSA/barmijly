@@ -222,6 +222,21 @@ export class TicketsService {
       ticketId: id,
     });
 
+    const frontendUrl = this.config.get<string>('FRONTEND_URL') || 'https://barmijly.ai';
+    const developer = await this.prisma.user.findUnique({
+      where: { id: developerId },
+      select: { email: true, firstName: true },
+    });
+    if (developer?.email) {
+      this.email.sendTicketAssigned(
+        developer.email,
+        developer.firstName,
+        ticket.title,
+        `${frontendUrl}/tickets/${id}`,
+        `${user.firstName} ${user.lastName}`,
+      );
+    }
+
     return this.findById(id);
   }
 
@@ -281,9 +296,15 @@ export class TicketsService {
   }
 
   async archive(id: string, user: any) {
-    this.requireRole(user, [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD]);
+    this.requireRole(user, [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT]);
     await this.findById(id);
     return this.prisma.ticket.update({ where: { id }, data: { isArchived: true } });
+  }
+
+  async unarchive(id: string, user: any) {
+    this.requireRole(user, [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT]);
+    await this.findById(id);
+    return this.prisma.ticket.update({ where: { id }, data: { isArchived: false } });
   }
 
   async reopen(id: string, user: any) {

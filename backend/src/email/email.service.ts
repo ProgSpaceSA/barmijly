@@ -71,6 +71,48 @@ export class EmailService {
     `);
   }
 
+  async sendTicketAssigned(to: string, devFirstName: string, ticketTitle: string, ticketUrl: string, assignerName: string) {
+    await this.send(to, `تم إسناد تذكرة إليك: ${ticketTitle}`, `
+      <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 32px; background: #f8fafc; border-radius: 12px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="display: inline-block; background: #4338CA; color: white; padding: 12px 24px; border-radius: 8px; font-size: 20px; font-weight: bold;">برمجلي</div>
+        </div>
+        <h2 style="color: #1e293b;">مرحباً ${devFirstName}،</h2>
+        <p style="color: #475569;">قام <strong>${assignerName}</strong> بإسناد التذكرة التالية إليك:</p>
+        <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 20px 0;">
+          <p style="margin: 0; font-size: 15px; font-weight: bold; color: #1e293b;">${ticketTitle}</p>
+        </div>
+        <p style="color: #475569;">يُرجى فتح التذكرة ومراجعة تفاصيلها، ثم البدء بالعمل عليها في أقرب وقت ممكن.</p>
+        <div style="text-align: center; margin: 32px 0;">
+          <a href="${ticketUrl}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #4338CA, #6366F1); color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px;">عرض التذكرة</a>
+        </div>
+        <p style="color: #94a3b8; font-size: 13px; text-align: center;">برمجلي · نظام إدارة طلبات البرمجة</p>
+      </div>
+    `);
+  }
+
+  async sendTaskAssigned(to: string, devFirstName: string, taskTitle: string, ticketTitle: string, ticketUrl: string, assignerName: string) {
+    await this.send(to, `مهمة جديدة: ${taskTitle}`, `
+      <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 32px; background: #f8fafc; border-radius: 12px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="display: inline-block; background: #4338CA; color: white; padding: 12px 24px; border-radius: 8px; font-size: 20px; font-weight: bold;">برمجلي</div>
+        </div>
+        <h2 style="color: #1e293b;">مرحباً ${devFirstName}،</h2>
+        <p style="color: #475569;">كلّفك <strong>${assignerName}</strong> بمهمة جديدة ضمن التذكرة التالية:</p>
+        <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 20px 0;">
+          <p style="margin: 0 0 6px; font-size: 13px; color: #64748b;">التذكرة</p>
+          <p style="margin: 0 0 12px; font-size: 14px; color: #475569;">${ticketTitle}</p>
+          <p style="margin: 0 0 6px; font-size: 13px; color: #64748b;">المهمة</p>
+          <p style="margin: 0; font-size: 15px; font-weight: bold; color: #1e293b;">${taskTitle}</p>
+        </div>
+        <div style="text-align: center; margin: 32px 0;">
+          <a href="${ticketUrl}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #4338CA, #6366F1); color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px;">فتح التذكرة</a>
+        </div>
+        <p style="color: #94a3b8; font-size: 13px; text-align: center;">برمجلي · نظام إدارة طلبات البرمجة</p>
+      </div>
+    `);
+  }
+
   async sendStatusUpdate(to: string, ticketTitle: string, status: string, ticketUrl: string) {
     await this.send(to, `تحديث التذكرة: ${ticketTitle}`, `
       <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 32px; background: #f8fafc; border-radius: 12px;">

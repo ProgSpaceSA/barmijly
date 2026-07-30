@@ -43,6 +43,7 @@ export function useTicketAction(id: string) {
     approveCompletion: useMutation({ mutationFn: () => api.patch(`/tickets/${id}/approve-completion`).then(r => r.data), onSuccess: () => { invalidate(); toast.success("تم الاعتماد"); }, onError: (e: any) => toast.error(e.response?.data?.message || "حدث خطأ") }),
     close: useMutation({ mutationFn: (data: any) => api.patch(`/tickets/${id}/close`, data).then(r => r.data), onSuccess: () => { invalidate(); toast.success("تم الإغلاق"); }, onError: (e: any) => toast.error(e.response?.data?.message || "حدث خطأ") }),
     archive: useMutation({ mutationFn: () => api.patch(`/tickets/${id}/archive`).then(r => r.data), onSuccess: () => { invalidate(); toast.success("تم الأرشفة"); }, onError: (e: any) => toast.error(e.response?.data?.message || "حدث خطأ") }),
+    unarchive: useMutation({ mutationFn: () => api.patch(`/tickets/${id}/unarchive`).then(r => r.data), onSuccess: () => { invalidate(); toast.success("تم إلغاء الأرشفة"); }, onError: (e: any) => toast.error(e.response?.data?.message || "حدث خطأ") }),
     reopen: useMutation({ mutationFn: () => api.patch(`/tickets/${id}/reopen`).then(r => r.data), onSuccess: () => { invalidate(); toast.success("تمت إعادة الفتح"); }, onError: (e: any) => toast.error(e.response?.data?.message || "حدث خطأ") }),
   };
 }

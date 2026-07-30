@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { EmailService } from '../email/email.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { UserRole, NotificationType } from '@prisma/client';
@@ -12,6 +14,8 @@ export class TasksService {
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
+    private email: EmailService,
+    private config: ConfigService,
   ) {}
 
   async create(ticketId: string, dto: CreateTaskDto, user: any) {
@@ -36,6 +40,22 @@ export class TasksService {
         body: `${user.firstName} ${user.lastName} كلّفك بمهمة في التذكرة "${ticket.title}"`,
         ticketId,
       });
+
+      const frontendUrl = this.config.get<string>('FRONTEND_URL') || 'https://barmijly.ai';
+      const developer = await this.prisma.user.findUnique({
+        where: { id: dto.assignedToId },
+        select: { email: true, firstName: true },
+      });
+      if (developer?.email) {
+        this.email.sendTaskAssigned(
+          developer.email,
+          developer.firstName,
+          task.title,
+          ticket.title,
+          `${frontendUrl}/tickets/${ticketId}`,
+          `${user.firstName} ${user.lastName}`,
+        );
+      }
     }
 
     return task;

@@ -5,13 +5,14 @@ import { useAuthStore } from "@/store/auth";
 import { useTheme } from "@/hooks/useTheme";
 import {
   LayoutDashboard, Ticket, Users, Building2,
-  BarChart3, Bell, LogOut, Layers, Mail, UserPlus, Sun, Moon,
+  BarChart3, Bell, LogOut, Layers, Mail, UserPlus, Sun, Moon, Archive,
 } from "lucide-react";
 import { ROLE_LABELS } from "@/lib/constants";
 
 const navItems = [
   { href: "/dashboard",       label: "لوحة التحكم",      icon: LayoutDashboard, roles: [] },
   { href: "/tickets",         label: "التذاكر",           icon: Ticket,          roles: [] },
+  { href: "/tickets/archived", label: "الأرشيف",          icon: Archive,         roles: ["PROGRAMMING_HEAD", "PROJECT_MANAGER", "SENIOR_MANAGEMENT"] },
   { href: "/notifications",   label: "الإشعارات",         icon: Bell,            roles: [] },
   { href: "/reports",         label: "التقارير",          icon: BarChart3,       roles: ["PROGRAMMING_HEAD", "PROJECT_MANAGER", "SENIOR_MANAGEMENT"] },
   { href: "/users",           label: "المستخدمون",        icon: Users,           roles: ["PROGRAMMING_HEAD", "PROJECT_MANAGER", "SENIOR_MANAGEMENT"] },
@@ -54,7 +55,7 @@ export function Sidebar() {
       <nav className="flex-1 px-3 py-4 overflow-y-auto" style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
         {visibleItems.map((item) => {
           const Icon = item.icon;
-          const active = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
+          const active = pathname === item.href || (item.href !== "/dashboard" && item.href !== "/tickets" && pathname.startsWith(item.href)) || (item.href === "/tickets" && (pathname === "/tickets" || pathname.startsWith("/tickets/new") || pathname.startsWith("/tickets/") && !pathname.startsWith("/tickets/archived")));
           return (
             <Link
               key={item.href}

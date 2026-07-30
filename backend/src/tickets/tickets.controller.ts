@@ -79,6 +79,11 @@ export class TicketsController {
     return this.ticketsService.archive(id, user);
   }
 
+  @Patch(':id/unarchive')
+  unarchive(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.ticketsService.unarchive(id, user);
+  }
+
   @Patch(':id/reopen')
   reopen(@Param('id') id: string, @CurrentUser() user: any) {
     return this.ticketsService.reopen(id, user);
