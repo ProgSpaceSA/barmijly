@@ -17,6 +17,11 @@ const MANAGERS = [UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.
 export class UsersController {
   constructor(private usersService: UsersService) {}
 
+  @Get('mentionable')
+  findMentionable() {
+    return this.usersService.findMentionable();
+  }
+
   @Get()
   @Roles(...MANAGERS)
   findAll(

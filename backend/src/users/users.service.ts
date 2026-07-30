@@ -9,6 +9,14 @@ import * as bcrypt from 'bcrypt';
 export class UsersService {
   constructor(private prisma: PrismaService) {}
 
+  async findMentionable() {
+    return this.prisma.user.findMany({
+      where: { isActive: true },
+      select: { id: true, firstName: true, lastName: true, role: true, email: true },
+      orderBy: { firstName: 'asc' },
+    });
+  }
+
   async findAll(filters: { role?: UserRole; companyId?: string; isActive?: boolean }) {
     return this.prisma.user.findMany({
       where: {

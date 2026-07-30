@@ -277,8 +277,8 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   }, [mentionQuery]);
 
   const { data: allUsers } = useQuery({
-    queryKey: ["users-list"],
-    queryFn: () => api.get("/users").then(r => r.data),
+    queryKey: ["users-mentionable"],
+    queryFn: () => api.get("/users/mentionable").then(r => r.data),
     staleTime: 60_000,
   });
   const userList: any[] = allUsers ?? [];
