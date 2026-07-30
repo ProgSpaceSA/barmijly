@@ -351,7 +351,8 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         u.id === ticket.creatorId ||
         u.id === ticket.systemOwnerId ||
         assignedDevIds.has(u.id) ||
-        (u.role === "SYSTEM_OWNER" && u.companyId === ticket.companyId)
+        (u.role === "SYSTEM_OWNER" && u.companyId === ticket.companyId) ||
+        (u.role === "DEVELOPER" && u.isActive !== false)
       )
     : userList;
 

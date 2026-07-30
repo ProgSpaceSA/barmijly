@@ -51,7 +51,19 @@ export class TicketsService {
     if (user.role === UserRole.TICKET_REQUESTER) {
       where.creatorId = user.id;
     } else if (user.role === UserRole.DEVELOPER) {
-      where.assignments = { some: { developerId: user.id, isActive: true } };
+      const [userSystems, userCompanies] = await Promise.all([
+        this.prisma.userSystem.findMany({ where: { userId: user.id }, select: { systemId: true } }),
+        this.prisma.userCompany.findMany({ where: { userId: user.id }, select: { companyId: true } }),
+      ]);
+      const systemIds = userSystems.map(us => us.systemId);
+      const companyIds = userCompanies.map(uc => uc.companyId);
+      where.OR = [
+        { assignments: { some: { developerId: user.id, isActive: true } } },
+        { comments: { some: { mentions: { hasSome: [user.id] } } } },
+        ...(systemIds.length ? [{ systemId: { in: systemIds } }] : []),
+        ...(companyIds.length ? [{ companyId: { in: companyIds } }] : []),
+      ];
+      delete where.assignments;
     } else if (user.role === UserRole.SYSTEM_OWNER) {
       const userCompanies = await this.prisma.userCompany.findMany({ where: { userId: user.id }, select: { companyId: true } });
       const companyIds = userCompanies.map(uc => uc.companyId);
