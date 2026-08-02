@@ -14,9 +14,10 @@ import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import {
   ArrowRight, Send, Clock, User, Building2, Monitor, Lock,
-  Paperclip, FileText, Trash2, Download, Copy, Check, AlertTriangle, X, AtSign,
+  Paperclip, FileText, Trash2, Download, Copy, Check, AlertTriangle, X, AtSign, Plus, Eye, Loader2,
 } from "lucide-react";
 import api from "@/lib/api";
+import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
@@ -65,6 +66,10 @@ function ActionBtn({ onClick, variant = "primary", disabled, children }: {
       {children}
     </button>
   );
+}
+
+function Spinner() {
+  return <Loader2 className="w-3.5 h-3.5 animate-spin inline-block ml-1" />;
 }
 
 // ── Lightbox ──────────────────────────────────────────────────────────────
@@ -258,6 +263,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const [closureNotes, setClosureNotes] = useState("");
   const [uploading, setUploading] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
@@ -300,8 +306,13 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     .filter((u: any) => u.role === "DEVELOPER" && u.isActive !== false);
 
   const [taskForm, setTaskForm] = useState(false);
-  const [newTask, setNewTask] = useState({ title: "", description: "", assignedToId: "" });
+  const [newTask, setNewTask] = useState({ title: "", description: "", assignedToId: "", dueDate: "" });
   const [savingTask, setSavingTask] = useState(false);
+  const [assignForm, setAssignForm] = useState(false);
+  const [assignDevId, setAssignDevId] = useState("");
+  const [assignDeadline, setAssignDeadline] = useState("");
+  const [assignStartDate, setAssignStartDate] = useState("");
+  const [assignHours, setAssignHours] = useState("");
   const [tasksExpanded, setTasksExpanded] = useState(false);
   const [taskFiles, setTaskFiles] = useState<File[]>([]);
   const taskFileRef = useRef<HTMLInputElement>(null);
@@ -310,7 +321,8 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     if (!newTask.title.trim() || !newTask.assignedToId) return;
     setSavingTask(true);
     try {
-      const created = await api.post(`/tickets/${id}/tasks`, newTask);
+      const taskPayload = Object.fromEntries(Object.entries(newTask).filter(([, v]) => v !== ""));
+      const created = await api.post(`/tickets/${id}/tasks`, taskPayload);
       const taskId = created.data?.id;
       if (taskId && taskFiles.length) {
         for (const file of taskFiles) {
@@ -319,7 +331,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
           await api.post(`/attachments/upload?taskId=${taskId}`, fd, { headers: { "Content-Type": "multipart/form-data" } });
         }
       }
-      setNewTask({ title: "", description: "", assignedToId: "" });
+      setNewTask({ title: "", description: "", assignedToId: "", dueDate: "" });
       setTaskFiles([]);
       setTaskForm(false);
       refetchTasks();
@@ -407,16 +419,21 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
 
   const handleComment = async () => {
     if (!comment.trim() && !pendingFiles.length) return;
+    const filesToUpload = [...pendingFiles];
     const newComment = await addComment({
       content: comment,
       visibility: commentVisibility,
       mentions: selectedMentions.map(m => m.id),
     });
+    setComment("");
+    setSelectedMentions([]);
+    setPendingFiles([]);
+    setMentionQuery(null);
     const commentId = newComment?.id;
-    if (pendingFiles.length && commentId) {
+    if (filesToUpload.length && commentId) {
       setUploading(true);
       try {
-        for (const file of pendingFiles) {
+        for (const file of filesToUpload) {
           const form = new FormData();
           form.append("file", file);
           await api.post(`/attachments/upload?ticketId=${id}&commentId=${commentId}`, form, {
@@ -426,10 +443,6 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         qc.invalidateQueries({ queryKey: ["ticket", id] });
       } finally { setUploading(false); }
     }
-    setComment("");
-    setSelectedMentions([]);
-    setPendingFiles([]);
-    setMentionQuery(null);
   };
 
   const handleAttachUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -447,8 +460,15 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   };
 
   const handleDeleteAttachment = async (aid: string) => {
-    await api.delete(`/attachments/${aid}`);
-    qc.invalidateQueries({ queryKey: ["ticket", id] });
+    try {
+      await api.delete(`/attachments/${aid}`);
+      qc.invalidateQueries({ queryKey: ["ticket", id] });
+    } catch (e: any) {
+      const { toast } = await import("sonner");
+      toast.error(e.response?.data?.message || "تعذّر حذف المرفق");
+    } finally {
+      setConfirmDeleteId(null);
+    }
   };
 
   const addCommentFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -558,9 +578,12 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                           <img src={`${FILE_BASE}${att.url}`} alt={att.fileName} className="w-full h-full object-cover" />
                           <div className="absolute inset-0 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-all" style={{ background: "rgba(0,0,0,0.45)" }}>
                             <button onClick={(e) => { e.stopPropagation(); setLightboxUrl(`${FILE_BASE}${att.url}`); }} className="p-1.5 rounded-full bg-white text-slate-700 hover:text-indigo-600" title="عرض">
-                              <Download className="w-3.5 h-3.5" />
+                              <Eye className="w-3.5 h-3.5" />
                             </button>
-                            <button onClick={(e) => { e.stopPropagation(); handleDeleteAttachment(att.id); }} className="p-1.5 rounded-full bg-white text-slate-700 hover:text-red-600">
+                            <a href={`${FILE_BASE}${att.url}`} download={att.fileName} onClick={e => e.stopPropagation()} className="p-1.5 rounded-full bg-white text-slate-700 hover:text-indigo-600" title="تحميل">
+                              <Download className="w-3.5 h-3.5" />
+                            </a>
+                            <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(att.id); }} className="p-1.5 rounded-full bg-white text-slate-700 hover:text-red-600" title="حذف">
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
@@ -578,14 +601,16 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                             <p className="font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>{formatBytes(att.fileSize)}</p>
                           </div>
                           <div className="flex items-center gap-1">
-                            <a href={`${FILE_BASE}${att.url}`} target="_blank" rel="noreferrer" className="p-1.5 rounded-lg transition-colors" style={{ color: "var(--muted-foreground)" }}
+                            <a href={`${FILE_BASE}${att.url}`} download={att.fileName} className="p-1.5 rounded-lg transition-colors" style={{ color: "var(--muted-foreground)" }}
                               onMouseEnter={e => (e.currentTarget.style.color = "#4F46E5")}
-                              onMouseLeave={e => (e.currentTarget.style.color = "var(--muted-foreground)")}>
+                              onMouseLeave={e => (e.currentTarget.style.color = "var(--muted-foreground)")}
+                              title="تحميل">
                               <Download className="w-4 h-4" />
                             </a>
-                            <button onClick={() => handleDeleteAttachment(att.id)} className="p-1.5 rounded-lg transition-colors" style={{ color: "var(--muted-foreground)" }}
+                            <button onClick={() => setConfirmDeleteId(att.id)} className="p-1.5 rounded-lg transition-colors" style={{ color: "var(--muted-foreground)" }}
                               onMouseEnter={e => (e.currentTarget.style.color = "#EF4444")}
-                              onMouseLeave={e => (e.currentTarget.style.color = "var(--muted-foreground)")}>
+                              onMouseLeave={e => (e.currentTarget.style.color = "var(--muted-foreground)")}
+                              title="حذف">
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
@@ -621,6 +646,11 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                           {h.fromStatus && <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>←</span>}
                           <StatusBadge status={h.toStatus} />
                         </div>
+                        {h.changedBy && (
+                          <p className="text-xs mb-0.5 font-medium" style={{ color: "var(--foreground)" }}>
+                            {h.changedBy.firstName} {h.changedBy.lastName}
+                          </p>
+                        )}
                         {h.reason && <p className="text-xs mb-0.5" style={{ color: "var(--muted-foreground)" }}>{h.reason}</p>}
                         <RelativeTime date={h.createdAt} />
                       </div>
@@ -738,6 +768,20 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                 {isManager && (
                   taskForm ? (
                     <div className="space-y-2 pt-2" style={{ borderTop: "1px solid var(--border)" }}>
+                      <Select value={newTask.assignedToId} onValueChange={(v: string | null) => v && setNewTask(p => ({ ...p, assignedToId: v }))}>
+                        <SelectTrigger className="w-full h-9 text-sm">
+                          <SelectValue placeholder="اختر المطور">
+                            {newTask.assignedToId
+                              ? (() => { const d = developerList.find(u => u.id === newTask.assignedToId); return d ? `${d.firstName} ${d.lastName}` : "اختر المطور"; })()
+                              : "اختر المطور"}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {developerList.map((u: any) => (
+                            <SelectItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <input
                         value={newTask.title}
                         onChange={e => setNewTask(p => ({ ...p, title: e.target.value }))}
@@ -757,14 +801,15 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                         onFocus={e => (e.target.style.borderColor = "#4F46E5")}
                         onBlur={e => (e.target.style.borderColor = "var(--border)")}
                       />
-                      <Select value={newTask.assignedToId} onValueChange={(v: string | null) => v && setNewTask(p => ({ ...p, assignedToId: v }))}>
-                        <SelectTrigger className="w-full h-9 text-sm"><SelectValue placeholder="اختر المطور" /></SelectTrigger>
-                        <SelectContent>
-                          {developerList.map((u: any) => (
-                            <SelectItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <input
+                        type="date"
+                        value={newTask.dueDate || (ticket.estimatedDeadline ? ticket.estimatedDeadline.slice(0, 10) : "")}
+                        onChange={e => setNewTask(p => ({ ...p, dueDate: e.target.value }))}
+                        className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+                        style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }}
+                        onFocus={e => (e.target.style.borderColor = "#4F46E5")}
+                        onBlur={e => (e.target.style.borderColor = "var(--border)")}
+                      />
 
                       {/* Task file attachments */}
                       <input ref={taskFileRef} type="file" multiple className="hidden"
@@ -809,7 +854,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                           style={{ background: "linear-gradient(135deg, #4F46E5, #6C5CE7)" }}>
                           {savingTask ? "جارٍ الرفع..." : "إنشاء"}
                         </button>
-                        <button onClick={() => { setTaskForm(false); setNewTask({ title: "", description: "", assignedToId: "" }); setTaskFiles([]); }}
+                        <button onClick={() => { setTaskForm(false); setNewTask({ title: "", description: "", assignedToId: "", dueDate: "" }); setTaskFiles([]); }}
                           className="px-4 py-2 rounded-xl text-sm font-medium transition-colors"
                           style={{ color: "var(--muted-foreground)", background: "var(--muted)" }}>
                           إلغاء
@@ -820,7 +865,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                     <button onClick={() => setTaskForm(true)}
                       className="mt-1 flex items-center gap-1.5 text-xs font-semibold transition-colors"
                       style={{ color: "#4F46E5" }}>
-                      <Check className="w-3.5 h-3.5" /> إضافة مهمة
+                      <Plus className="w-3.5 h-3.5" /> إضافة مهمة
                     </button>
                   )
                 )}
@@ -885,17 +930,6 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 <span className="truncate max-w-48">{att.fileName}</span>
                                 <span className="font-brm opacity-60 shrink-0">{formatBytes(att.fileSize)}</span>
                               </a>
-                            ))}
-                          </div>
-                        )}
-                        {/* Mentions pills */}
-                        {mentionedInComment.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mt-2">
-                            {mentionedInComment.map((u: any) => (
-                              <span key={u.id} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
-                                style={{ background: "rgba(79,70,229,0.1)", color: "#4F46E5" }}>
-                                <AtSign className="w-3 h-3" />{u.firstName} {u.lastName}
-                              </span>
                             ))}
                           </div>
                         )}
@@ -972,7 +1006,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                   <div className="flex items-center gap-2">
                     {!isRequester && (
                       <Select value={commentVisibility} onValueChange={(v: string | null) => v && setCommentVisibility(v)}>
-                        <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="w-32 h-8 text-xs">
+                          <SelectValue>{commentVisibility === "PUBLIC" ? "عام" : "داخلي"}</SelectValue>
+                        </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="PUBLIC">عام</SelectItem>
                           <SelectItem value="INTERNAL">داخلي</SelectItem>
@@ -1004,10 +1040,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
             {/* Ticket info */}
             <div className="rounded-xl p-4 space-y-3" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
               {[
-                { icon: User,     label: `${ticket.creator?.firstName} ${ticket.creator?.lastName}` },
-                { icon: Building2, label: ticket.company?.name },
-                { icon: Monitor,  label: ticket.system?.name },
-                { icon: Clock,    label: format(new Date(ticket.createdAt), "d MMM yyyy", { locale: ar }) },
+                { icon: User,    label: `${ticket.creator?.firstName} ${ticket.creator?.lastName}` },
+                { icon: Monitor, label: ticket.system?.name },
+                { icon: Clock,   label: format(new Date(ticket.createdAt), "d MMM yyyy", { locale: ar }) },
                 ...(ticket.estimatedDeadline ? [{ icon: Clock, label: `التسليم: ${format(new Date(ticket.estimatedDeadline), "d MMM yyyy", { locale: ar })}` }] : []),
               ].map(({ icon: Icon, label }, i) => label && (
                 <div key={i} className="flex items-center gap-2 text-sm" style={{ color: "var(--muted-foreground)" }}>
@@ -1015,6 +1050,12 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                   <span>{label}</span>
                 </div>
               ))}
+              {ticket.company && (
+                <div className="flex items-center gap-2 text-sm" style={{ color: "var(--muted-foreground)" }}>
+                  <CompanyLogo company={ticket.company} size="xs" />
+                  <span>{ticket.company.name}</span>
+                </div>
+              )}
               {ticket.assignments?.[0]?.developer && (
                 <div className="flex items-center gap-2 pt-1" style={{ borderTop: "1px solid var(--border)" }}>
                   <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-indigo-300"
@@ -1037,7 +1078,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
 
               {ticket.status === "DRAFT" && ticket.creatorId === user?.id && (
                 <ActionBtn onClick={() => actions.submit.mutate(undefined)} disabled={actions.submit.isPending}>
-                  {actions.submit.isPending ? "..." : "إرسال للمراجعة"}
+                  {actions.submit.isPending ? <><Spinner />جارٍ الإرسال...</> : "إرسال للمراجعة"}
                 </ActionBtn>
               )}
 
@@ -1048,26 +1089,99 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                     className="w-full rounded-xl px-3 py-2 text-xs outline-none resize-none mb-2"
                     style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }} />
                   <ActionBtn onClick={() => actions.approve.mutate({ decision: "APPROVED", notes: approvalNotes })} disabled={actions.approve.isPending}>
-                    {actions.approve.isPending ? "..." : "اعتماد"}
+                    {actions.approve.isPending ? <><Spinner />جارٍ الاعتماد...</> : "اعتماد"}
                   </ActionBtn>
-                  <ActionBtn variant="outline" onClick={() => actions.approve.mutate({ decision: "NEEDS_INFO", notes: approvalNotes })} disabled={actions.approve.isPending}>طلب معلومات</ActionBtn>
-                  <ActionBtn variant="danger" onClick={() => actions.approve.mutate({ decision: "REJECTED", notes: approvalNotes })} disabled={actions.approve.isPending}>رفض</ActionBtn>
+                  <ActionBtn variant="outline" onClick={() => actions.approve.mutate({ decision: "NEEDS_INFO", notes: approvalNotes })} disabled={actions.approve.isPending}>
+                    {actions.approve.isPending ? <><Spinner />جارٍ الإرسال...</> : "طلب معلومات"}
+                  </ActionBtn>
+                  <ActionBtn variant="danger" onClick={() => actions.approve.mutate({ decision: "REJECTED", notes: approvalNotes })} disabled={actions.approve.isPending}>
+                    {actions.approve.isPending ? <><Spinner />جارٍ الرفض...</> : "رفض"}
+                  </ActionBtn>
                 </>
+              )}
+
+              {ticket.status === "APPROVED" && isManager && (
+                assignForm ? (
+                  <div className="space-y-2">
+                    <Select value={assignDevId} onValueChange={v => v && setAssignDevId(v)}>
+                      <SelectTrigger className="w-full h-9 text-xs">
+                        <SelectValue placeholder="اختر المطور">
+                          {assignDevId
+                            ? (() => { const d = developerList.find(x => x.id === assignDevId); return d ? `${d.firstName} ${d.lastName}` : "اختر المطور"; })()
+                            : "اختر المطور"}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {developerList.map((d: any) => (
+                          <SelectItem key={d.id} value={d.id}>{d.firstName} {d.lastName}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <div>
+                      <p className="font-brm text-xs mb-1" style={{ color: "var(--muted-foreground)" }}>تاريخ البدء</p>
+                      <input type="date" value={assignStartDate} onChange={e => setAssignStartDate(e.target.value)}
+                        className="w-full rounded-xl px-3 py-2 text-xs outline-none"
+                        style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }}
+                        onFocus={e => (e.target.style.borderColor = "#4F46E5")}
+                        onBlur={e => (e.target.style.borderColor = "var(--border)")} />
+                    </div>
+                    <div>
+                      <p className="font-brm text-xs mb-1" style={{ color: "var(--muted-foreground)" }}>تاريخ التسليم المتوقع <span style={{ color: "#EF4444" }}>*</span></p>
+                      <input type="date" value={assignDeadline} onChange={e => setAssignDeadline(e.target.value)}
+                        className="w-full rounded-xl px-3 py-2 text-xs outline-none"
+                        style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }}
+                        onFocus={e => (e.target.style.borderColor = "#4F46E5")}
+                        onBlur={e => (e.target.style.borderColor = "var(--border)")} />
+                    </div>
+                    <div>
+                      <p className="font-brm text-xs mb-1" style={{ color: "var(--muted-foreground)" }}>الساعات المقدّرة</p>
+                      <input type="number" min="1" value={assignHours} onChange={e => setAssignHours(e.target.value)}
+                        placeholder="مثال: 8"
+                        className="w-full rounded-xl px-3 py-2 text-xs outline-none"
+                        style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }}
+                        onFocus={e => (e.target.style.borderColor = "#4F46E5")}
+                        onBlur={e => (e.target.style.borderColor = "var(--border)")} />
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <ActionBtn
+                        onClick={() => {
+                          if (!assignDevId || !assignDeadline) return;
+                          actions.assign.mutate({
+                            developerId: assignDevId,
+                            estimatedDeadline: assignDeadline,
+                            ...(assignStartDate ? { startDate: assignStartDate } : {}),
+                            ...(assignHours ? { estimatedHours: parseInt(assignHours) } : {}),
+                          });
+                          setAssignForm(false); setAssignDevId(""); setAssignDeadline(""); setAssignStartDate(""); setAssignHours("");
+                        }}
+                        disabled={!assignDevId || !assignDeadline || actions.assign.isPending}>
+                        {actions.assign.isPending ? <><Spinner />جارٍ الإسناد...</> : "جدولة وإسناد"}
+                      </ActionBtn>
+                      <button onClick={() => { setAssignForm(false); setAssignDevId(""); setAssignDeadline(""); setAssignStartDate(""); setAssignHours(""); }}
+                        className="px-3 py-2.5 rounded-xl text-xs font-medium transition-all"
+                        style={{ border: "1px solid var(--border)", color: "var(--muted-foreground)" }}>
+                        إلغاء
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <ActionBtn onClick={() => setAssignForm(true)}>إسناد وجدولة</ActionBtn>
+                )
               )}
 
               {ticket.status === "SCHEDULED" && isDeveloper && (
                 <ActionBtn onClick={() => actions.startWork.mutate(undefined)} disabled={actions.startWork.isPending}>
-                  {actions.startWork.isPending ? "..." : "بدء العمل"}
+                  {actions.startWork.isPending ? <><Spinner />جارٍ التحديث...</> : "بدء العمل"}
                 </ActionBtn>
               )}
               {ticket.status === "IN_PROGRESS" && isDeveloper && (
                 <ActionBtn onClick={() => actions.submitForTesting.mutate(undefined)} disabled={actions.submitForTesting.isPending}>
-                  {actions.submitForTesting.isPending ? "..." : "إرسال للاختبار"}
+                  {actions.submitForTesting.isPending ? <><Spinner />جارٍ الإرسال...</> : "إرسال للاختبار"}
                 </ActionBtn>
               )}
               {(ticket.status === "AWAITING_TESTING" || ticket.status === "AWAITING_OWNER_APPROVAL") && (isQA || isRequester || isManager) && (
                 <ActionBtn onClick={() => actions.approveCompletion.mutate(undefined)} disabled={actions.approveCompletion.isPending}>
-                  {actions.approveCompletion.isPending ? "..." : "اعتماد الإكمال"}
+                  {actions.approveCompletion.isPending ? <><Spinner />جارٍ الاعتماد...</> : "اعتماد الإكمال"}
                 </ActionBtn>
               )}
               {ticket.status === "COMPLETED" && isManager && (
@@ -1077,13 +1191,13 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                     className="w-full rounded-xl px-3 py-2 text-xs outline-none resize-none mb-2"
                     style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }} />
                   <ActionBtn onClick={() => actions.close.mutate({ closureNotes })} disabled={!closureNotes.trim() || actions.close.isPending}>
-                    {actions.close.isPending ? "..." : "إغلاق التذكرة"}
+                    {actions.close.isPending ? <><Spinner />جارٍ الإغلاق...</> : "إغلاق التذكرة"}
                   </ActionBtn>
                 </>
               )}
               {["CLOSED", "REJECTED"].includes(ticket.status) && isManager && (
                 <ActionBtn variant="outline" onClick={() => actions.reopen.mutate(undefined)} disabled={actions.reopen.isPending}>
-                  {actions.reopen.isPending ? "..." : "إعادة الفتح"}
+                  {actions.reopen.isPending ? <><Spinner />جارٍ الفتح...</> : "إعادة الفتح"}
                 </ActionBtn>
               )}
               {isManager && !ticket.isArchived && (
@@ -1095,7 +1209,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                       className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
                       style={{ background: "rgba(239,68,68,0.1)", color: "#EF4444", border: "1px solid rgba(239,68,68,0.3)" }}
                     >
-                      {actions.archive.isPending ? "..." : "تأكيد"}
+                      {actions.archive.isPending ? <><Spinner />جارٍ الأرشفة...</> : "تأكيد"}
                     </button>
                     <button
                       onClick={() => setConfirmArchive(false)}
@@ -1115,7 +1229,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                   onClick={() => actions.unarchive.mutate(undefined)}
                   disabled={actions.unarchive.isPending}
                 >
-                  {actions.unarchive.isPending ? "..." : "إلغاء الأرشفة"}
+                  {actions.unarchive.isPending ? <><Spinner />جارٍ التراجع...</> : "إلغاء الأرشفة"}
                 </ActionBtn>
               )}
             </div>
@@ -1129,6 +1243,27 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         url={lightboxUrl}
         onClose={() => setLightboxUrl(null)}
       />
+    )}
+
+    {confirmDeleteId && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
+        <div className="rounded-2xl p-6 max-w-sm w-full space-y-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+          <p className="font-semibold text-sm" style={{ color: "var(--foreground)" }}>هل أنت متأكد من حذف هذا المرفق؟</p>
+          <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>لا يمكن التراجع عن هذا الإجراء.</p>
+          <div className="flex gap-3">
+            <button onClick={() => handleDeleteAttachment(confirmDeleteId)}
+              className="flex-1 py-2 rounded-xl text-sm font-semibold"
+              style={{ background: "rgba(239,68,68,0.1)", color: "#EF4444", border: "1px solid rgba(239,68,68,0.3)" }}>
+              حذف
+            </button>
+            <button onClick={() => setConfirmDeleteId(null)}
+              className="flex-1 py-2 rounded-xl text-sm font-semibold"
+              style={{ border: "1px solid var(--border)", color: "var(--muted-foreground)" }}>
+              إلغاء
+            </button>
+          </div>
+        </div>
+      </div>
     )}
 
     {/* Mentions dropdown portal — escapes all overflow:hidden ancestors */}

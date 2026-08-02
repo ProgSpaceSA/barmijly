@@ -32,6 +32,12 @@ export class CompaniesService {
     return this.prisma.company.update({ where: { id }, data: dto });
   }
 
+  async uploadLogo(id: string, file: Express.Multer.File) {
+    await this.findOne(id);
+    const logoUrl = `/uploads/${file.filename}`;
+    return this.prisma.company.update({ where: { id }, data: { logoUrl } });
+  }
+
   async deactivate(id: string) {
     await this.findOne(id);
     return this.prisma.company.update({ where: { id }, data: { isActive: false } });

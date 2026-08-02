@@ -31,7 +31,7 @@ export class AuthService {
   async login(dto: LoginDto) {
     const user = await this.validateUser(dto.email, dto.password);
     if (!user) throw new UnauthorizedException('Invalid credentials');
-    if (!user.isActive) throw new UnauthorizedException('Account is inactive');
+    if (!user.isActive) throw new UnauthorizedException('حسابك معطَّل، تواصل مع المسؤول للتفعيل');
     return this.signToken(user);
   }
 

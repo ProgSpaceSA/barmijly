@@ -1,17 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { AppShell } from '@/components/layout/AppShell';
 import { useAuthStore } from '@/store/auth';
+import { CompanyLogo } from '@/components/shared/CompanyLogo';
 import { toast } from 'sonner';
 import Link from 'next/link';
-import { Building2, ChevronDown, ChevronUp, Plus, X, Monitor, FolderOpen, ExternalLink } from 'lucide-react';
+import { Building2, Camera, ChevronDown, ChevronUp, Plus, X, Monitor, FolderOpen, ExternalLink } from 'lucide-react';
 
 interface System { id: string; name: string; description?: string; }
 interface Department { id: string; name: string; }
-interface Company { id: string; name: string; domain?: string; departments: Department[]; systems: System[]; _count?: { users: number; tickets: number }; }
+interface Company { id: string; name: string; domain?: string; logoUrl?: string; departments: Department[]; systems: System[]; _count?: { users: number; tickets: number }; }
 
 const inputCls = 'w-full rounded-xl px-3 py-2.5 text-sm outline-none transition-all';
 const inputStyle = { background: 'var(--muted)', border: '1px solid var(--border)', color: 'var(--foreground)' };
@@ -32,6 +33,20 @@ export default function CompaniesPage() {
   const [newSystemDesc, setNewSystemDesc] = useState('');
 
   const canManage = hasRole('SENIOR_MANAGEMENT', 'PROGRAMMING_HEAD');
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingLogoId, setUploadingLogoId] = useState<string | null>(null);
+
+  const handleLogoUpload = async (companyId: string, file: File) => {
+    setUploadingLogoId(companyId);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      await api.post(`/companies/${companyId}/logo`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      toast.success('تم تحديث الشعار');
+      queryClient.invalidateQueries({ queryKey: ['companies'] });
+    } catch { toast.error('فشل رفع الشعار'); }
+    finally { setUploadingLogoId(null); }
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ['companies'],
@@ -148,9 +163,23 @@ export default function CompaniesPage() {
                   onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-indigo-400 text-sm shrink-0"
-                      style={{ background: 'rgba(79,70,229,0.12)' }}>
-                      {company.name[0]}
+                    <div className="relative group/logo shrink-0">
+                      <CompanyLogo company={company} size="md" />
+                      {canManage && (
+                        <>
+                          <input type="file" accept="image/*" className="hidden"
+                            ref={logoInputRef}
+                            onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(company.id, f); e.target.value = ''; }} />
+                          <button
+                            onClick={e => { e.stopPropagation(); (e.currentTarget.previousElementSibling as HTMLInputElement)?.click(); }}
+                            disabled={uploadingLogoId === company.id}
+                            className="absolute inset-0 rounded-xl flex items-center justify-center opacity-0 group-hover/logo:opacity-100 transition-opacity"
+                            style={{ background: 'rgba(0,0,0,0.55)' }}
+                            title="تغيير الشعار">
+                            <Camera className="w-3.5 h-3.5 text-white" />
+                          </button>
+                        </>
+                      )}
                     </div>
                     <div className="text-right">
                       <div className="font-semibold" style={{ color: 'var(--foreground)' }}>{company.name}</div>

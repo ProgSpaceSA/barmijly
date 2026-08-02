@@ -13,17 +13,20 @@ export class CreateTicketDto {
   @IsString()
   description: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
-  reason: string;
+  reason?: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
-  expectedOutcome: string;
+  expectedOutcome?: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
-  businessImpact: string;
+  businessImpact?: string;
 
   @ApiProperty({ enum: TicketType })
   @IsEnum(TicketType)

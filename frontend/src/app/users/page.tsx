@@ -91,6 +91,7 @@ export default function UsersPage() {
   const [editFirstName, setEditFirstName] = useState('');
   const [editLastName, setEditLastName] = useState('');
   const [editCompanyIds, setEditCompanyIds] = useState<string[]>([]);
+  const [inviteCompanyIds, setInviteCompanyIds] = useState<string[]>([]);
 
   const canManage = hasRole('SENIOR_MANAGEMENT', 'PROGRAMMING_HEAD', 'PROJECT_MANAGER');
 
@@ -111,7 +112,7 @@ export default function UsersPage() {
 
   const inviteMutation = useMutation({
     mutationFn: (d: InviteForm) => api.post('/invitations', { ...d, companyIds: d.companyIds?.length ? d.companyIds : undefined }),
-    onSuccess: () => { toast.success('تم إرسال الدعوة بنجاح'); setShowInvite(false); reset(); queryClient.invalidateQueries({ queryKey: ['users'] }); },
+    onSuccess: () => { toast.success('تم إرسال الدعوة بنجاح'); setShowInvite(false); reset(); setInviteCompanyIds([]); queryClient.invalidateQueries({ queryKey: ['users'] }); },
     onError: (e: any) => toast.error(e.response?.data?.message || 'فشل إرسال الدعوة'),
   });
 
@@ -193,7 +194,7 @@ export default function UsersPage() {
         {/* Invite Modal */}
         {showInvite && (
           <Modal title="دعوة مستخدم جديد" sub="سيتلقى المستخدم بريداً لإعداد كلمة المرور" icon={Shield} onClose={() => { setShowInvite(false); reset(); }}>
-            <form onSubmit={handleSubmit(d => inviteMutation.mutate(d))} className="space-y-4">
+            <form onSubmit={handleSubmit(d => inviteMutation.mutate({ ...d, companyIds: inviteCompanyIds }))} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--muted-foreground)' }}>الاسم الأول</label>
@@ -222,15 +223,15 @@ export default function UsersPage() {
               {companies.length > 0 && (
                 <div>
                   <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--muted-foreground)' }}>الشركات (اختياري)</label>
-                  <CompanyChecklist ids={[]} onChange={() => {}} />
+                  <CompanyChecklist ids={inviteCompanyIds} onChange={setInviteCompanyIds} />
                 </div>
               )}
               <div className="flex gap-3 pt-2">
-                <button type="submit" disabled={isSubmitting} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60"
+                <button type="submit" disabled={inviteMutation.isPending} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60"
                   style={{ background: 'linear-gradient(135deg, #4F46E5, #6C5CE7)' }}>
-                  {isSubmitting ? 'جارٍ الإرسال...' : 'إرسال الدعوة'}
+                  {inviteMutation.isPending ? 'جارٍ الإرسال...' : 'إرسال الدعوة'}
                 </button>
-                <button type="button" onClick={() => { setShowInvite(false); reset(); }}
+                <button type="button" onClick={() => { setShowInvite(false); reset(); setInviteCompanyIds([]); }}
                   className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
                   style={{ border: '1px solid var(--border)', color: 'var(--muted-foreground)', background: 'transparent' }}
                   onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted)')}

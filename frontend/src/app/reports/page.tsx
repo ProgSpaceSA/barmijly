@@ -6,9 +6,11 @@ import { useDashboardStats, useDeveloperStats, useTicketTrend, useOverdueTickets
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge, PriorityBadge } from "@/components/shared/StatusBadge";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend } from "recharts";
+import { TICKET_STATUS_LABELS } from "@/lib/constants";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import Link from "next/link";
+import { CompanyLogo } from "@/components/shared/CompanyLogo";
 
 const COLORS = ["#4F46E5","#6366F1","#8B5CF6","#10B981","#F59E0B","#EF4444","#06B6D4","#84CC16"];
 
@@ -21,7 +23,7 @@ export default function ReportsPage() {
   if (isLoading) return <AppShell><LoadingSpinner /></AppShell>;
 
   const statusData = stats?.ticketsByStatus?.map((s: any) => ({
-    name: s.status, value: s._count,
+    name: TICKET_STATUS_LABELS[s.status] || s.status, value: s._count,
   })) || [];
 
   return (
@@ -54,9 +56,9 @@ export default function ReportsPage() {
               <CardHeader><CardTitle className="text-base">اتجاه التذاكر الشهري</CardTitle></CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={220}>
-                  <LineChart data={trend}>
+                  <LineChart data={trend} margin={{ left: 8, right: 8 }}>
                     <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} width={32} />
                     <Tooltip />
                     <Legend />
                     <Line type="monotone" dataKey="created" stroke="#4F46E5" name="مُنشأة" strokeWidth={2} dot={false} />
@@ -73,9 +75,9 @@ export default function ReportsPage() {
               <CardHeader><CardTitle className="text-base">توزيع الحالات</CardTitle></CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={statusData} layout="vertical">
+                  <BarChart data={statusData} layout="vertical" margin={{ left: 4, right: 8 }}>
                     <XAxis type="number" tick={{ fontSize: 11 }} />
-                    <YAxis dataKey="name" type="category" tick={{ fontSize: 10 }} width={120} />
+                    <YAxis dataKey="name" type="category" tick={{ fontSize: 10 }} width={140} />
                     <Tooltip />
                     <Bar dataKey="value" fill="#4F46E5" radius={[0,4,4,0]} />
                   </BarChart>
@@ -136,7 +138,10 @@ export default function ReportsPage() {
                     className="flex items-center justify-between p-3 rounded-lg hover:bg-muted transition-colors">
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">{t.title}</p>
-                      <p className="text-xs text-muted-foreground">{t.system?.name} — {format(new Date(t.estimatedDeadline), "d MMM yyyy", { locale: ar })}</p>
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
+                        {t.company && <><CompanyLogo company={t.company} size="xs" />{t.company.name} —</>}
+                        <span>{t.system?.name} — {format(new Date(t.estimatedDeadline), "d MMM yyyy", { locale: ar })}</span>
+                      </div>
                     </div>
                     <div className="flex gap-2 shrink-0 mr-3">
                       <StatusBadge status={t.status} />

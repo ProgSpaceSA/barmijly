@@ -109,7 +109,7 @@ export class TicketsService {
           orderBy: { createdAt: 'asc' },
         },
         attachments: true,
-        statusHistory: { orderBy: { createdAt: 'asc' } },
+        statusHistory: { orderBy: { createdAt: 'asc' }, include: { changedBy: { select: { id: true, firstName: true, lastName: true } } } },
         assignments: { include: { developer: { select: { id: true, firstName: true, lastName: true } } } },
         approvals: { include: { approver: { select: { id: true, firstName: true, lastName: true } } } },
       },
@@ -121,7 +121,14 @@ export class TicketsService {
 
   async create(dto: CreateTicketDto, user: any) {
     const ticket = await this.prisma.ticket.create({
-      data: { ...dto, creatorId: user.id, status: TicketStatus.DRAFT },
+      data: {
+        ...dto,
+        reason: dto.reason ?? '',
+        expectedOutcome: dto.expectedOutcome ?? '',
+        businessImpact: dto.businessImpact ?? '',
+        creatorId: user.id,
+        status: TicketStatus.DRAFT,
+      },
     });
     await this.audit.log({ action: 'CREATE', entity: 'Ticket', entityId: ticket.id, userId: user.id, newValues: dto });
     return ticket;

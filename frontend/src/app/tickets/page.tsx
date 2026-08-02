@@ -16,6 +16,7 @@ import { TICKET_STATUS_LABELS, TICKET_TYPE_LABELS } from "@/lib/constants";
 import { Plus, Search, User } from "lucide-react";
 import Link from "next/link";
 import api from "@/lib/api";
+import { CompanyLogo } from "@/components/shared/CompanyLogo";
 
 const STATUS_BAR_COLORS: Record<string, string> = {
   DRAFT:                   "#94A3B8",
@@ -42,18 +43,18 @@ const QUICK_STATUSES = [
   { key: "CLOSED",            label: TICKET_STATUS_LABELS.CLOSED },
 ];
 
-function FilterPill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function FilterPill({ label, active, onClick, icon }: { label: string; active: boolean; onClick: () => void; icon?: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
-      className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap"
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap"
       style={{
         background: active ? "var(--card)" : "transparent",
         color: active ? "var(--foreground)" : "var(--muted-foreground)",
         boxShadow: active ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
       }}
     >
-      {label}
+      {icon}{label}
     </button>
   );
 }
@@ -128,6 +129,7 @@ export default function TicketsPage() {
                 label={c.name}
                 active={activeCompany === c.id}
                 onClick={() => setCompanyFilter(c.id)}
+                icon={<CompanyLogo company={c} size="xs" />}
               />
             ))}
           </div>
@@ -195,7 +197,12 @@ export default function TicketsPage() {
                             {ticket.creator?.firstName} {ticket.creator?.lastName}
                           </span>
                           <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>{ticket.system?.name}</span>
-                          <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>{ticket.company?.name}</span>
+                          {ticket.company && (
+                            <span className="flex items-center gap-1 text-xs" style={{ color: "var(--muted-foreground)" }}>
+                              <CompanyLogo company={ticket.company} size="xs" />
+                              {ticket.company.name}
+                            </span>
+                          )}
                           <RelativeTime date={ticket.createdAt} />
                         </div>
                       </div>

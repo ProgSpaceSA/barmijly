@@ -11,6 +11,7 @@ import { ROLE_LABELS } from "@/lib/constants";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
 import { AlertTriangle, Clock, TrendingUp, Activity } from "lucide-react";
 import Link from "next/link";
+import { CompanyLogo } from "@/components/shared/CompanyLogo";
 
 function CountUp({ value }: { value: number | undefined }) {
   const [display, setDisplay] = useState(0);
@@ -134,9 +135,9 @@ export default function DashboardPage() {
                   <CardHeader><CardTitle className="text-base">اتجاه التذاكر (6 أشهر)</CardTitle></CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={180}>
-                      <LineChart data={trend}>
+                      <LineChart data={trend} margin={{ left: 8, right: 8, bottom: 0, top: 4 }}>
                         <XAxis dataKey="month" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, monospace" }} />
-                        <YAxis tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, monospace" }} />
+                        <YAxis tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, monospace" }} width={28} />
                         <Tooltip contentStyle={{ fontFamily: "Cairo, sans-serif", fontSize: 12, background: "var(--card)", border: "1px solid var(--border)" }} />
                         <Line type="monotone" dataKey="created" stroke="#4F46E5" name="مُنشأة" strokeWidth={2} dot={false} />
                         <Line type="monotone" dataKey="closed"  stroke="#10B981" name="مُغلقة" strokeWidth={2} dot={false} />
@@ -194,9 +195,14 @@ export default function DashboardPage() {
                     >
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate">{t.title}</p>
-                        <p className="font-brm text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
-                          {t.system?.name} — {t.company?.name}
-                        </p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>{t.system?.name}</span>
+                          {t.company && (
+                            <span className="flex items-center gap-1 font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>
+                              — <CompanyLogo company={t.company} size="xs" /> {t.company.name}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0 mr-3">
                         <StatusBadge status={t.status} overdue />

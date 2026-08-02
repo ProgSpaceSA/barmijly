@@ -14,10 +14,10 @@ import { useAuthStore } from "@/store/auth";
 
 const schema = z.object({
   title: z.string().min(5, "العنوان مطلوب"),
-  description: z.string().min(20, "الوصف مطلوب (20 حرف على الأقل)"),
-  reason: z.string().min(10, "السبب مطلوب"),
-  expectedOutcome: z.string().min(10, "النتيجة المتوقعة مطلوبة"),
-  businessImpact: z.string().min(5, "التأثير على العمل مطلوب"),
+  description: z.string().min(10, "الوصف مطلوب (10 أحرف على الأقل)"),
+  reason: z.string().optional(),
+  expectedOutcome: z.string().optional(),
+  businessImpact: z.string().optional(),
   type: z.string().min(1, "نوع الطلب مطلوب"),
   systemId: z.string().uuid("الرجاء اختيار النظام"),
   companyId: z.string().uuid("الرجاء اختيار الشركة"),
@@ -143,7 +143,7 @@ export default function NewTicketPage() {
 
   const { register, handleSubmit, watch, setValue, reset, control, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(schema),
-    defaultValues: { hasFinancialLoss: false, type: "", companyId: "", systemId: "", priority: "" },
+    defaultValues: { hasFinancialLoss: false, type: "", companyId: "", systemId: "", priority: "MEDIUM" },
   });
 
   const hasFinancialLoss = watch("hasFinancialLoss");
@@ -327,7 +327,6 @@ export default function NewTicketPage() {
               <div>
                 <Label>الأولوية المقترحة</Label>
                 <FormSelect register={register} name="priority">
-                  <option value="">اختياري</option>
                   <option value="CRITICAL">حرجة</option>
                   <option value="HIGH">عالية</option>
                   <option value="MEDIUM">متوسطة</option>
@@ -345,15 +344,15 @@ export default function NewTicketPage() {
               <FormTextarea register={register} name="description" rows={4} placeholder="اشرح الطلب بالتفصيل..." error={errors.description} />
             </div>
             <div>
-              <Label>سبب الطلب / المشكلة *</Label>
+              <Label>سبب الطلب / المشكلة (اختياري)</Label>
               <FormTextarea register={register} name="reason" rows={3} placeholder="ما السبب الذي يدفعك لهذا الطلب؟" error={errors.reason} />
             </div>
             <div>
-              <Label>النتيجة المطلوبة *</Label>
+              <Label>النتيجة المطلوبة (اختياري)</Label>
               <FormTextarea register={register} name="expectedOutcome" rows={3} placeholder="ما النتيجة التي تتوقعها بعد التنفيذ؟" error={errors.expectedOutcome} />
             </div>
             <div>
-              <Label>التأثير على العمل *</Label>
+              <Label>التأثير على العمل (اختياري)</Label>
               <FormTextarea register={register} name="businessImpact" rows={2} placeholder="كيف يؤثر هذا الطلب على سير العمل؟" error={errors.businessImpact} />
             </div>
 

@@ -7,7 +7,7 @@ import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { UserRole, NotificationType } from '@prisma/client';
 
-const MANAGERS = [UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER];
+const MANAGERS = [UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT];
 
 @Injectable()
 export class TasksService {
@@ -25,7 +25,7 @@ export class TasksService {
     if (!ticket) throw new NotFoundException('Ticket not found');
 
     const task = await this.prisma.ticketTask.create({
-      data: { ticketId, title: dto.title, description: dto.description, assignedToId: dto.assignedToId, createdById: user.id },
+      data: { ticketId, title: dto.title, description: dto.description, assignedToId: dto.assignedToId, createdById: user.id, ...(dto.dueDate ? { dueDate: new Date(dto.dueDate) } : {}) },
       include: {
         assignedTo:  { select: { id: true, firstName: true, lastName: true } },
         createdBy:   { select: { id: true, firstName: true, lastName: true } },

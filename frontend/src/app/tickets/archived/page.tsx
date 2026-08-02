@@ -16,6 +16,7 @@ import { Search, User, Archive } from "lucide-react";
 import Link from "next/link";
 import api from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
+import { CompanyLogo } from "@/components/shared/CompanyLogo";
 
 const ALLOWED_ROLES = ["PROGRAMMING_HEAD", "PROJECT_MANAGER", "SENIOR_MANAGEMENT"];
 
@@ -161,7 +162,12 @@ export default function ArchivedTicketsPage() {
                             {ticket.creator?.firstName} {ticket.creator?.lastName}
                           </span>
                           <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>{ticket.system?.name}</span>
-                          <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>{ticket.company?.name}</span>
+                          {ticket.company && (
+                            <span className="flex items-center gap-1 text-xs" style={{ color: "var(--muted-foreground)" }}>
+                              <CompanyLogo company={ticket.company} size="xs" />
+                              {ticket.company.name}
+                            </span>
+                          )}
                           <RelativeTime date={ticket.createdAt} />
                         </div>
                       </div>

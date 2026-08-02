@@ -2,6 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 
+const ROLE_LABELS_AR: Record<string, string> = {
+  TICKET_REQUESTER: 'طالب التذكرة',
+  SYSTEM_OWNER: 'مالك النظام',
+  PROGRAMMING_HEAD: 'رئيس قسم البرمجة',
+  PROJECT_MANAGER: 'مدير المشروع',
+  DEVELOPER: 'مطور',
+  QA: 'مختبر الجودة',
+  SENIOR_MANAGEMENT: 'الإدارة العليا',
+};
+
 @Injectable()
 export class EmailService {
   private transporter: nodemailer.Transporter;
@@ -27,7 +37,7 @@ export class EmailService {
           <div style="display: inline-block; background: #4338CA; color: white; padding: 12px 24px; border-radius: 8px; font-size: 20px; font-weight: bold;">برمجلي</div>
         </div>
         <h2 style="color: #1e293b;">مرحباً بك في برمجلي</h2>
-        <p style="color: #475569;">لقد تمت دعوتك للانضمام إلى نظام إدارة طلبات البرمجة <strong>برمجلي</strong> بدور <strong>${role}</strong>.</p>
+        <p style="color: #475569;">لقد تمت دعوتك للانضمام إلى نظام إدارة طلبات البرمجة <strong>برمجلي</strong> بدور <strong>${ROLE_LABELS_AR[role] || role}</strong>.</p>
         <p style="color: #475569;">اضغط على الزر أدناه لإعداد كلمة المرور والبدء:</p>
         <div style="text-align: center; margin: 32px 0;">
           <a href="${link}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #4338CA, #6366F1); color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px;">قبول الدعوة</a>
