@@ -159,7 +159,7 @@ export default function ArchivedTicketsPage() {
                         <div className="flex items-center gap-4 mt-2 flex-wrap">
                           <span className="flex items-center gap-1 text-xs" style={{ color: "var(--muted-foreground)" }}>
                             <User className="w-3 h-3" />
-                            {ticket.creator?.firstName} {ticket.creator?.lastName}
+                            {ticket.creator?.id === user?.id ? "أنت" : `${ticket.creator?.firstName} ${ticket.creator?.lastName}`}
                           </span>
                           <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>{ticket.system?.name}</span>
                           {ticket.company && (

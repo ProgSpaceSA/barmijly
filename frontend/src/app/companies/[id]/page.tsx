@@ -318,7 +318,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                             </div>
                             <h3 className="font-semibold truncate" style={{ color: "var(--foreground)" }}>{ticket.title}</h3>
                             <div className="flex gap-4 mt-1.5 text-xs flex-wrap" style={{ color: "var(--muted-foreground)" }}>
-                              <span>{ticket.creator?.firstName} {ticket.creator?.lastName}</span>
+                              <span>{ticket.creator?.id === user?.id ? "أنت" : `${ticket.creator?.firstName} ${ticket.creator?.lastName}`}</span>
                               <span>{ticket.system?.name}</span>
                               <RelativeTime date={ticket.createdAt} />
                             </div>

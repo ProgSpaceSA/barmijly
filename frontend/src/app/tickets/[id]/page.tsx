@@ -1042,7 +1042,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
             {/* Ticket info */}
             <div className="rounded-xl p-4 space-y-3" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
               {[
-                { icon: User,    label: `${ticket.creator?.firstName} ${ticket.creator?.lastName}` },
+                { icon: User,    label: ticket.creatorId === user?.id ? "أنت" : `${ticket.creator?.firstName} ${ticket.creator?.lastName}` },
                 { icon: Monitor, label: ticket.system?.name },
                 { icon: Clock,   label: format(new Date(ticket.createdAt), "d MMM yyyy", { locale: ar }) },
                 ...(ticket.estimatedDeadline ? [{ icon: Clock, label: `التسليم: ${format(new Date(ticket.estimatedDeadline), "d MMM yyyy", { locale: ar })}` }] : []),
