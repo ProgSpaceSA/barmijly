@@ -27,6 +27,11 @@ export class TasksController {
     return this.tasksService.create(ticketId, dto, user);
   }
 
+  @Get('tasks/my')
+  findMyTasks(@CurrentUser() user: any) {
+    return this.tasksService.findMyTasks(user);
+  }
+
   @Patch('tasks/:id')
   update(@Param('id') id: string, @Body() dto: UpdateTaskDto, @CurrentUser() user: any) {
     return this.tasksService.update(id, dto, user);

@@ -61,6 +61,29 @@ export class TasksService {
     return task;
   }
 
+  async findMyTasks(user: any) {
+    return this.prisma.ticketTask.findMany({
+      where: { assignedToId: user.id },
+      include: {
+        ticket: {
+          select: {
+            id: true,
+            title: true,
+            ticketNumber: true,
+            status: true,
+            estimatedDeadline: true,
+            company: { select: { id: true, name: true, logoUrl: true } },
+          },
+        },
+        createdBy: { select: { id: true, firstName: true, lastName: true } },
+      },
+      orderBy: [
+        { dueDate: { sort: 'asc', nulls: 'last' } },
+        { createdAt: 'asc' },
+      ],
+    });
+  }
+
   async findByTicket(ticketId: string) {
     return this.prisma.ticketTask.findMany({
       where: { ticketId },
