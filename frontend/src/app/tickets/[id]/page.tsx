@@ -1089,9 +1089,14 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                   <div className="flex items-start gap-2 p-3 rounded-xl mb-3"
                     style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)" }}>
                     <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                    <p className="text-xs leading-relaxed" style={{ color: "#B45309" }}>
-                      طُلبت منك معلومات إضافية. يمكنك تعديل التذكرة ثم إعادة إرسالها للمراجعة.
-                    </p>
+                    <div>
+                      <p className="text-xs leading-relaxed" style={{ color: "#B45309" }}>
+                        طُلبت منك معلومات إضافية. يمكنك تعديل التذكرة ثم إعادة إرسالها للمراجعة.
+                      </p>
+                      <p className="font-brm text-xs mt-1" style={{ color: "#92400E" }}>
+                        // راجع التعليقات للاطلاع على التفاصيل المطلوبة
+                      </p>
+                    </div>
                   </div>
                   <ActionBtn onClick={() => actions.submit.mutate(undefined)} disabled={actions.submit.isPending}>
                     {actions.submit.isPending ? <><Spinner />جارٍ الإرسال...</> : "إعادة الإرسال للمراجعة"}
@@ -1103,8 +1108,11 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                 <>
                   <textarea value={approvalNotes} onChange={e => setApprovalNotes(e.target.value)}
                     placeholder="ملاحظات (اختياري)" rows={2}
-                    className="w-full rounded-xl px-3 py-2 text-xs outline-none resize-none mb-2"
+                    className="w-full rounded-xl px-3 py-2 text-xs outline-none resize-none"
                     style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }} />
+                  <p className="font-brm text-xs mb-2" style={{ color: "var(--muted-foreground)" }}>
+                    // ستُنشر الملاحظات كتعليق على التذكرة
+                  </p>
                   <ActionBtn onClick={() => actions.approve.mutate({ decision: "APPROVED", notes: approvalNotes })} disabled={actions.approve.isPending}>
                     {actions.approve.isPending ? <><Spinner />جارٍ الاعتماد...</> : "اعتماد"}
                   </ActionBtn>

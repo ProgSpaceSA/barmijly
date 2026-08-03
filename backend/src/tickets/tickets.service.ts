@@ -184,12 +184,20 @@ export class TicketsService {
       default: newStatus = TicketStatus.ON_HOLD;
     }
 
-    const [updated] = await Promise.all([
+    const ops: Promise<any>[] = [
       this.changeStatus(ticket, newStatus, user.id, dto.notes),
       this.prisma.ticketApproval.create({
         data: { ticketId: id, approverId: user.id, decision: dto.decision, notes: dto.notes, conditions: dto.conditions },
       }),
-    ]);
+    ];
+    if (dto.notes?.trim()) {
+      ops.push(
+        this.prisma.ticketComment.create({
+          data: { ticketId: id, authorId: user.id, content: dto.notes.trim(), visibility: 'PUBLIC', mentions: [] },
+        }),
+      );
+    }
+    const [updated] = await Promise.all(ops);
 
     const notifType =
       dto.decision === ApprovalDecision.APPROVED ? NotificationType.TICKET_APPROVED :
