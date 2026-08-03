@@ -12,6 +12,7 @@ import { ApproveTicketDto, ApprovalDecision } from './dto/approve-ticket.dto';
 import { AssignTicketDto } from './dto/assign-ticket.dto';
 import { FilterTicketsDto } from './dto/filter-tickets.dto';
 import { CloseTicketDto } from './dto/close-ticket.dto';
+import { ForceStatusDto } from './dto/force-status.dto';
 import { TicketStatus, UserRole, NotificationType } from '@prisma/client';
 
 @Injectable()
@@ -137,7 +138,9 @@ export class TicketsService {
 
   async submit(id: string, user: any) {
     const ticket = await this.getOwnedTicket(id, user);
-    if (ticket.status !== TicketStatus.DRAFT) throw new BadRequestException('Only draft tickets can be submitted');
+    const submittableStatuses: TicketStatus[] = [TicketStatus.DRAFT, TicketStatus.AWAITING_INFO];
+    if (!submittableStatuses.includes(ticket.status))
+      throw new BadRequestException('Only draft or awaiting-info tickets can be submitted');
 
     const updated = await this.changeStatus(ticket, TicketStatus.NEW, user.id);
 
@@ -365,6 +368,14 @@ export class TicketsService {
         templateId: ticket.id,
       },
     });
+  }
+
+  async forceStatus(id: string, dto: ForceStatusDto, user: any) {
+    this.requireRole(user, [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT]);
+    const ticket = await this.findById(id);
+    const updated = await this.changeStatus(ticket, dto.status, user.id, dto.reason || 'تغيير يدوي');
+    await this.audit.log({ action: 'FORCE_STATUS', entity: 'Ticket', entityId: id, userId: user.id, newValues: { status: dto.status, reason: dto.reason } });
+    return updated;
   }
 
   private async changeStatus(ticket: any, toStatus: TicketStatus, userId: string, reason?: string) {

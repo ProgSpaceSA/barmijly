@@ -305,6 +305,8 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const developerList: any[] = (allUsers ?? [])
     .filter((u: any) => u.role === "DEVELOPER" && u.isActive !== false);
 
+  const [forceStatusOpen, setForceStatusOpen] = useState(false);
+  const [forceStatusReason, setForceStatusReason] = useState("");
   const [taskForm, setTaskForm] = useState(false);
   const [newTask, setNewTask] = useState({ title: "", description: "", assignedToId: "", dueDate: "" });
   const [savingTask, setSavingTask] = useState(false);
@@ -1082,6 +1084,21 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                 </ActionBtn>
               )}
 
+              {ticket.status === "AWAITING_INFO" && ticket.creatorId === user?.id && (
+                <div>
+                  <div className="flex items-start gap-2 p-3 rounded-xl mb-3"
+                    style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)" }}>
+                    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                    <p className="text-xs leading-relaxed" style={{ color: "#B45309" }}>
+                      طُلبت منك معلومات إضافية. يمكنك تعديل التذكرة ثم إعادة إرسالها للمراجعة.
+                    </p>
+                  </div>
+                  <ActionBtn onClick={() => actions.submit.mutate(undefined)} disabled={actions.submit.isPending}>
+                    {actions.submit.isPending ? <><Spinner />جارٍ الإرسال...</> : "إعادة الإرسال للمراجعة"}
+                  </ActionBtn>
+                </div>
+              )}
+
               {ticket.status === "NEW" && isHead && (
                 <>
                   <textarea value={approvalNotes} onChange={e => setApprovalNotes(e.target.value)}
@@ -1231,6 +1248,76 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                 >
                   {actions.unarchive.isPending ? <><Spinner />جارٍ التراجع...</> : "إلغاء الأرشفة"}
                 </ActionBtn>
+              )}
+
+              {/* Force status — project manager and above */}
+              {(user?.role === "PROJECT_MANAGER" || user?.role === "PROGRAMMING_HEAD" || user?.role === "SENIOR_MANAGEMENT") && (
+                <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12, marginTop: 4 }}>
+                  <button
+                    onClick={() => setForceStatusOpen(o => !o)}
+                    className="w-full flex items-center justify-between text-xs font-semibold transition-colors"
+                    style={{ color: "var(--muted-foreground)" }}>
+                    <span className="font-brm">// تغيير الحالة يدوياً</span>
+                    <span style={{ fontSize: 16, lineHeight: 1 }}>{forceStatusOpen ? "−" : "+"}</span>
+                  </button>
+
+                  {forceStatusOpen && (
+                    <div className="mt-3 space-y-3">
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {([
+                          { val: "NEW",                     label: "جديدة" },
+                          { val: "AWAITING_INFO",           label: "ينتظر معلومات" },
+                          { val: "AWAITING_APPROVAL",       label: "ينتظر موافقة" },
+                          { val: "APPROVED",                label: "معتمدة" },
+                          { val: "REJECTED",                label: "مرفوضة" },
+                          { val: "SCHEDULED",               label: "مجدولة" },
+                          { val: "IN_PROGRESS",             label: "قيد التنفيذ" },
+                          { val: "AWAITING_TESTING",        label: "ينتظر اختبار" },
+                          { val: "AWAITING_OWNER_APPROVAL", label: "موافقة المالك" },
+                          { val: "COMPLETED",               label: "مكتملة" },
+                          { val: "CLOSED",                  label: "مغلقة" },
+                          { val: "ON_HOLD",                 label: "معلقة" },
+                          { val: "DRAFT",                   label: "مسودة" },
+                        ] as const).map(({ val, label }) => {
+                          const isCurrent = ticket.status === val;
+                          return (
+                            <button
+                              key={val}
+                              disabled={isCurrent || actions.forceStatus.isPending}
+                              onClick={() => actions.forceStatus.mutate({ status: val, reason: forceStatusReason || undefined })}
+                              className="py-1.5 px-2 rounded-lg text-xs font-medium transition-all disabled:cursor-default"
+                              style={{
+                                background: isCurrent ? "rgba(79,70,229,0.15)" : "var(--muted)",
+                                color: isCurrent ? "#4F46E5" : "var(--foreground)",
+                                border: isCurrent ? "1px solid rgba(79,70,229,0.4)" : "1px solid var(--border)",
+                                opacity: isCurrent ? 1 : undefined,
+                              }}
+                              onMouseEnter={e => { if (!isCurrent) e.currentTarget.style.borderColor = "#4F46E5"; }}
+                              onMouseLeave={e => { if (!isCurrent) e.currentTarget.style.borderColor = "var(--border)"; }}
+                            >
+                              {isCurrent && <span style={{ marginLeft: 3 }}>●</span>} {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <textarea
+                        value={forceStatusReason}
+                        onChange={e => setForceStatusReason(e.target.value)}
+                        placeholder="سبب التغيير (اختياري)"
+                        rows={2}
+                        className="w-full rounded-xl px-3 py-2 text-xs outline-none resize-none"
+                        style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }}
+                        onFocus={e => (e.target.style.borderColor = "#4F46E5")}
+                        onBlur={e => (e.target.style.borderColor = "var(--border)")}
+                      />
+                      {actions.forceStatus.isPending && (
+                        <p className="text-xs text-center font-brm" style={{ color: "var(--muted-foreground)" }}>
+                          <Spinner /> جارٍ التغيير...
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>

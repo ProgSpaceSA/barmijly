@@ -9,6 +9,7 @@ import { ApproveTicketDto } from './dto/approve-ticket.dto';
 import { AssignTicketDto } from './dto/assign-ticket.dto';
 import { FilterTicketsDto } from './dto/filter-tickets.dto';
 import { CloseTicketDto } from './dto/close-ticket.dto';
+import { ForceStatusDto } from './dto/force-status.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
@@ -87,6 +88,11 @@ export class TicketsController {
   @Patch(':id/reopen')
   reopen(@Param('id') id: string, @CurrentUser() user: any) {
     return this.ticketsService.reopen(id, user);
+  }
+
+  @Patch(':id/force-status')
+  forceStatus(@Param('id') id: string, @Body() dto: ForceStatusDto, @CurrentUser() user: any) {
+    return this.ticketsService.forceStatus(id, dto, user);
   }
 
   @Post(':id/duplicate')
