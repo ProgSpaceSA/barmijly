@@ -15,6 +15,7 @@ import { ar } from "date-fns/locale";
 import {
   ArrowRight, Send, Clock, User, Building2, Monitor, Lock,
   Paperclip, FileText, Trash2, Download, Copy, Check, AlertTriangle, X, AtSign, Plus, Eye, Loader2,
+  ChevronDown, ChevronLeft,
 } from "lucide-react";
 import api from "@/lib/api";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
@@ -305,6 +306,8 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const developerList: any[] = (allUsers ?? [])
     .filter((u: any) => u.role === "DEVELOPER" && u.isActive !== false);
 
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [desktopSidebarClosed, setDesktopSidebarClosed] = useState(false);
   const [forceStatusOpen, setForceStatusOpen] = useState(false);
   const [forceStatusReason, setForceStatusReason] = useState("");
   const [taskForm, setTaskForm] = useState(false);
@@ -535,7 +538,16 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
           {/* ── Main column ── */}
-          <div className="lg:col-span-2 space-y-4">
+          <div className={`space-y-4 ${desktopSidebarClosed ? "lg:col-span-3" : "lg:col-span-2"}`}>
+            {desktopSidebarClosed && (
+              <div className="hidden lg:flex justify-end -mb-1">
+                <button onClick={() => setDesktopSidebarClosed(false)}
+                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+                  style={{ color: "#4F46E5", background: "rgba(79,70,229,0.08)", border: "1px solid rgba(79,70,229,0.15)" }}>
+                  <ChevronLeft className="w-3.5 h-3.5" /> عرض التفاصيل
+                </button>
+              </div>
+            )}
 
             {/* Details */}
             <Section title="تفاصيل الطلب">
@@ -1037,7 +1049,33 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
           </div>
 
           {/* ── Sidebar ── */}
-          <div className="space-y-4">
+          <div className={desktopSidebarClosed ? "lg:hidden" : ""}>
+
+            {/* Mobile toggle */}
+            <button
+              onClick={() => setMobileSidebarOpen(o => !o)}
+              className="lg:hidden w-full flex items-center justify-between px-4 py-3 rounded-xl mb-1 transition-colors"
+              style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--foreground)" }}>
+              <span className="font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>// التفاصيل والإجراءات</span>
+              <ChevronDown className="w-4 h-4 transition-transform duration-200" style={{
+                color: "var(--muted-foreground)",
+                transform: mobileSidebarOpen ? "rotate(180deg)" : "rotate(0deg)",
+              }} />
+            </button>
+
+            {/* Desktop close button */}
+            <div className="hidden lg:flex justify-end mb-1">
+              <button onClick={() => setDesktopSidebarClosed(true)}
+                className="flex items-center gap-1 text-xs font-medium transition-colors"
+                style={{ color: "var(--muted-foreground)" }}
+                onMouseEnter={e => (e.currentTarget.style.color = "var(--foreground)")}
+                onMouseLeave={e => (e.currentTarget.style.color = "var(--muted-foreground)")}>
+                إخفاء <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Collapsible content: hidden on mobile by default, always visible on desktop */}
+            <div className={`space-y-4 lg:block ${mobileSidebarOpen ? "block" : "hidden"}`}>
 
             {/* Ticket info */}
             <div className="rounded-xl p-4 space-y-3" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
@@ -1328,7 +1366,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                 </div>
               )}
             </div>
-          </div>
+
+            </div>{/* end collapsible content */}
+          </div>{/* end sidebar */}
         </div>
       </div>
     </AppShell>
