@@ -59,8 +59,9 @@ export class TicketsService {
       const companyIds = userCompanies.map(uc => uc.companyId);
       where.OR = [
         { assignments: { some: { developerId: user.id, isActive: true } } },
-        { comments: { some: { mentions: { hasSome: [user.id] } } } },
-        ...(systemIds.length ? [{ systemId: { in: systemIds } }] : []),
+        { tasks:       { some: { assignedToId: user.id } } },
+        { comments:    { some: { mentions: { hasSome: [user.id] } } } },
+        ...(systemIds.length  ? [{ systemId:  { in: systemIds  } }] : []),
         ...(companyIds.length ? [{ companyId: { in: companyIds } }] : []),
       ];
       delete where.assignments;

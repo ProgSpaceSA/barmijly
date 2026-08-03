@@ -678,8 +678,8 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                   ) : (
                     (tasksExpanded ? tasks : tasks.slice(0, 4)).map((t: any) => {
                       const isAssignee = t.assignedTo?.id === user?.id;
-                      const statusColor = t.status === "DONE" ? "#059669" : t.status === "IN_PROGRESS" ? "#D97706" : "#6B7280";
-                      const statusLabel = t.status === "DONE" ? "منجز" : t.status === "IN_PROGRESS" ? "جارٍ" : "مفتوح";
+                      const statusColor = t.status === "COMPLETED" ? "#059669" : t.status === "IN_PROGRESS" ? "#D97706" : "#6B7280";
+                      const statusLabel = t.status === "COMPLETED" ? "مكتملة" : t.status === "IN_PROGRESS" ? "جارٍ" : "جديدة";
                       return (
                         <div key={t.id} className="flex items-start gap-3 px-3 py-2.5 rounded-xl transition-colors group"
                           style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
@@ -687,19 +687,19 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                           {(isAssignee || isManager) ? (
                             <button
                               onClick={() => {
-                                const next = t.status === "OPEN" ? "IN_PROGRESS" : t.status === "IN_PROGRESS" ? "DONE" : "OPEN";
+                                const next = t.status === "NEW" ? "IN_PROGRESS" : t.status === "IN_PROGRESS" ? "COMPLETED" : "NEW";
                                 updateTaskStatus(t.id, next);
                               }}
                               className="w-5 h-5 rounded-full border-2 flex items-center justify-center mt-0.5 shrink-0 transition-colors"
-                              style={{ borderColor: statusColor, background: t.status === "DONE" ? statusColor : "transparent" }}
+                              style={{ borderColor: statusColor, background: t.status === "COMPLETED" ? statusColor : "transparent" }}
                               title="تغيير الحالة">
-                              {t.status === "DONE" && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+                              {t.status === "COMPLETED" && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
                               {t.status === "IN_PROGRESS" && <div className="w-2 h-2 rounded-full" style={{ background: statusColor }} />}
                             </button>
                           ) : (
                             <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center mt-0.5 shrink-0"
-                              style={{ borderColor: statusColor, background: t.status === "DONE" ? statusColor : "transparent" }}>
-                              {t.status === "DONE" && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+                              style={{ borderColor: statusColor, background: t.status === "COMPLETED" ? statusColor : "transparent" }}>
+                              {t.status === "COMPLETED" && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
                             </div>
                           )}
                           <div className="flex-1 min-w-0">

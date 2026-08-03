@@ -67,10 +67,21 @@ export default function TicketsPage() {
   const [activeCompany, setActiveCompany] = useState("");
   const { data, isLoading } = useTickets(filters);
 
+  const isDeveloper = user?.role === "DEVELOPER";
+
   const { data: companies } = useQuery({
     queryKey: ["companies-list"],
     queryFn: () => api.get("/companies").then(r => r.data as any[]),
     staleTime: 60_000,
+    enabled: !isDeveloper,
+  });
+
+  // For developers: derive visible companies from their own ticket scope (no company filter, high limit)
+  const { data: devBaseTickets } = useQuery({
+    queryKey: ["tickets-dev-base"],
+    queryFn: () => api.get("/tickets", { params: { limit: 200 } }).then(r => r.data),
+    staleTime: 60_000,
+    enabled: isDeveloper,
   });
 
   const canCreate = user?.role && !["SENIOR_MANAGEMENT", "DEVELOPER", "QA"].includes(user.role);
@@ -91,7 +102,15 @@ export default function TicketsPage() {
     setFilter("companyId", companyId);
   };
 
-  const companyList: any[] = Array.isArray(companies) ? companies : (companies as any)?.data ?? [];
+  const companyList: any[] = isDeveloper
+    ? Array.from(
+        new Map(
+          ((devBaseTickets?.data ?? []) as any[])
+            .filter((t: any) => t.company?.id)
+            .map((t: any) => [t.company.id, t.company])
+        ).values()
+      )
+    : Array.isArray(companies) ? companies : (companies as any)?.data ?? [];
 
   return (
     <AppShell>

@@ -76,9 +76,9 @@ enum NotificationType {
 }
 
 enum TaskStatus {
-  OPEN
+  NEW
   IN_PROGRESS
-  DONE
+  COMPLETED
 }
 
 enum CommentVisibility {
@@ -398,7 +398,7 @@ model TicketTask {
   assignedTo   User                @relation("TaskAssignee", fields: [assignedToId], references: [id])
   createdById  String
   createdBy    User                @relation("TaskCreator", fields: [createdById], references: [id])
-  status       TaskStatus          @default(OPEN)
+  status       TaskStatus          @default(NEW)
   dueDate      DateTime?
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
