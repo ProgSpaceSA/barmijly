@@ -8,6 +8,7 @@ import {
   BarChart3, Bell, LogOut, Layers, Mail, UserPlus, Sun, Moon, Archive,
 } from "lucide-react";
 import { ROLE_LABELS } from "@/lib/constants";
+import { useUnreadCount } from "@/hooks/useNotifications";
 
 const navItems = [
   { href: "/dashboard",       label: "لوحة التحكم",      icon: LayoutDashboard, roles: [] },
@@ -25,6 +26,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const { user, logout, hasRole } = useAuthStore();
   const { isDark, toggle } = useTheme();
+  const { data: unreadCount } = useUnreadCount();
 
   const visibleItems = navItems.filter(item =>
     item.roles.length === 0 || item.roles.some(r => hasRole(r as any))
@@ -69,7 +71,15 @@ export function Sidebar() {
               onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "var(--sidebar-muted)"; }}
               onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
             >
-              <Icon className="w-4 h-4 shrink-0" />
+              <span className="relative shrink-0">
+                <Icon className="w-4 h-4" />
+                {item.href === "/notifications" && (unreadCount as any) > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full text-white flex items-center justify-center font-brm font-bold"
+                    style={{ fontSize: 9, background: "#EF4444", lineHeight: 1 }}>
+                    {(unreadCount as any) > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </span>
               <span>{item.label}</span>
             </Link>
           );

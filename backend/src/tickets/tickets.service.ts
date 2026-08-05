@@ -144,12 +144,14 @@ export class TicketsService {
 
     const updated = await this.changeStatus(ticket, TicketStatus.NEW, user.id);
 
-    const heads = await this.prisma.user.findMany({ where: { role: UserRole.PROGRAMMING_HEAD, isActive: true } });
-    if (heads.length > 0) {
-      await this.notifications.notifyMany(heads.map((h) => h.id), {
+    const reviewers = await this.prisma.user.findMany({
+      where: { role: { in: [UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER] }, isActive: true },
+    });
+    if (reviewers.length > 0) {
+      await this.notifications.notifyMany(reviewers.map((r) => r.id), {
         type: NotificationType.TICKET_CREATED,
-        title: 'New ticket awaiting review',
-        body: `Ticket "${ticket.title}" has been submitted`,
+        title: 'تذكرة جديدة تنتظر المراجعة',
+        body: `تم تقديم التذكرة "${ticket.title}"`,
         ticketId: id,
       });
     }

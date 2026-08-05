@@ -12,7 +12,7 @@ export class UsersService {
   async findMentionable() {
     return this.prisma.user.findMany({
       where: { isActive: true },
-      select: { id: true, firstName: true, lastName: true, role: true, email: true },
+      select: { id: true, firstName: true, lastName: true, role: true, email: true, companyId: true },
       orderBy: { firstName: 'asc' },
     });
   }
