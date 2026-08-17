@@ -5,7 +5,7 @@ import { useAuthStore } from "@/store/auth";
 import { useTheme } from "@/hooks/useTheme";
 import {
   LayoutDashboard, Ticket, Users, Building2,
-  BarChart3, Bell, LogOut, Layers, Mail, UserPlus, Sun, Moon, Archive,
+  BarChart3, Bell, LogOut, Mail, UserPlus, Sun, Moon, Archive,
 } from "lucide-react";
 import { ROLE_LABELS } from "@/lib/constants";
 import { useUnreadCount } from "@/hooks/useNotifications";
@@ -44,9 +44,10 @@ export function Sidebar() {
     >
       {/* Logo */}
       <div className="px-5 py-5 flex items-center gap-3" style={{ borderBottom: "1px solid var(--sidebar-border)" }}>
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "rgba(99,102,241,0.18)" }}>
-          <Layers className="w-5 h-5" style={{ color: "#818CF8" }} />
-        </div>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="36" height="36" className="shrink-0 rounded-lg">
+          <rect width="32" height="32" fill="#000" rx="5"/>
+          <text x="16" y="22.5" textAnchor="middle" fontFamily="'Courier New', Courier, monospace" fontWeight="800" fontSize="15" fill="#A855F7" letterSpacing="-0.5" direction="ltr">br.</text>
+        </svg>
         <div>
           <p className="font-bold text-base leading-none" style={{ color: "var(--sidebar-foreground)" }}>برمجلي</p>
           <p className="font-brm mt-0.5" style={{ fontSize: "0.6rem", color: "var(--sidebar-foreground-dim)" }}>barmijly.ai</p>

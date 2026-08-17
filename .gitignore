@@ -149,3 +149,6 @@ backups/
 backup.sh
 backups/*
 !backups/.gitkeep
+
+# User uploaded files
+backend/uploads/

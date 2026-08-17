@@ -11,6 +11,14 @@ export function useTickets(filters: Record<string, string> = {}) {
   });
 }
 
+export function useMyCreatedTickets() {
+  return useQuery({
+    queryKey: ["my-created-tickets"],
+    queryFn: () => api.get("/tickets/my-created").then(r => r.data),
+    staleTime: 30_000,
+  });
+}
+
 export function useTicket(id: string) {
   return useQuery({
     queryKey: ["ticket", id],

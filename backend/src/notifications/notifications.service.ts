@@ -26,12 +26,14 @@ export class NotificationsService {
     });
   }
 
-  async findAll(userId: string, unreadOnly = false) {
-    return this.prisma.notification.findMany({
-      where: { userId, ...(unreadOnly && { isRead: false }) },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
+  async findAll(userId: string, unreadOnly = false, page = 1, limit = 20) {
+    const where = { userId, ...(unreadOnly && { isRead: false }) };
+    const skip  = (page - 1) * limit;
+    const [data, total] = await Promise.all([
+      this.prisma.notification.findMany({ where, orderBy: { createdAt: 'desc' }, skip, take: limit }),
+      this.prisma.notification.count({ where }),
+    ]);
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async markRead(id: string, userId: string) {

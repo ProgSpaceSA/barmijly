@@ -6,6 +6,7 @@ import { SkeletonStat, SkeletonList } from "@/components/shared/LoadingSpinner";
 import { StatusBadge, PriorityBadge } from "@/components/shared/StatusBadge";
 import { useDashboardStats, useOverdueTickets, useDeveloperStats, useTicketTrend } from "@/hooks/useReports";
 import { useMyTasks, useUpdateTaskStatus } from "@/hooks/useTasks";
+import { useMyCreatedTickets } from "@/hooks/useTickets";
 import { useAuthStore } from "@/store/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ROLE_LABELS } from "@/lib/constants";
@@ -13,7 +14,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, L
 import { AlertTriangle, Clock, TrendingUp, Activity, Check, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
-import { format, isAfter, isBefore, addDays } from "date-fns";
+import { format, formatDistanceToNow, isAfter, isBefore, addDays } from "date-fns";
 import { ar } from "date-fns/locale";
 
 function CountUp({ value }: { value: number | undefined }) {
@@ -103,6 +104,22 @@ const STATUS_CFG = {
 };
 const NEXT_STATUS: Record<string, string> = { NEW: "IN_PROGRESS", IN_PROGRESS: "COMPLETED", COMPLETED: "NEW" };
 
+const TICKET_STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
+  DRAFT:                   { label: "مسودة",              color: "#6B7280", bg: "rgba(107,114,128,0.12)" },
+  NEW:                     { label: "جديدة",              color: "#3B82F6", bg: "rgba(59,130,246,0.12)"  },
+  AWAITING_INFO:           { label: "انتظار معلومات",     color: "#F59E0B", bg: "rgba(245,158,11,0.12)"  },
+  AWAITING_APPROVAL:       { label: "انتظار اعتماد",      color: "#F97316", bg: "rgba(249,115,22,0.12)"  },
+  APPROVED:                { label: "معتمدة",             color: "#10B981", bg: "rgba(16,185,129,0.12)"  },
+  REJECTED:                { label: "مرفوضة",             color: "#EF4444", bg: "rgba(239,68,68,0.12)"   },
+  SCHEDULED:               { label: "مجدولة",             color: "#8B5CF6", bg: "rgba(139,92,246,0.12)"  },
+  IN_PROGRESS:             { label: "قيد التنفيذ",        color: "#6366F1", bg: "rgba(99,102,241,0.12)"  },
+  AWAITING_TESTING:        { label: "انتظار اختبار",      color: "#06B6D4", bg: "rgba(6,182,212,0.12)"   },
+  AWAITING_OWNER_APPROVAL: { label: "انتظار اعتماد المالك", color: "#14B8A6", bg: "rgba(20,184,166,0.12)" },
+  COMPLETED:               { label: "مكتملة",             color: "#10B981", bg: "rgba(16,185,129,0.12)"  },
+  CLOSED:                  { label: "مغلقة",              color: "#6B7280", bg: "rgba(107,114,128,0.12)" },
+  ON_HOLD:                 { label: "معلقة",              color: "#94A3B8", bg: "rgba(148,163,184,0.12)" },
+};
+
 function TaskStatusDot({ status, onClick, pending }: { status: string; onClick: () => void; pending: boolean }) {
   const cfg = STATUS_CFG[status as keyof typeof STATUS_CFG] ?? STATUS_CFG.NEW;
   return (
@@ -143,24 +160,37 @@ function DueDateLabel({ date }: { date: string | null }) {
   );
 }
 
+function TimeAgo({ date }: { date: string }) {
+  return (
+    <span className="font-brm" style={{ fontSize: 10, color: "var(--muted-foreground)", whiteSpace: "nowrap" }}>
+      {formatDistanceToNow(new Date(date), { addSuffix: true, locale: ar })}
+    </span>
+  );
+}
+
 function DevTaskHub() {
-  const { data: tasks, isLoading } = useMyTasks();
+  const { data: tasks,          isLoading: tasksLoading   } = useMyTasks();
+  const { data: createdTickets, isLoading: ticketsLoading } = useMyCreatedTickets();
   const { mutate: updateStatus, isPending } = useUpdateTaskStatus();
-  const [filter, setFilter] = useState<"all" | "NEW" | "IN_PROGRESS" | "COMPLETED">("all");
   const [pendingId, setPendingId] = useState<string | null>(null);
 
-  const sorted: any[] = [...(tasks ?? [])].sort(
-    (a, b) => (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9)
+  const DONE_TASK_STATUSES   = new Set(["COMPLETED"]);
+  const DONE_TICKET_STATUSES = new Set(["COMPLETED", "CLOSED"]);
+
+  const taskItems = (tasks ?? [])
+    .filter((t: any) => !DONE_TASK_STATUSES.has(t.status))
+    .map((t: any) => ({ ...t, _kind: "task" as const }));
+
+  const ticketItems = (createdTickets ?? [])
+    .filter((t: any) => !DONE_TICKET_STATUSES.has(t.status))
+    .map((t: any) => ({ ...t, _kind: "ticket" as const }));
+
+  const allItems = [...taskItems, ...ticketItems].sort(
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
 
-  const filtered = filter === "all" ? sorted : sorted.filter(t => t.status === filter);
-
-  const counts = {
-    total:       tasks?.length ?? 0,
-    NEW:         tasks?.filter((t: any) => t.status === "NEW").length ?? 0,
-    IN_PROGRESS: tasks?.filter((t: any) => t.status === "IN_PROGRESS").length ?? 0,
-    COMPLETED:   tasks?.filter((t: any) => t.status === "COMPLETED").length ?? 0,
-  };
+  const activeTasks   = taskItems.filter((t: any) => t.status === "IN_PROGRESS").length;
+  const totalUpdates  = ticketItems.reduce((n: number, t: any) => n + (t.unreadCount ?? 0), 0);
 
   function cycleStatus(task: any) {
     const next = NEXT_STATUS[task.status];
@@ -169,16 +199,11 @@ function DevTaskHub() {
     updateStatus({ id: task.id, status: next }, { onSettled: () => setPendingId(null) });
   }
 
-  const FILTERS = [
-    { key: "all",         label: "--all",          count: counts.total },
-    { key: "NEW",         label: "--new",           count: counts.NEW },
-    { key: "IN_PROGRESS", label: "--in-progress",   count: counts.IN_PROGRESS },
-    { key: "COMPLETED",   label: "--completed",     count: counts.COMPLETED },
-  ] as const;
+  const isLoading = tasksLoading || ticketsLoading;
 
   return (
     <div style={{ borderRadius: 14, overflow: "hidden", border: "1px solid var(--border)", boxShadow: "0 2px 12px rgba(0,0,0,0.07)" }}>
-      {/* Terminal header */}
+      {/* macOS terminal header */}
       <div style={{ background: "var(--foreground)", padding: "10px 16px", display: "flex", alignItems: "center", gap: 10 }}>
         <div style={{ display: "flex", gap: 6 }}>
           <span style={{ width: 12, height: 12, borderRadius: "50%", background: "#FF5F57", display: "block" }} />
@@ -186,133 +211,128 @@ function DevTaskHub() {
           <span style={{ width: 12, height: 12, borderRadius: "50%", background: "#28C840", display: "block" }} />
         </div>
         <span className="font-brm" style={{ color: "var(--background)", fontSize: 12, opacity: 0.7, flex: 1 }}>
-          $ brmctl tasks --assignee:me
+          $ brmctl activity --user:me --active
         </span>
-        <span className="font-brm" style={{ fontSize: 11, color: counts.IN_PROGRESS > 0 ? "#28C840" : "rgba(255,255,255,0.3)" }}>
-          {counts.IN_PROGRESS > 0 ? `● ${counts.IN_PROGRESS} active` : "○ idle"}
+        <span className="font-brm" style={{ fontSize: 11, color: activeTasks > 0 ? "#28C840" : "rgba(255,255,255,0.3)" }}>
+          {activeTasks > 0 ? `● ${activeTasks} active` : "○ idle"}
         </span>
       </div>
 
       <div style={{ background: "var(--card)" }}>
-        {/* Stat chips */}
-        <div style={{ display: "flex", gap: 0, padding: "12px 16px 0", overflowX: "auto" }}>
-          {([
-            { label: "total",       val: counts.total,       color: "var(--muted-foreground)" },
-            { label: "new",         val: counts.NEW,         color: "#3B82F6" },
-            { label: "in_progress", val: counts.IN_PROGRESS, color: "#F59E0B" },
-            { label: "completed",   val: counts.COMPLETED,   color: "#10B981" },
-          ] as const).map(s => (
-            <div key={s.label} style={{ flex: 1, textAlign: "center", padding: "6px 8px", minWidth: 70 }}>
-              <div className="font-brm" style={{ fontSize: 22, fontWeight: 700, color: s.color, lineHeight: 1 }}>{s.val}</div>
-              <div className="font-brm" style={{ fontSize: 10, color: "var(--muted-foreground)", marginTop: 2 }}>{s.label}</div>
-            </div>
-          ))}
+        {/* Summary strip */}
+        <div className="font-brm" style={{ display: "flex", gap: 16, padding: "10px 20px", fontSize: 11, borderBottom: "1px solid var(--border)", flexWrap: "wrap" }}>
+          <span style={{ color: "var(--muted-foreground)" }}>
+            tasks <span style={{ color: "var(--foreground)", fontWeight: 700 }}>{taskItems.length}</span>
+          </span>
+          <span style={{ color: "var(--border)" }}>|</span>
+          <span style={{ color: "var(--muted-foreground)" }}>
+            tickets <span style={{ color: "var(--foreground)", fontWeight: 700 }}>{ticketItems.length}</span>
+          </span>
+          {totalUpdates > 0 && (
+            <>
+              <span style={{ color: "var(--border)" }}>|</span>
+              <span style={{ color: "#D97706", display: "flex", alignItems: "center", gap: 4 }}>
+                <span className="relative flex" style={{ width: 7, height: 7, display: "inline-flex" }}>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: "#F59E0B" }} />
+                  <span className="relative inline-flex rounded-full" style={{ width: 7, height: 7, background: "#F59E0B" }} />
+                </span>
+                {totalUpdates} تحديث جديد
+              </span>
+            </>
+          )}
         </div>
 
-        {/* Divider */}
-        <div style={{ height: 1, background: "var(--border)", margin: "12px 0 0" }} />
-
-        {/* Filter tabs */}
-        <div style={{ display: "flex", gap: 2, padding: "8px 16px", overflowX: "auto" }}>
-          {FILTERS.map(f => (
-            <button
-              key={f.key}
-              onClick={() => setFilter(f.key)}
-              className="font-brm"
-              style={{
-                fontSize: 11,
-                padding: "4px 10px",
-                borderRadius: 6,
-                border: "1px solid",
-                borderColor: filter === f.key ? "#4F46E5" : "var(--border)",
-                background: filter === f.key ? "rgba(79,70,229,0.1)" : "transparent",
-                color: filter === f.key ? "#4F46E5" : "var(--muted-foreground)",
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-                transition: "all 0.12s",
-              }}
-            >
-              {f.label}
-              <span style={{ marginRight: 5, opacity: 0.6 }}>{f.count}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Task list */}
+        {/* Unified list */}
         <div style={{ padding: "4px 0 8px" }}>
           {isLoading ? (
-            <div style={{ padding: "16px 24px" }}><SkeletonList count={3} /></div>
-          ) : filtered.length === 0 ? (
+            <div style={{ padding: "16px 24px" }}><SkeletonList count={4} /></div>
+          ) : allItems.length === 0 ? (
             <div style={{ padding: "32px 24px", textAlign: "center" }}>
-              <div className="font-brm" style={{ color: "var(--muted-foreground)", fontSize: 13 }}>
-                // no tasks match this filter
-              </div>
+              <div className="font-brm" style={{ color: "var(--muted-foreground)", fontSize: 13 }}>// no active items</div>
             </div>
-          ) : (
-            filtered.map((task: any) => {
-              const cfg = STATUS_CFG[task.status as keyof typeof STATUS_CFG] ?? STATUS_CFG.NEW;
-              const brmNum = task.ticket?.ticketNumber
-                ? `BRM-${String(task.ticket.ticketNumber).padStart(4, "0")}`
-                : null;
-              const isPendingThis = pendingId === task.id && isPending;
-
+          ) : allItems.map((item: any) => {
+            if (item._kind === "task") {
+              const cfg = STATUS_CFG[item.status as keyof typeof STATUS_CFG] ?? STATUS_CFG.NEW;
+              const brmNum = item.ticket?.ticketNumber ? `BRM-${String(item.ticket.ticketNumber).padStart(4, "0")}` : null;
+              const isPendingThis = pendingId === item.id && isPending;
               return (
-                <div
-                  key={task.id}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 12,
-                    padding: "10px 20px",
-                    borderBottom: "1px solid var(--border)",
-                    transition: "background 0.1s",
-                  }}
+                <div key={`task-${item.id}`}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 20px", borderBottom: "1px solid var(--border)", transition: "background 0.1s" }}
                   onMouseEnter={e => (e.currentTarget.style.background = "var(--muted)")}
                   onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                 >
-                  {/* Status cycle button */}
-                  <TaskStatusDot status={task.status} onClick={() => cycleStatus(task)} pending={isPendingThis} />
-
-                  {/* Content */}
+                  <TaskStatusDot status={item.status} onClick={() => cycleStatus(item)} pending={isPendingThis} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <Link
-                      href={`/tickets/${task.ticket?.id}`}
-                      style={{ display: "block", fontWeight: 600, fontSize: 14, color: "var(--foreground)", marginBottom: 3 }}
-                      className="truncate hover:underline"
-                    >
-                      {task.title}
-                    </Link>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                      {brmNum && (
-                        <Link href={`/tickets/${task.ticket?.id}`}>
-                          <span className="font-brm" style={{ fontSize: 11, color: "#4F46E5", opacity: 0.85 }}>{brmNum}</span>
-                        </Link>
-                      )}
-                      {brmNum && <span style={{ color: "var(--border)", fontSize: 11 }}>·</span>}
-                      <Link href={`/tickets/${task.ticket?.id}`} className="truncate">
-                        <span style={{ fontSize: 12, color: "var(--muted-foreground)" }}>{task.ticket?.title}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                      <span className="font-brm" style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: "rgba(59,130,246,0.12)", color: "#3B82F6", border: "1px solid rgba(59,130,246,0.25)", flexShrink: 0 }}>TASK</span>
+                      <Link href={`/tickets/${item.ticket?.id}`} style={{ fontWeight: 600, fontSize: 14, color: "var(--foreground)" }} className="truncate hover:underline">
+                        {item.title}
+                      </Link>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      {brmNum && <span className="font-brm" style={{ fontSize: 11, color: "#4F46E5", opacity: 0.8 }}>{brmNum}</span>}
+                      {brmNum && <span style={{ color: "var(--border)", fontSize: 10 }}>·</span>}
+                      <Link href={`/tickets/${item.ticket?.id}`} className="truncate">
+                        <span style={{ fontSize: 11, color: "var(--muted-foreground)" }}>{item.ticket?.title}</span>
                       </Link>
                     </div>
                   </div>
-
-                  {/* Right side: status chip + due date */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-                    <DueDateLabel date={task.dueDate} />
-                    <span
-                      className="font-brm"
-                      style={{
-                        fontSize: 10, padding: "2px 8px", borderRadius: 4,
-                        background: cfg.bg, color: cfg.color,
-                        border: `1px solid ${cfg.color}33`,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {task.status}
-                    </span>
-                    <ChevronRight style={{ width: 14, height: 14, color: "var(--muted-foreground)", opacity: 0.5 }} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                    <DueDateLabel date={item.dueDate} />
+                    <span className="font-brm" style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}33`, whiteSpace: "nowrap" }}>{item.status}</span>
+                    <TimeAgo date={item.updatedAt} />
                   </div>
                 </div>
               );
-            })
-          )}
+            }
+
+            // ticket row
+            const scfg = TICKET_STATUS_CFG[item.status] ?? { label: item.status, color: "#6B7280", bg: "rgba(107,114,128,0.12)" };
+            const brmNum = `BRM-${String(item.ticketNumber).padStart(4, "0")}`;
+            return (
+              <Link key={`ticket-${item.id}`} href={`/tickets/${item.id}`}
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 20px", borderBottom: "1px solid var(--border)", transition: "background 0.1s", textDecoration: "none" }}
+                onMouseEnter={e => (e.currentTarget.style.background = "var(--muted)")}
+                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+              >
+                {/* Update dot */}
+                <div style={{ width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  {item.hasUpdates ? (
+                    <span className="relative flex" style={{ width: 10, height: 10 }}>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: "#F59E0B" }} />
+                      <span className="relative inline-flex rounded-full" style={{ width: 10, height: 10, background: "#F59E0B" }} />
+                    </span>
+                  ) : (
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--border)", display: "block" }} />
+                  )}
+                </div>
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                    <span className="font-brm" style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: "rgba(139,92,246,0.12)", color: "#8B5CF6", border: "1px solid rgba(139,92,246,0.25)", flexShrink: 0 }}>TICKET</span>
+                    <span style={{ fontWeight: 600, fontSize: 14, color: "var(--foreground)" }} className="truncate">{item.title}</span>
+                    {item.hasUpdates && (
+                      <span className="font-brm" style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: "rgba(245,158,11,0.12)", color: "#D97706", border: "1px solid rgba(245,158,11,0.3)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                        {item.unreadCount} جديد
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                    <span className="font-brm" style={{ fontSize: 11, color: "#4F46E5", opacity: 0.8 }}>{brmNum}</span>
+                    <span style={{ color: "var(--border)", fontSize: 10 }}>·</span>
+                    <CompanyLogo company={item.company} size="xs" />
+                    <span style={{ fontSize: 11, color: "var(--muted-foreground)" }}>{item.company?.name}</span>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                  <DueDateLabel date={item.estimatedDeadline} />
+                  <span className="font-brm" style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: scfg.bg, color: scfg.color, border: `1px solid ${scfg.color}33`, whiteSpace: "nowrap" }}>{scfg.label}</span>
+                  <TimeAgo date={item.updatedAt} />
+                </div>
+              </Link>
+            );
+          })}
         </div>
       </div>
     </div>

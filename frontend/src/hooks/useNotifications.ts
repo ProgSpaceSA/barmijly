@@ -2,10 +2,10 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 
-export function useNotifications() {
+export function useNotifications(page = 1, unreadOnly = false) {
   return useQuery({
-    queryKey: ["notifications"],
-    queryFn: () => api.get("/notifications").then(r => r.data),
+    queryKey: ["notifications", page, unreadOnly],
+    queryFn: () => api.get(`/notifications?page=${page}&unreadOnly=${unreadOnly}`).then(r => r.data),
     refetchInterval: 30_000,
   });
 }
@@ -30,6 +30,9 @@ export function useMarkAllRead() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api.patch("/notifications/read-all"),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["notifications"] }); qc.invalidateQueries({ queryKey: ["notifications-count"] }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+      qc.invalidateQueries({ queryKey: ["notifications-count"] });
+    },
   });
 }

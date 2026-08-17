@@ -12,8 +12,18 @@ export class NotificationsController {
   constructor(private notificationsService: NotificationsService) {}
 
   @Get()
-  findAll(@CurrentUser() user: any, @Query('unreadOnly') unreadOnly?: string) {
-    return this.notificationsService.findAll(user.id, unreadOnly === 'true');
+  findAll(
+    @CurrentUser() user: any,
+    @Query('unreadOnly') unreadOnly?: string,
+    @Query('page')  page?:  string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.notificationsService.findAll(
+      user.id,
+      unreadOnly === 'true',
+      page  ? parseInt(page)  : 1,
+      limit ? parseInt(limit) : 20,
+    );
   }
 
   @Get('unread-count')

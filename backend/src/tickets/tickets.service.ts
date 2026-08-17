@@ -94,6 +94,36 @@ export class TicketsService {
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
+  async findMyCreated(user: any) {
+    const [tickets, unreadGroups] = await Promise.all([
+      this.prisma.ticket.findMany({
+        where: { creatorId: user.id, isArchived: false },
+        select: {
+          id: true, title: true, ticketNumber: true, status: true,
+          updatedAt: true, estimatedDeadline: true, priority: true, finalPriority: true,
+          company: { select: { id: true, name: true, logoUrl: true } },
+          system:  { select: { id: true, name: true } },
+        },
+        orderBy: { updatedAt: 'desc' },
+      }),
+      this.prisma.notification.groupBy({
+        by: ['ticketId'],
+        where: { userId: user.id, isRead: false, ticketId: { not: null } },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const unreadByTicket = new Map(
+      unreadGroups.map(n => [n.ticketId, n._count._all])
+    );
+
+    return tickets.map(t => ({
+      ...t,
+      hasUpdates: (unreadByTicket.get(t.id) ?? 0) > 0,
+      unreadCount: unreadByTicket.get(t.id) ?? 0,
+    }));
+  }
+
   async findOne(id: string, user: any) {
     const ticket = await this.prisma.ticket.findUnique({
       where: { id },

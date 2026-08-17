@@ -25,6 +25,11 @@ export class TicketsController {
     return this.ticketsService.findAll(user, filters);
   }
 
+  @Get('my-created')
+  findMyCreated(@CurrentUser() user: any) {
+    return this.ticketsService.findMyCreated(user);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() user: any) {
     return this.ticketsService.findOne(id, user);
