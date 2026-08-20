@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Patch, Param, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import { rolesWith } from '../access/permissions';
 import { InvitationsService } from './invitations.service';
 import { CreateInvitationDto } from './dto/create-invitation.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -11,7 +11,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 @ApiTags('Invitations')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT)
+@Roles(...rolesWith('invitation:manage'))
 @Controller('invitations')
 export class InvitationsController {
   constructor(private invitationsService: InvitationsService) {}

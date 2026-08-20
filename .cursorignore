@@ -1,0 +1,32 @@
+# Dependencies
+**/node_modules/
+
+# Build output
+backend/dist/
+frontend/.next/
+frontend/out/
+
+# Uploads & backups
+backend/uploads/
+**/*.sql.gz
+**/backups/
+
+# Lock files (large, low signal)
+**/package-lock.json
+**/yarn.lock
+
+# Generated
+**/.turbo/
+**/.cache/
+**/coverage/
+
+# Env & secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# IDE / OS
+**/.DS_Store
+**/Thumbs.db
+
+follow.md

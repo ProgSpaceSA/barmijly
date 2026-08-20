@@ -40,23 +40,23 @@
 }
 
 .dark {
-  --background: #161616;
-  --foreground: #B8B8B8;
-  --card: #1E1E1E;
-  --card-foreground: #B8B8B8;
-  --popover: #242424;
-  --popover-foreground: #B8B8B8;
-  --border: rgba(255,255,255,0.07);
-  --input: rgba(255,255,255,0.05);
-  --muted: #242424;
-  --muted-foreground: #6B6B6B;
-  --sidebar: #0E0E0E;
-  --sidebar-end: #161616;
-  --sidebar-foreground: #A0A6C0;
-  --sidebar-foreground-dim: rgba(160,166,192,0.4);
-  --sidebar-active: rgba(255,255,255,0.08);
-  --sidebar-muted: rgba(255,255,255,0.04);
-  --sidebar-border: rgba(255,255,255,0.06);
+  --background: #0B0B12;
+  --foreground: #EEEFF4;
+  --card: #14141C;
+  --card-foreground: #EEEFF4;
+  --popover: #1A1A24;
+  --popover-foreground: #EEEFF4;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.07);
+  --muted: #1C1C28;
+  --muted-foreground: #9A9AAD;
+  --sidebar: #08080E;
+  --sidebar-end: #0C0C14;
+  --sidebar-foreground: #D2D4E0;
+  --sidebar-foreground-dim: rgba(210, 212, 224, 0.62);
+  --sidebar-active: rgba(99, 102, 241, 0.16);
+  --sidebar-muted: rgba(255, 255, 255, 0.05);
+  --sidebar-border: rgba(255, 255, 255, 0.07);
 }
 
 @theme inline {
@@ -125,6 +125,10 @@
 
 * { box-sizing: border-box; }
 
+html {
+  background: var(--background);
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
@@ -136,6 +140,12 @@ body {
 
 [dir="rtl"] { text-align: right; }
 [dir="ltr"] { text-align: left; direction: ltr; }
+
+/* Isolate LTR tokens (manage(), // comments) without flipping the parent RTL layout */
+.ltr-isolate {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
 
 /* Monospace for IDs, timestamps, counts */
 .font-brm { font-family: var(--font-mono); }
@@ -149,7 +159,7 @@ body {
 }
 
 .dark .skeleton {
-  background: linear-gradient(90deg, #1A1A30 25%, #222240 50%, #1A1A30 75%);
+  background: linear-gradient(90deg, #16161F 25%, #22222E 50%, #16161F 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
 }
@@ -176,6 +186,14 @@ body {
   animation: slide-in-palette 0.18s cubic-bezier(0.16,1,0.3,1) forwards;
 }
 
+/* space-y-* adds margin-block-end to every non-last child. On a
+   position:fixed; inset:0 overlay that margin is subtracted from the
+   used height, so the backdrop stops short of the viewport. */
+[class*="space-y"] > .fixed.inset-0 {
+  margin-block-end: 0;
+  margin-bottom: 0;
+}
+
 /* Count-up reveal */
 .count-reveal {
   animation: count-up 0.4s ease-out forwards;
@@ -188,7 +206,1325 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
 .dark ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); }
 
+/* Recharts: hide the click focus box; keep a light ring for keyboard nav */
+.recharts-wrapper:focus,
+.recharts-wrapper *:focus,
+.recharts-surface:focus {
+  outline: none;
+}
+.recharts-wrapper:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.recharts-wrapper,
+.recharts-surface {
+  overflow: visible;
+}
+
 /* Card shadow */
 .card-shadow { box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04); }
 .card-shadow-md { box-shadow: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -1px rgba(0,0,0,0.04); }
 .dark .card-shadow { box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+
+.dark [data-slot="card"] {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 10px 28px rgba(0, 0, 0, 0.32);
+}
+
+/* ══ Dark surfaces ══════════════════════════════════════════════════════════
+   Light mode keeps the existing tokens. Dark mode needs its own elevation,
+   chip colours, and nav states so text does not sink into the page.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.brm-shell {
+  min-height: 100vh;
+  background: var(--background);
+}
+.dark .brm-shell {
+  background:
+    radial-gradient(900px 520px at 100% -8%, rgba(79, 70, 229, 0.18), transparent 55%),
+    radial-gradient(640px 380px at 0% 110%, rgba(139, 92, 246, 0.08), transparent 50%),
+    var(--background);
+}
+
+.brm-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--sidebar-foreground);
+  border-inline-start: 3px solid transparent;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.brm-nav-link:hover { background: var(--sidebar-muted); }
+.brm-nav-link[data-active="true"] {
+  color: #4F46E5;
+  background: var(--sidebar-active);
+  border-inline-start-color: #4F46E5;
+}
+.dark .brm-nav-link[data-active="true"] {
+  color: #A5B4FC;
+  background: linear-gradient(to inline-end, rgba(99, 102, 241, 0.22), rgba(99, 102, 241, 0.04));
+  border-inline-start-color: #818CF8;
+  box-shadow: 0 0 24px rgba(79, 70, 229, 0.12);
+}
+
+.brm-sidebar-btn {
+  color: var(--sidebar-foreground-dim);
+  transition: background 0.15s, color 0.15s;
+}
+.brm-sidebar-btn:hover {
+  background: var(--sidebar-muted);
+  color: var(--sidebar-foreground);
+}
+.brm-logout:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #EF4444;
+}
+
+.brm-stat {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  padding: 14px 16px;
+  min-height: 92px;
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+.dark .brm-stat {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+.brm-stat[data-alert="true"] {
+  background: color-mix(in srgb, #EF4444 7%, var(--card));
+}
+.brm-stat-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.brm-stat-value {
+  margin-top: 4px;
+  font-size: 1.85rem;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: var(--foreground);
+}
+.brm-stat-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--stat-tone);
+  color: #fff;
+}
+.dark .brm-stat-icon {
+  background: color-mix(in srgb, var(--stat-tone) 18%, transparent);
+  color: var(--stat-tone);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--stat-tone) 32%, transparent);
+}
+.brm-stat-spark {
+  position: absolute;
+  inset-inline-end: 14px;
+  bottom: 10px;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+.brm-term {
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.07);
+}
+.dark .brm-term {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 12px 32px rgba(0, 0, 0, 0.38);
+}
+.brm-term-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: #0F172A;
+  color: rgba(226, 232, 240, 0.72);
+}
+.dark .brm-term-bar {
+  background: #08080E;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.brm-term-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 8px 18px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+}
+.brm-term-body {
+  max-height: 50vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 0 6px;
+}
+.brm-term-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 18px;
+  border-bottom: 1px solid var(--border);
+  text-decoration: none;
+  transition: background 0.12s;
+}
+.brm-term-row:last-child { border-bottom: 0; }
+.brm-term-row:hover { background: color-mix(in srgb, var(--muted) 80%, transparent); }
+
+.brm-kind {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  letter-spacing: 0.04em;
+}
+.brm-kind-task {
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563EB;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+}
+.dark .brm-kind-task { color: #93C5FD; }
+.brm-kind-ticket {
+  background: rgba(139, 92, 246, 0.12);
+  color: #7C3AED;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+}
+.dark .brm-kind-ticket { color: #C4B5FD; }
+
+.brm-dev-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  background: rgba(79, 70, 229, 0.12);
+  color: #4F46E5;
+}
+.dark .brm-dev-avatar {
+  background: rgba(129, 140, 248, 0.16);
+  color: #C7D2FE;
+}
+.brm-dev-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #4F46E5, #7C3AED);
+}
+.dark .brm-dev-fill { box-shadow: 0 0 10px rgba(79, 70, 229, 0.45); }
+
+/* Nested card lists: thumb on the physical right, away from RTL counts. */
+.brm-panel-scroll {
+  direction: ltr;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-inline-end: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: #818CF8 color-mix(in srgb, var(--muted) 80%, transparent);
+}
+.brm-panel-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.brm-panel-scroll::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--muted) 90%, transparent);
+  border-radius: 999px;
+}
+.brm-panel-scroll::-webkit-scrollbar-thumb {
+  background: #818CF8;
+  border-radius: 999px;
+}
+.brm-panel-scroll::-webkit-scrollbar-thumb:hover {
+  background: #6366F1;
+}
+
+.brm-chip {
+  display: inline-flex;
+  height: 24px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+}
+.brm-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: currentColor;
+}
+.brm-chip[data-status="DRAFT"] { background: rgba(148, 163, 184, 0.12); color: #64748B; }
+.brm-chip[data-status="NEW"] { background: rgba(59, 130, 246, 0.10); color: #2563EB; }
+.brm-chip[data-status="AWAITING_INFO"] { background: rgba(245, 158, 11, 0.10); color: #B45309; }
+.brm-chip[data-status="AWAITING_APPROVAL"] { background: rgba(249, 115, 22, 0.10); color: #C2410C; }
+.brm-chip[data-status="APPROVED"] { background: rgba(16, 185, 129, 0.10); color: #065F46; }
+.brm-chip[data-status="REJECTED"] { background: rgba(239, 68, 68, 0.10); color: #B91C1C; }
+.brm-chip[data-status="SCHEDULED"] { background: rgba(139, 92, 246, 0.10); color: #6D28D9; }
+.brm-chip[data-status="IN_PROGRESS"] { background: rgba(34, 197, 94, 0.10); color: #15803D; }
+.brm-chip[data-status="AWAITING_TESTING"] { background: rgba(6, 182, 212, 0.10); color: #0E7490; }
+.brm-chip[data-status="AWAITING_OWNER_APPROVAL"] { background: rgba(20, 184, 166, 0.10); color: #0F766E; }
+.brm-chip[data-status="COMPLETED"] { background: rgba(16, 185, 129, 0.10); color: #065F46; }
+.brm-chip[data-status="CLOSED"] { background: rgba(107, 114, 128, 0.10); color: #374151; }
+.brm-chip[data-status="ON_HOLD"] { background: rgba(148, 163, 184, 0.10); color: #475569; }
+.brm-chip[data-overdue="true"] { background: rgba(239, 68, 68, 0.10); color: #B91C1C; }
+
+.dark .brm-chip[data-status="DRAFT"] { background: rgba(148, 163, 184, 0.16); color: #CBD5E1; }
+.dark .brm-chip[data-status="NEW"] { background: rgba(59, 130, 246, 0.18); color: #93C5FD; }
+.dark .brm-chip[data-status="AWAITING_INFO"] { background: rgba(245, 158, 11, 0.18); color: #FCD34D; }
+.dark .brm-chip[data-status="AWAITING_APPROVAL"] { background: rgba(249, 115, 22, 0.18); color: #FDBA74; }
+.dark .brm-chip[data-status="APPROVED"] { background: rgba(16, 185, 129, 0.18); color: #6EE7B7; }
+.dark .brm-chip[data-status="REJECTED"] { background: rgba(239, 68, 68, 0.18); color: #FCA5A5; }
+.dark .brm-chip[data-status="SCHEDULED"] { background: rgba(139, 92, 246, 0.18); color: #C4B5FD; }
+.dark .brm-chip[data-status="IN_PROGRESS"] { background: rgba(52, 211, 153, 0.16); color: #6EE7B7; }
+.dark .brm-chip[data-status="AWAITING_TESTING"] { background: rgba(6, 182, 212, 0.18); color: #67E8F9; }
+.dark .brm-chip[data-status="AWAITING_OWNER_APPROVAL"] { background: rgba(20, 184, 166, 0.18); color: #5EEAD4; }
+.dark .brm-chip[data-status="COMPLETED"] { background: rgba(16, 185, 129, 0.18); color: #6EE7B7; }
+.dark .brm-chip[data-status="CLOSED"] { background: rgba(107, 114, 128, 0.18); color: #9CA3AF; }
+.dark .brm-chip[data-status="ON_HOLD"] { background: rgba(148, 163, 184, 0.16); color: #CBD5E1; }
+.dark .brm-chip[data-overdue="true"] { background: rgba(239, 68, 68, 0.18); color: #FCA5A5; }
+
+.brm-chip[data-priority="CRITICAL"] { background: rgba(239, 68, 68, 0.10); color: #B91C1C; }
+.brm-chip[data-priority="HIGH"] { background: rgba(249, 115, 22, 0.10); color: #C2410C; }
+.brm-chip[data-priority="MEDIUM"] { background: rgba(245, 158, 11, 0.10); color: #92400E; }
+.brm-chip[data-priority="LOW"] { background: rgba(34, 197, 94, 0.10); color: #15803D; }
+.brm-chip[data-priority="DEFERRED"] { background: rgba(148, 163, 184, 0.10); color: #475569; }
+.dark .brm-chip[data-priority="CRITICAL"] { background: rgba(239, 68, 68, 0.18); color: #FCA5A5; }
+.dark .brm-chip[data-priority="HIGH"] { background: rgba(249, 115, 22, 0.18); color: #FDBA74; }
+.dark .brm-chip[data-priority="MEDIUM"] { background: rgba(245, 158, 11, 0.18); color: #FCD34D; }
+.dark .brm-chip[data-priority="LOW"] { background: rgba(34, 197, 94, 0.16); color: #6EE7B7; }
+.dark .brm-chip[data-priority="DEFERRED"] { background: rgba(148, 163, 184, 0.16); color: #CBD5E1; }
+
+.brm-ticket-code {
+  background: rgba(79, 70, 229, 0.10);
+  color: #4F46E5;
+  box-shadow: inset 0 0 0 1px rgba(79, 70, 229, 0.20);
+}
+.dark .brm-ticket-code {
+  background: rgba(129, 140, 248, 0.16);
+  color: #C7D2FE;
+  box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.28);
+}
+
+.brm-overdue { color: #B91C1C; }
+.dark .brm-overdue { color: #FCA5A5; }
+.brm-soon { color: #D97706; }
+.dark .brm-soon { color: #FBBF24; }
+
+/* ══ Comments ═══════════════════════════════════════════════════════════════
+   The thread has three jobs that pull against each other: mixed Arabic/English
+   bodies must stay readable, mentions must be legible without shouting, and the
+   composer must paint a live highlight on top of a real <textarea>. Everything
+   below exists for one of those three.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* ── Mentions ───────────────────────────────────────────────────────────── */
+
+/* A resolved mention. In display mode `<bdi>` isolates it, so a Latin handle
+   inside an Arabic line cannot drag the neighbouring punctuation around; the
+   composer mirror reuses the same colours on a plain span, where isolating
+   would slide the highlight off the characters the textarea actually laid out. */
+.brm-mention {
+  color: #4338CA;
+  font-weight: 600;
+  background: rgba(79, 70, 229, 0.10);
+  border-radius: 4px;
+  padding: 0 0.25em;
+  line-height: inherit;
+  transition: background 0.15s;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.brm-mention:hover { background: rgba(79, 70, 229, 0.18); }
+.dark .brm-mention { color: #A5B4FC; background: rgba(129, 140, 248, 0.16); }
+.dark .brm-mention:hover { background: rgba(129, 140, 248, 0.26); }
+
+/* Being the one mentioned should read louder than mentioning someone else. */
+.brm-mention-self { color: #6D28D9; background: rgba(139, 92, 246, 0.20); }
+.dark .brm-mention-self { color: #DDD6FE; background: rgba(167, 139, 250, 0.28); }
+
+/* ── Comment body ───────────────────────────────────────────────────────── */
+
+/* `dir="auto"` is set per comment, so an all-English note reads left-to-right
+   and an Arabic one right-to-left without either flipping the other. */
+.brm-comment-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-align: start;
+  line-height: 1.7;
+}
+.brm-comment-body .brm-mention {
+  display: inline;
+  white-space: nowrap;
+  padding: 0 0.28em;
+  margin-inline: 0.1em;
+  line-height: inherit;
+  vertical-align: baseline;
+  border-radius: 3px;
+}
+
+.brm-comment {
+  position: relative;
+  border-radius: 14px;
+  padding: 10px 12px;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+.brm-comment:hover { background: color-mix(in srgb, var(--muted) 55%, transparent); }
+
+/* Accents earn their place: amber = programming team only, violet = you were
+   named. Both are a start-edge bar, so they survive an RTL/LTR flip. */
+.brm-comment-internal {
+  background: color-mix(in srgb, #F59E0B 7%, transparent);
+  box-shadow: inset 3px 0 0 0 #F59E0B;
+}
+[dir="rtl"] .brm-comment-internal { box-shadow: inset -3px 0 0 0 #F59E0B; }
+
+.brm-comment-mentioned {
+  background: color-mix(in srgb, #8B5CF6 9%, transparent);
+  box-shadow: inset 3px 0 0 0 #8B5CF6;
+}
+[dir="rtl"] .brm-comment-mentioned { box-shadow: inset -3px 0 0 0 #8B5CF6; }
+
+.brm-comment-actions { opacity: 0; transition: opacity 0.15s; align-self: flex-start; }
+.brm-comment:hover .brm-comment-actions,
+.brm-comment:focus-within .brm-comment-actions { opacity: 1; }
+@media (hover: none) { .brm-comment-actions { opacity: 1; } }
+
+.brm-comment-confirm {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  align-self: flex-start;
+  gap: 6px;
+  width: max-content;
+  max-width: 11.5rem;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  flex-shrink: 0;
+}
+.brm-comment-confirm > p {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: #EF4444;
+  text-align: start;
+}
+
+.brm-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  transition: background 0.15s, color 0.15s;
+}
+.brm-icon-btn:hover { background: var(--muted); color: var(--foreground); }
+.brm-icon-btn-danger:hover { background: rgba(239, 68, 68, 0.14); color: #EF4444; }
+
+/* Day separator — a hairline with the date sitting on it. */
+.brm-day-sep {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 8px;
+}
+.brm-day-sep::before,
+.brm-day-sep::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.brm-day-sep > span {
+  font-size: 0.68rem;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+/* ── Composer ───────────────────────────────────────────────────────────── */
+
+.brm-composer {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  /* The section behind it is already `--card`, so a flat card colour would make
+     the composer disappear into it. A hint of `--muted` separates them. */
+  background: color-mix(in srgb, var(--muted) 35%, var(--card));
+  transition: border-color 0.18s, box-shadow 0.18s;
+  overflow: hidden;
+}
+.brm-composer[data-focused="true"] {
+  border-color: #4F46E5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.14);
+}
+.brm-composer[data-dragging="true"] {
+  border-color: #8B5CF6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.16);
+}
+
+.brm-composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+}
+
+/* The mirror paints the glyphs; the textarea on top is invisible except for
+   the caret. Every metric that affects wrapping has to match — extra padding
+   or bold on a mention would wrap sooner than the textarea and split the chip. */
+.brm-editor { position: relative; }
+
+.brm-editor-layer {
+  box-sizing: border-box;
+  margin: 0;
+  width: 100%;
+  min-height: 76px;
+  padding: 12px 14px;
+  border: 0;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.75;
+  letter-spacing: normal;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  tab-size: 4;
+  text-align: start;
+}
+.brm-editor-compact .brm-editor-layer { min-height: 58px; }
+
+.brm-editor-mirror {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  color: var(--foreground);
+}
+
+.brm-editor-mirror .brm-mention {
+  padding: 0;
+  font-weight: inherit;
+  border-radius: 3px;
+}
+
+.brm-editor-input {
+  position: relative;
+  z-index: 1;
+  display: block;
+  resize: none;
+  outline: none;
+  overflow-y: auto;
+  max-height: 320px;
+  background: transparent;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: #4F46E5;
+}
+.brm-editor-input::placeholder {
+  color: var(--muted-foreground);
+  -webkit-text-fill-color: var(--muted-foreground);
+  opacity: 0.85;
+}
+.brm-editor-input::selection {
+  background: rgba(79, 70, 229, 0.28);
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+.brm-editor-input:disabled { cursor: progress; }
+
+/* Segmented control — public / internal reads better than a dropdown here. */
+.brm-seg {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 10px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+}
+.brm-seg > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  padding: 3px 10px;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  transition: background 0.15s, color 0.15s;
+}
+.brm-seg > button[data-on="true"] {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.10);
+}
+.brm-seg > button[data-tone="internal"][data-on="true"] { color: #B45309; }
+.dark .brm-seg > button[data-tone="internal"][data-on="true"] { color: #FBBF24; }
+
+.brm-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  padding: 5px 9px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.brm-tool-btn:hover:not(:disabled) { background: var(--muted); color: var(--foreground); }
+.brm-tool-btn:disabled { opacity: 0.5; }
+.brm-tool-btn[data-flash="true"] {
+  border-color: #8B5CF6;
+  background: rgba(139, 92, 246, 0.14);
+  color: #8B5CF6;
+}
+
+.brm-send {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  padding: 7px 16px;
+  border-radius: 11px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #4F46E5, #7C3AED);
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.28);
+  transition: opacity 0.15s, transform 0.1s, box-shadow 0.15s;
+}
+.brm-send:hover:not(:disabled) { box-shadow: 0 4px 14px rgba(79, 70, 229, 0.36); }
+.brm-send:active:not(:disabled) { transform: translateY(1px); }
+.brm-send:disabled { opacity: 0.45; box-shadow: none; }
+
+/* Attachment tray */
+.brm-attach-tile {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--muted);
+}
+.brm-attach-remove {
+  position: absolute;
+  top: 3px;
+  inset-inline-end: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+}
+.brm-attach-tile:hover .brm-attach-remove,
+.brm-attach-remove:focus-visible { opacity: 1; }
+.brm-attach-remove:hover { background: #EF4444; }
+
+/* Upload progress: a bar across each tile, plus one under the toolbar. */
+.brm-attach-progress {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.25);
+}
+.brm-attach-progress > span {
+  display: block;
+  height: 100%;
+  background: #4F46E5;
+  transition: width 0.2s ease-out;
+}
+.brm-attach-veil {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 15, 25, 0.42);
+}
+
+.brm-progress-track {
+  height: 2px;
+  width: 100%;
+  background: var(--border);
+  overflow: hidden;
+}
+.brm-progress-track > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #4F46E5, #8B5CF6);
+  transition: width 0.25s ease-out;
+}
+
+/* Mention picker */
+.brm-mention-menu {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+}
+.brm-mention-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  text-align: start;
+  transition: background 0.12s;
+}
+.brm-mention-option[data-active="true"] { background: color-mix(in srgb, #4F46E5 12%, transparent); }
+.brm-mention-hint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 10px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--muted) 50%, transparent);
+  font-size: 0.62rem;
+  color: var(--muted-foreground);
+}
+
+kbd.brm-kbd {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  padding: 1px 5px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+@keyframes brm-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.brm-fade-up { animation: brm-fade-up 0.16s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Empty thread. The mono face is for IDs and timestamps only — Arabic rendered
+   in IBM Plex Mono loses its joins and reads as loose disconnected letters. */
+.brm-thread-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 34px 16px;
+  text-align: center;
+}
+.brm-thread-empty > .icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #4F46E5 10%, transparent);
+  color: #4F46E5;
+  margin-bottom: 2px;
+}
+.brm-thread-empty > .title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.brm-thread-empty > .hint {
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+}
+
+/* One control height across the toolbar, so the row reads as a single strip. */
+.brm-seg,
+.brm-tool-btn { height: 30px; }
+.brm-send { height: 34px; }
+
+/* Badges that must stay legible in both themes. An inline `style` colour cannot
+   follow `.dark`, so the two comment badges live here instead. */
+.brm-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.brm-badge-internal { background: rgba(245, 158, 11, 0.14); color: #B45309; }
+.dark .brm-badge-internal { background: rgba(245, 158, 11, 0.18); color: #FBBF24; }
+
+.brm-badge-mention { background: rgba(139, 92, 246, 0.16); color: #7C3AED; }
+.dark .brm-badge-mention { background: rgba(167, 139, 250, 0.20); color: #C4B5FD; }
+
+.brm-hint-internal {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 0.72rem;
+  color: #B45309;
+}
+.dark .brm-hint-internal { color: #FBBF24; }
+
+/* ══ Markdown ═══════════════════════════════════════════════════════════════
+   Ticket descriptions are Markdown source. Two surfaces render it: `.brm-md`
+   paints the parsed document, `.brm-mdedit` paints the source while it is being
+   written. Both carry a constraint the rest of the app does not — Arabic prose
+   and English code inside one block — so direction here is decided per element
+   and never inherited from the page.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* ── Rendered document ──────────────────────────────────────────────────── */
+
+.brm-md {
+  font-size: 0.875rem;
+  line-height: 1.8;
+  color: var(--foreground);
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.brm-md > :first-child { margin-top: 0; }
+.brm-md > :last-child { margin-bottom: 0; }
+
+.brm-md p { margin: 0 0 0.7em; }
+
+/* A description sits inside a card that already has a heading of its own, so
+   `#` starts one step below a page title instead of shouting over it. */
+.brm-md h1,
+.brm-md h2,
+.brm-md h3,
+.brm-md h4,
+.brm-md h5,
+.brm-md h6 {
+  margin: 1.4em 0 0.5em;
+  font-weight: 700;
+  line-height: 1.45;
+  color: var(--foreground);
+}
+.brm-md h1 { font-size: 1.2rem; }
+.brm-md h2 { font-size: 1.06rem; }
+.brm-md h3 { font-size: 0.95rem; }
+.brm-md h4,
+.brm-md h5,
+.brm-md h6 { font-size: 0.875rem; color: var(--muted-foreground); }
+
+/* The hairline under the top two levels is what makes a long description skim
+   like a document instead of a wall of text. */
+.brm-md h1,
+.brm-md h2 {
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--border);
+}
+
+.brm-md ul,
+.brm-md ol { margin: 0 0 0.7em; padding-inline-start: 1.5em; }
+.brm-md ul { list-style: disc; }
+.brm-md ol { list-style: decimal; }
+.brm-md ul ul { list-style: circle; }
+.brm-md li { margin: 0.2em 0; }
+.brm-md li > ul,
+.brm-md li > ol { margin-bottom: 0; }
+.brm-md li::marker { color: var(--muted-foreground); }
+
+/* A task list drops its bullet — the box is the marker. Native checkboxes
+   pick up the OS dark theme and look like grey system widgets; these are
+   painted as brand tiles so a done item reads as a row, not a form control. */
+.brm-md ul.contains-task-list,
+.brm-md ul:has(> .brm-md-task-item) {
+  list-style: none;
+  padding-inline-start: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0 0 0.85em;
+}
+.brm-md-task-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65em;
+  margin: 0;
+  padding: 8px 12px;
+  list-style: none;
+  border-radius: 12px;
+  line-height: 1.55;
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+  border: 1px solid var(--border);
+}
+.dark .brm-md-task-item {
+  background: rgba(255, 255, 255, 0.035);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+.brm-md-task-item:has(> .brm-md-task:checked) {
+  background: color-mix(in srgb, #4F46E5 7%, transparent);
+  border-color: color-mix(in srgb, #4F46E5 18%, var(--border));
+}
+.dark .brm-md-task-item:has(> .brm-md-task:checked) {
+  background: rgba(99, 102, 241, 0.10);
+  border-color: rgba(129, 140, 248, 0.18);
+}
+.brm-md-task-body {
+  min-width: 0;
+  flex: 1;
+  text-align: start;
+}
+.brm-md-task-item:has(> .brm-md-task:checked) > .brm-md-task-body {
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--muted-foreground) 65%, transparent);
+}
+.brm-md-task {
+  appearance: none;
+  -webkit-appearance: none;
+  print-color-adjust: exact;
+  color-scheme: light;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin: 0.18em 0 0;
+  flex-shrink: 0;
+  border-radius: 6px;
+  border: 1.5px solid color-mix(in srgb, var(--foreground) 22%, transparent);
+  background: var(--card);
+  cursor: default;
+  pointer-events: none;
+  transition: none;
+}
+.dark .brm-md-task {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.04);
+}
+.brm-md-task:checked {
+  border-color: #4F46E5;
+  background-color: #4F46E5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.4 8.3 6.6 11.4 12.6 4.6'/%3E%3C/svg%3E");
+  background-size: 12px 12px;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.dark .brm-md-task:checked {
+  border-color: #818CF8;
+  background-color: #4F46E5;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
+}
+.brm-md-task:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.brm-md-compact .brm-md-task-item { padding: 6px 10px; border-radius: 10px; }
+.brm-md-compact .brm-md-task { width: 1.05rem; height: 1.05rem; }
+
+.brm-md blockquote {
+  margin: 0 0 0.7em;
+  padding: 0.15em 0.9em;
+  border-inline-start: 3px solid #8B5CF6;
+  background: color-mix(in srgb, #8B5CF6 6%, transparent);
+  border-radius: 0 8px 8px 0;
+  color: var(--muted-foreground);
+}
+[dir="rtl"] .brm-md blockquote { border-radius: 8px 0 0 8px; }
+.brm-md blockquote > :last-child { margin-bottom: 0; }
+
+.brm-md hr {
+  margin: 1.2em 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.brm-md-link {
+  color: #4F46E5;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, #4F46E5 40%, transparent);
+  transition: text-decoration-color 0.15s;
+}
+.brm-md-link:hover { text-decoration-color: #4F46E5; }
+.dark .brm-md-link { color: #A5B4FC; text-decoration-color: rgba(165, 180, 252, 0.4); }
+.dark .brm-md-link:hover { text-decoration-color: #A5B4FC; }
+.brm-md-link-icon {
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  margin-inline-start: 0.2em;
+  vertical-align: -0.05em;
+  opacity: 0.55;
+}
+
+.brm-md-img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0.6em 0;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+.brm-md-img[data-clickable="true"] { cursor: zoom-in; transition: opacity 0.15s; }
+.brm-md-img[data-clickable="true"]:hover { opacity: 0.92; }
+
+/* Inline code carries `dir="auto"` on the element, so an identifier keeps its
+   own direction inside an Arabic sentence. */
+.brm-md-code {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  padding: 0.12em 0.4em;
+  border-radius: 5px;
+  background: color-mix(in srgb, #8B5CF6 10%, var(--muted));
+  color: #7C3AED;
+  overflow-wrap: break-word;
+}
+.dark .brm-md-code { background: rgba(139, 92, 246, 0.14); color: #C4B5FD; }
+
+/* ── Code fences ────────────────────────────────────────────────────────── */
+
+.brm-md-fence {
+  margin: 0.7em 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--muted) 60%, var(--card));
+}
+.brm-md-fence-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--muted) 70%, transparent);
+}
+.brm-md-fence-lang {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.brm-md-fence-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 7px;
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  transition: background 0.15s, color 0.15s;
+}
+.brm-md-fence-copy:hover { background: var(--muted); color: var(--foreground); }
+.brm-md-fence > pre {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.65;
+  tab-size: 2;
+}
+.brm-md-fence > pre code {
+  font-family: inherit;
+  background: none;
+  padding: 0;
+  color: var(--foreground);
+  white-space: pre;
+}
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+
+/* The scroller is its own element so a wide table cannot stretch the card and
+   push the rest of the page sideways. */
+.brm-md-table-scroll {
+  margin: 0.7em 0;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.brm-md-table-scroll > table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+.brm-md th,
+.brm-md td {
+  padding: 7px 11px;
+  text-align: start;
+  border-bottom: 1px solid var(--border);
+}
+.brm-md th {
+  font-weight: 600;
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--muted) 65%, transparent);
+  white-space: nowrap;
+}
+.brm-md tbody tr:last-child td { border-bottom: 0; }
+.brm-md tbody tr:hover { background: color-mix(in srgb, var(--muted) 40%, transparent); }
+
+/* ── Syntax colours inside a fence (highlight.js class names) ───────────── */
+
+.brm-md .hljs-comment,
+.brm-md .hljs-quote { color: #94A3B8; }
+.brm-md .hljs-keyword,
+.brm-md .hljs-selector-tag,
+.brm-md .hljs-literal,
+.brm-md .hljs-section { color: #7C3AED; }
+.brm-md .hljs-string,
+.brm-md .hljs-regexp,
+.brm-md .hljs-addition { color: #059669; }
+.brm-md .hljs-number,
+.brm-md .hljs-symbol,
+.brm-md .hljs-meta { color: #B45309; }
+.brm-md .hljs-title,
+.brm-md .hljs-name,
+.brm-md .hljs-selector-id { color: #2563EB; }
+.brm-md .hljs-attr,
+.brm-md .hljs-attribute,
+.brm-md .hljs-variable,
+.brm-md .hljs-template-variable { color: #DB2777; }
+.brm-md .hljs-built_in,
+.brm-md .hljs-type,
+.brm-md .hljs-class { color: #0891B2; }
+.brm-md .hljs-deletion { color: #DC2626; }
+.brm-md .hljs-emphasis { font-style: italic; }
+.brm-md .hljs-strong { font-weight: 700; }
+
+.dark .brm-md .hljs-comment,
+.dark .brm-md .hljs-quote { color: #6B7280; }
+.dark .brm-md .hljs-keyword,
+.dark .brm-md .hljs-selector-tag,
+.dark .brm-md .hljs-literal,
+.dark .brm-md .hljs-section { color: #C4B5FD; }
+.dark .brm-md .hljs-string,
+.dark .brm-md .hljs-regexp,
+.dark .brm-md .hljs-addition { color: #6EE7B7; }
+.dark .brm-md .hljs-number,
+.dark .brm-md .hljs-symbol,
+.dark .brm-md .hljs-meta { color: #FCD34D; }
+.dark .brm-md .hljs-title,
+.dark .brm-md .hljs-name,
+.dark .brm-md .hljs-selector-id { color: #93C5FD; }
+.dark .brm-md .hljs-attr,
+.dark .brm-md .hljs-attribute,
+.dark .brm-md .hljs-variable,
+.dark .brm-md .hljs-template-variable { color: #F9A8D4; }
+.dark .brm-md .hljs-built_in,
+.dark .brm-md .hljs-type,
+.dark .brm-md .hljs-class { color: #67E8F9; }
+.dark .brm-md .hljs-deletion { color: #FCA5A5; }
+
+/* A description shown in a tight slot keeps the colours but drops the document
+   rhythm — headings there are emphasis, not structure. */
+.brm-md-compact { font-size: 0.8rem; line-height: 1.65; }
+.brm-md-compact h1,
+.brm-md-compact h2,
+.brm-md-compact h3 { font-size: 0.9rem; margin: 0.6em 0 0.3em; padding: 0; border: 0; }
+.brm-md-compact p { margin-bottom: 0.4em; }
+
+/* ── Editor ─────────────────────────────────────────────────────────────── */
+
+.brm-mdedit {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--muted);
+  overflow: hidden;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+.brm-mdedit[data-focused="true"] {
+  border-color: #4F46E5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.14);
+}
+.brm-mdedit[data-invalid="true"] { border-color: #EF4444; }
+.brm-mdedit[data-invalid="true"][data-focused="true"] {
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.14);
+}
+
+.brm-mdedit-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card) 55%, transparent);
+}
+.brm-mdedit-tools { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; min-width: 0; }
+.brm-mdedit-right { display: flex; align-items: center; gap: 4px; margin-inline-start: auto; }
+
+/* Hairlines between groups rather than gaps — the strip reads as one object. */
+.brm-mdedit-group { display: flex; align-items: center; gap: 1px; padding-inline: 4px; }
+.brm-mdedit-group + .brm-mdedit-group { border-inline-start: 1px solid var(--border); }
+
+.brm-mdedit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 27px;
+  min-width: 27px;
+  padding-inline: 5px;
+  border-radius: 7px;
+  color: var(--muted-foreground);
+  transition: background 0.14s, color 0.14s;
+}
+.brm-mdedit-btn:hover:not(:disabled) { background: var(--muted); color: var(--foreground); }
+.brm-mdedit-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.brm-mdedit-btn[data-on="true"] { background: rgba(79, 70, 229, 0.12); color: #4F46E5; }
+.dark .brm-mdedit-btn[data-on="true"] { color: #A5B4FC; }
+
+.brm-mdedit-seg { height: 27px; }
+.brm-mdedit-seg > button { gap: 4px; }
+
+.brm-mdedit-cheats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card) 40%, transparent);
+}
+.brm-mdedit-cheat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-size: 0.68rem;
+  color: var(--muted-foreground);
+}
+.brm-mdedit-cheat > code {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: #7C3AED;
+}
+.dark .brm-mdedit-cheat > code { color: #C4B5FD; }
+
+.brm-mdedit-body { background: var(--card); }
+.brm-mdedit-mirror,
+.brm-mdedit-input {
+  min-height: 0;
+  padding: 14px 16px;
+  line-height: 1.85;
+}
+.brm-mdedit-input { max-height: none; }
+
+.brm-mdedit-preview {
+  padding: 14px 16px;
+  background: var(--card);
+  overflow-y: auto;
+  max-height: 520px;
+}
+
+.brm-mdedit-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 10px;
+  border-top: 1px solid var(--border);
+  font-size: 0.65rem;
+  color: var(--muted-foreground);
+  background: color-mix(in srgb, var(--card) 55%, transparent);
+}
+.brm-mdedit-hint { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+.brm-mdedit-count { white-space: nowrap; opacity: 0.8; }
+
+.brm-mdedit-slash-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: rgba(79, 70, 229, 0.10);
+  color: #4F46E5;
+  flex-shrink: 0;
+}
+.dark .brm-mdedit-slash-icon { background: rgba(129, 140, 248, 0.14); color: #A5B4FC; }
+
+/* ── Source syntax colours ──────────────────────────────────────────────────
+   The mirror sits under a transparent textarea, so only properties that cannot
+   change how text wraps are allowed here: colour, background, opacity, and
+   text-decoration. No font-size, no font-weight, no font-style — each of those
+   changes glyph advance and would slide the paint off the caret. */
+
+.brm-md-tok { border-radius: 3px; }
+.brm-md-tok-marker { color: var(--muted-foreground); opacity: 0.55; }
+.brm-md-tok-heading { color: #4F46E5; }
+.brm-md-tok-strong { color: #4338CA; }
+.brm-md-tok-em { color: #6D28D9; }
+.brm-md-tok-del { color: var(--muted-foreground); text-decoration: line-through; }
+.brm-md-tok-code {
+  color: #7C3AED;
+  background: color-mix(in srgb, #8B5CF6 11%, transparent);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.brm-md-tok-quote { color: #8B5CF6; opacity: 0.75; }
+.brm-md-tok-task { color: #059669; }
+.brm-md-tok-rule { color: var(--muted-foreground); opacity: 0.6; }
+.brm-md-tok-link { color: #4338CA; }
+.brm-md-tok-url {
+  color: #0891B2;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.dark .brm-md-tok-heading { color: #A5B4FC; }
+.dark .brm-md-tok-strong { color: #C7D2FE; }
+.dark .brm-md-tok-em { color: #C4B5FD; }
+.dark .brm-md-tok-code { color: #DDD6FE; background: rgba(139, 92, 246, 0.16); }
+.dark .brm-md-tok-quote { color: #A78BFA; }
+.dark .brm-md-tok-task { color: #6EE7B7; }
+.dark .brm-md-tok-link { color: #C7D2FE; }
+.dark .brm-md-tok-url { color: #67E8F9; }
+
+/* Inside the composer the highlight may only change colour. Bold glyphs are
+   wider and padding shifts everything after them, so either one would walk the
+   painted text away from the caret the textarea is drawing underneath it. */
+.brm-editor-mirror .brm-mention {
+  font-weight: inherit;
+  padding: 0;
+  border-radius: 3px;
+}
+
+/* Sonner renders the close button overhanging the toast corner; give it a hit
+   area worth aiming at and keep it above the toast's own content. */
+[data-sonner-toast] [data-close-button] {
+  width: 22px;
+  height: 22px;
+  z-index: 2;
+}

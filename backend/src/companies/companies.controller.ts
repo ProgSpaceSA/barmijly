@@ -7,13 +7,19 @@ import { ApiTags, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { v4 as uuid } from 'uuid';
-import { UserRole } from '@prisma/client';
+import { rolesWith } from '../access/permissions';
 import { CompaniesService } from './companies.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+
+// Derived from the action matrix rather than restated here, so a change to
+// `ROLE_ACTIONS` moves these endpoints with it.
+const MANAGERS = rolesWith('structure:manage');
+const DEACTIVATORS = rolesWith('structure:deactivate');
 
 @ApiTags('Companies')
 @ApiBearerAuth()
@@ -23,29 +29,29 @@ export class CompaniesController {
   constructor(private companiesService: CompaniesService) {}
 
   @Get()
-  findAll() {
-    return this.companiesService.findAll();
+  findAll(@CurrentUser() user: any) {
+    return this.companiesService.findAll(user);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.companiesService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.companiesService.findOne(id, user);
   }
 
   @Post()
-  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT)
+  @Roles(...MANAGERS)
   create(@Body() dto: CreateCompanyDto) {
     return this.companiesService.create(dto);
   }
 
   @Patch(':id')
-  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT)
+  @Roles(...MANAGERS)
   update(@Param('id') id: string, @Body() dto: UpdateCompanyDto) {
     return this.companiesService.update(id, dto);
   }
 
   @Post(':id/logo')
-  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT)
+  @Roles(...MANAGERS)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -68,7 +74,7 @@ export class CompaniesController {
   }
 
   @Patch(':id/deactivate')
-  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT)
+  @Roles(...DEACTIVATORS)
   deactivate(@Param('id') id: string) {
     return this.companiesService.deactivate(id);
   }

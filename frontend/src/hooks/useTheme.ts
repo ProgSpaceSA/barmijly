@@ -12,12 +12,13 @@ function getStoredTheme(): "light" | "dark" {
 }
 
 export function useTheme() {
-  // Initialize from DOM class so React state matches what the blocking script already applied
+  // SSR paints `class="dark"` on <html>. Read that class so the first client
+  // render matches, then sync from localStorage after mount.
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     if (typeof document !== "undefined") {
       return document.documentElement.classList.contains("dark") ? "dark" : "light";
     }
-    return "dark"; // SSR default
+    return "dark";
   });
 
   useEffect(() => {

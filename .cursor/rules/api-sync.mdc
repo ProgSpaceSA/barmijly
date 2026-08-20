@@ -1,0 +1,33 @@
+---
+description: Keep backend API and frontend hooks in sync
+globs: "{backend/src/**/*.controller.ts,frontend/src/hooks/**,frontend/src/lib/**}"
+alwaysApply: false
+---
+
+# API Sync Rule
+
+When changing a backend endpoint, update the frontend in the same change:
+
+| Backend change | Frontend update |
+|----------------|-----------------|
+| New endpoint | Hook in `frontend/src/hooks/use*.ts` |
+| Changed path/method | Matching `api.get/post/patch/delete` call |
+| New enum value | Label in `frontend/src/lib/constants.ts` |
+| New query params | Hook filters + page filter UI |
+| Changed response shape | Components consuming the hook |
+
+## Ticket endpoints → `useTickets.ts`
+
+All ticket mutations live in `useTicketAction(id)` — add new actions there, not inline in pages.
+
+## Checklist
+
+```
+- [ ] Controller method matches hook call (path + method + body)
+- [ ] Arabic toast message on success/error
+- [ ] queryClient.invalidateQueries for affected keys
+- [ ] Role-gated button on page (if user-facing action)
+- [ ] Swagger @ApiOperation updated
+```
+
+See skill: `barmijly-api-sync`

@@ -5,9 +5,9 @@ import { useAuthStore } from "@/store/auth";
 
 export default function RootPage() {
   const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
+  const token = useAuthStore((s) => s.token);
   useEffect(() => {
-    router.replace(isAuthenticated() ? "/dashboard" : "/login");
-  }, [isAuthenticated, router]);
+    router.replace(token ? "/dashboard" : "/login");
+  }, [token, router]);
   return null;
 }

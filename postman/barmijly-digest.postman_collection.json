@@ -1,0 +1,323 @@
+{
+  "info": {
+    "name": "Barmijly — Daily Digest",
+    "description": "Tests the daily digest endpoints (`/api/digest`).\n\nReady to run: hit **Run collection** and everything is wired — logins capture their own tokens into collection variables, then the digest requests use them.\n\nOrder matters: the Auth folder must run before Digest, because it populates `token`, `headToken` and `requesterToken`.\n\n### Variables\n\n- `baseUrl` — `http://localhost:3002/api`. The backend logs its port on boot; `GUIDE.md` documents 3001, but `PORT` in `backend/.env` wins.\n- `password` — shared by every seeded user (`backend/prisma/seed.ts`)\n- `digestEmail` — whose digest `/digest/me` previews\n- `headEmail` — a `PROGRAMMING_HEAD` account, required for `/digest/run`\n- `requesterEmail` — a non-head account, used for the 403 check\n\n### Seeded accounts\n\nAll share `password`. Point `digestEmail` at any of them to see how the digest changes with role — action groups are role-specific and scoping differs per role.\n\n| Role | Email |\n|---|---|\n| SENIOR_MANAGEMENT | `anas.hagras1999@gmail.com` |\n| PROGRAMMING_HEAD | `anas.hagras1999+1@gmail.com` |\n| PROJECT_MANAGER | `anas.hagras1999+2@gmail.com` |\n| DEVELOPER | `anas.hagras1999+3@gmail.com` |\n| DEVELOPER | `anas.hagras1999+4@gmail.com` |\n| QA | `anas.hagras1999+5@gmail.com` |\n| SYSTEM_OWNER | `anas.hagras1999+6@gmail.com` |\n| TICKET_REQUESTER | `anas.hagras1999+7@gmail.com` |\n| TICKET_REQUESTER | `anas.hagras1999+8@gmail.com` |\n\nRe-seed with `cd backend && npx prisma db seed`.\n\n### Before sending mail\n\nThe seeded addresses are real Gmail inboxes. `POST /digest/me/send` mails one recipient; `POST /digest/run` mails **every active user** that has something to report — so it will hit all of the above if SMTP is configured. Both still return 201 when SMTP is unreachable, because `EmailService` swallows transport failures on purpose; check the backend log to confirm delivery.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3002/api", "type": "string" },
+    { "key": "password", "value": "asdfasdf0!", "type": "string" },
+    { "key": "digestEmail", "value": "anas.hagras1999+1@gmail.com", "type": "string" },
+    { "key": "headEmail", "value": "anas.hagras1999+1@gmail.com", "type": "string" },
+    { "key": "requesterEmail", "value": "anas.hagras1999+7@gmail.com", "type": "string" },
+    { "key": "token", "value": "", "type": "string" },
+    { "key": "headToken", "value": "", "type": "string" },
+    { "key": "requesterToken", "value": "", "type": "string" },
+    { "key": "digestRole", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "description": "Logs in the three accounts the digest tests need and stores their tokens.",
+      "item": [
+        {
+          "name": "Login — digest user",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{digestEmail}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Token used by `GET /digest/me` and `POST /digest/me/send`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('logs in', () => pm.response.to.have.status(201));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('returns an access token', () => pm.expect(body.access_token).to.be.a('string').and.not.empty);",
+                  "",
+                  "pm.collectionVariables.set('token', body.access_token);",
+                  "pm.collectionVariables.set('digestRole', body.user.role);",
+                  "console.log(`digest user: ${body.user.email} (${body.user.role})`);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login — programming head",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{headEmail}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "`POST /digest/run` is restricted to `PROGRAMMING_HEAD`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('logs in', () => pm.response.to.have.status(201));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('account is PROGRAMMING_HEAD', () => pm.expect(body.user.role).to.eql('PROGRAMMING_HEAD'));",
+                  "",
+                  "pm.collectionVariables.set('headToken', body.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login — non-head (for 403 check)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{requesterEmail}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('logs in', () => pm.response.to.have.status(201));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('account is not PROGRAMMING_HEAD', () => pm.expect(body.user.role).to.not.eql('PROGRAMMING_HEAD'));",
+                  "",
+                  "pm.collectionVariables.set('requesterToken', body.access_token);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Digest",
+      "item": [
+        {
+          "name": "Preview my digest",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/digest/me",
+            "description": "Builds the digest for the logged-in user without sending mail. Safe to call repeatedly."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const d = pm.response.json();",
+                  "",
+                  "pm.test('recipient is the logged-in user', () => {",
+                  "  pm.expect(d.recipient.email).to.eql(pm.collectionVariables.get('digestEmail'));",
+                  "  pm.expect(d.recipient).to.not.have.property('password');",
+                  "});",
+                  "",
+                  "pm.test('lookback window is a positive number of hours', () => {",
+                  "  pm.expect(d.windowHours).to.be.a('number').and.be.above(0);",
+                  "});",
+                  "",
+                  "pm.test('every section is present', () => {",
+                  "  ['mentions', 'unreadThreads', 'actionGroups', 'openTasks', 'overdue', 'dueSoon']",
+                  "    .forEach((key) => pm.expect(d[key], key).to.be.an('array'));",
+                  "  pm.expect(d.unreadTotal).to.be.a('number');",
+                  "  pm.expect(d.isEmpty).to.be.a('boolean');",
+                  "});",
+                  "",
+                  "pm.test('isEmpty agrees with the sections', () => {",
+                  "  const hasContent = d.mentions.length || d.unreadThreads.length || d.actionGroups.length",
+                  "    || d.openTasks.length || d.overdue.length || d.dueSoon.length;",
+                  "  pm.expect(d.isEmpty).to.eql(!hasContent);",
+                  "});",
+                  "",
+                  "pm.test('action groups are non-empty and Arabic-labelled', () => {",
+                  "  d.actionGroups.forEach((g) => {",
+                  "    pm.expect(g.total, g.label).to.be.above(0);",
+                  "    pm.expect(g.label).to.match(/[\\u0600-\\u06FF]/);",
+                  "    pm.expect(g.tickets.length).to.be.at.most(8);",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test('ticket refs carry a deep link and a number', () => {",
+                  "  const refs = [",
+                  "    ...d.overdue, ...d.dueSoon,",
+                  "    ...d.actionGroups.flatMap((g) => g.tickets),",
+                  "    ...d.mentions.map((m) => m.ticket),",
+                  "    ...d.unreadThreads.map((t) => t.ticket),",
+                  "    ...d.openTasks.map((t) => t.ticket),",
+                  "  ];",
+                  "  refs.forEach((t) => {",
+                  "    pm.expect(t.ticketNumber, t.id).to.be.a('number');",
+                  "    pm.expect(t.url).to.include(`/tickets/${t.id}`);",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test('overdue deadlines are in the past', () => {",
+                  "  d.overdue.forEach((t) => pm.expect(new Date(t.estimatedDeadline).getTime()).to.be.below(Date.now()));",
+                  "});",
+                  "",
+                  "pm.test('due-soon deadlines fall inside the next 3 days', () => {",
+                  "  const limit = Date.now() + 3 * 24 * 60 * 60 * 1000;",
+                  "  d.dueSoon.forEach((t) => {",
+                  "    const due = new Date(t.estimatedDeadline).getTime();",
+                  "    pm.expect(due).to.be.at.least(Date.now() - 60_000);",
+                  "    pm.expect(due).to.be.at.most(limit);",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test('closed tickets are never surfaced', () => {",
+                  "  const closed = ['COMPLETED', 'CLOSED', 'REJECTED'];",
+                  "  [...d.overdue, ...d.dueSoon].forEach((t) => pm.expect(closed).to.not.include(t.status));",
+                  "});",
+                  "",
+                  "if (d.isEmpty) {",
+                  "  console.log('Digest is empty — nothing to mail. Seed activity for this account to exercise the sections.');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Preview my digest — unauthenticated (401)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/digest/me",
+            "description": "`JwtAuthGuard` guards the whole controller."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('rejects anonymous callers', () => pm.response.to.have.status(401));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send my digest now",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/digest/me/send",
+            "description": "Emails the current user their digest. `sent` is false when the digest is empty. SMTP failures do not fail the request — confirm delivery in the backend log."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('reports whether mail was sent', () => pm.expect(body.sent).to.be.a('boolean'));",
+                  "",
+                  "console.log(body.sent",
+                  "  ? 'Digest handed to EmailService — check the backend log / inbox.'",
+                  "  : 'Nothing to send: the digest is empty for this account.');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Run digest for everyone (PROGRAMMING_HEAD)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{headToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/digest/run",
+            "description": "Fires the same job the 09:00 Asia/Riyadh cron runs — this mails every active user with something to report. Do not run against production."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('reports the run tally', () => {",
+                  "  pm.expect(body.recipients).to.be.a('number');",
+                  "  pm.expect(body.sent).to.be.a('number');",
+                  "  pm.expect(body.skipped).to.be.a('number');",
+                  "});",
+                  "",
+                  "pm.test('tally adds up', () => pm.expect(body.sent + body.skipped).to.eql(body.recipients));",
+                  "",
+                  "console.log(`${body.sent} sent, ${body.skipped} skipped of ${body.recipients} active users.`);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Run digest as non-head (403)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{requesterToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/digest/run",
+            "description": "`@Roles(PROGRAMMING_HEAD)` must keep everyone else out."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('role gate holds', () => pm.response.to.have.status(403));",
+                  "pm.test('no digest run reported', () => pm.expect(pm.response.text()).to.not.include('recipients'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

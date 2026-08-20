@@ -1,17 +1,74 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AccessService } from '../access/access.service';
+import { can, rolesWith } from '../access/permissions';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { AuditService } from '../audit/audit.service';
 import { UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
+/** Roles that carry administrative reach and cannot be handed out casually. */
+const PRIVILEGED_ROLES: UserRole[] = [
+  UserRole.PROGRAMMING_HEAD,
+  UserRole.PROJECT_MANAGER,
+  UserRole.SENIOR_MANAGEMENT,
+];
+
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private access: AccessService,
+    private audit: AuditService,
+  ) {}
 
-  async findMentionable() {
+  /**
+   * The mention picker. With a `ticketId` it returns exactly the people the API
+   * will accept a mention for, so the dropdown cannot offer a name that is then
+   * silently dropped on save. Without one it falls back to the caller's own
+   * reach — an unrestricted list here is a staff directory with emails.
+   */
+  async findMentionable(user: any, ticketId?: string) {
+    if (ticketId) {
+      const ticket = await this.prisma.ticket.findUnique({
+        where: { id: ticketId },
+        select: { id: true, creatorId: true, systemOwnerId: true, systemId: true, companyId: true },
+      });
+      if (!ticket) throw new NotFoundException('Ticket not found');
+      await this.access.assertCanViewTicket(ticketId, user);
+
+      const candidates = await this.prisma.user.findMany({
+        where: { isActive: true },
+        select: { id: true, firstName: true, lastName: true, role: true, email: true, companyId: true },
+        orderBy: { firstName: 'asc' },
+      });
+      const allowed = new Set(
+        await this.access.filterMentionable(
+          ticket,
+          candidates.map((c) => c.id),
+        ),
+      );
+      return candidates.filter((c) => allowed.has(c.id));
+    }
+
+    const companyIds = await this.access.visibleCompanyIds(user);
+
     return this.prisma.user.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        ...(companyIds === null
+          ? {}
+          : {
+              OR: [
+                { role: { in: rolesWith('ticket:read-all') } },
+                { companyId: { in: companyIds } },
+                { companies: { some: { companyId: { in: companyIds } } } },
+              ],
+            }),
+      },
       select: { id: true, firstName: true, lastName: true, role: true, email: true, companyId: true },
       orderBy: { firstName: 'asc' },
     });
@@ -60,7 +117,13 @@ export class UsersService {
     });
   }
 
-  async create(dto: CreateUserDto) {
+  async create(dto: CreateUserDto, actor?: any) {
+    // Same escalation guard as update() — creating an account with a role is
+    // granting that role.
+    if (PRIVILEGED_ROLES.includes(dto.role) && !can(actor?.role, 'user:assign-role')) {
+      throw new ForbiddenException('Only the head of programming can create a privileged role');
+    }
+
     const exists = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (exists) throw new ConflictException('Email already in use');
 
@@ -81,9 +144,20 @@ export class UsersService {
     });
   }
 
-  async update(id: string, dto: UpdateUserDto) {
-    await this.findOne(id);
+  async update(id: string, dto: UpdateUserDto, actor?: any) {
+    const existing = await this.findOne(id);
     const { systemIds, companyIds, ...data } = dto as any;
+
+    if (data.role !== undefined && data.role !== existing.role) {
+      // Granting a role is granting every permission behind it, so it is gated
+      // separately from ordinary profile edits.
+      if (!can(actor?.role, 'user:assign-role')) {
+        throw new ForbiddenException('Only the head of programming can change roles');
+      }
+      if (actor?.id === id) {
+        throw new BadRequestException('Cannot change your own role');
+      }
+    }
 
     if (systemIds !== undefined) {
       await this.prisma.userSystem.deleteMany({ where: { userId: id } });
@@ -93,7 +167,7 @@ export class UsersService {
       await this.prisma.userCompany.deleteMany({ where: { userId: id } });
     }
 
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id },
       data: {
         ...data,
@@ -103,10 +177,25 @@ export class UsersService {
       },
       include: { company: true, department: true, systems: { include: { system: true } }, companies: { include: { company: true } } },
     });
+
+    if (actor?.id && data.role && data.role !== existing.role) {
+      await this.audit.log({
+        action: 'ROLE_CHANGE',
+        entity: 'User',
+        entityId: id,
+        userId: actor.id,
+        oldValues: { role: existing.role },
+        newValues: { role: data.role },
+      });
+    }
+
+    return updated;
   }
 
-  async deactivate(id: string) {
+  async deactivate(id: string, actor?: any) {
     await this.findOne(id);
+    // Locking yourself out is never the intent, and it can strip the last head.
+    if (actor?.id === id) throw new BadRequestException('Cannot deactivate your own account');
     return this.prisma.user.update({ where: { id }, data: { isActive: false } });
   }
 
@@ -115,9 +204,37 @@ export class UsersService {
     return this.prisma.user.update({ where: { id }, data: { isActive: true } });
   }
 
-  async getDevelopers() {
+  /**
+   * The assign picker. With a `ticketId` it lists only developers who can reach
+   * that ticket, matching what `PATCH /tickets/:id/assign` will accept.
+   */
+  async getDevelopers(user: any, ticketId?: string) {
+    if (ticketId) {
+      const ticket = await this.prisma.ticket.findUnique({
+        where: { id: ticketId },
+        select: { id: true, creatorId: true, systemOwnerId: true, systemId: true, companyId: true },
+      });
+      if (!ticket) throw new NotFoundException('Ticket not found');
+      await this.access.assertCanViewTicket(ticketId, user);
+      return this.access.assignableDevelopers(ticket);
+    }
+
+    // No ticket in hand: fall back to the caller's own company reach.
+    const companyIds = await this.access.visibleCompanyIds(user);
     return this.prisma.user.findMany({
-      where: { role: UserRole.DEVELOPER, isActive: true },
+      where: {
+        role: UserRole.DEVELOPER,
+        isActive: true,
+        ...(companyIds === null
+          ? {}
+          : {
+              OR: [
+                { companyId: { in: companyIds } },
+                { companies: { some: { companyId: { in: companyIds } } } },
+                { systems: { some: { system: { companyId: { in: companyIds } } } } },
+              ],
+            }),
+      },
       select: { id: true, firstName: true, lastName: true, email: true },
     });
   }

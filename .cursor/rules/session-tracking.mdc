@@ -1,0 +1,66 @@
+---
+description: Keep a numbered list of uncommitted features, updates, and removals until they are committed.
+alwaysApply: true
+---
+
+# Uncommitted session log
+
+Maintain `.cursor/uncommitted.md` for work that is **not committed yet**.
+
+Skip this when `git status` is clean.
+
+## Format
+
+Numbered list only. Prefix each item with `Feature:`, `Update:`, or `Removal:`:
+
+```
+# Uncommitted
+
+1. Feature: …
+2. Update: …
+3. Removal: …
+```
+
+No essays, diffs, or file lists.
+
+## Keep it high level
+
+One line per user-facing change. If a teammate reading the release note would not
+care, leave it out. Describe the outcome, not the implementation.
+
+Tiny UX (copy-to-clipboard, chip layout, hover, padding, icon tweaks) stays off the list.
+
+## When to append
+
+After you add, change, or delete behavior a user would notice (code, seed, schema).
+
+If the work is a **fix or polish of an item already on the list**, do not add a
+new line. Edit that line only when the user-facing outcome itself changed.
+
+Never log:
+
+- Implementation detail — markup, accessibility wiring, naming, refactors, file moves
+- Documentation — `AGENTS.md`, `CLAUDE.md`, `README`, comments
+- Agent config — `.cursor/rules/*`, skills, hooks, rule imports
+- Format-only edits, `prisma generate`, dependency lock churn
+- Follow-up fixes to a Feature/Update already listed this session
+
+Fold sub-steps into the feature they serve rather than listing them separately.
+
+## When to clear
+
+After a successful commit of that work, reset the file to:
+
+```
+# Uncommitted
+
+(none)
+```
+
+Use skill `barmijly-commit` when the user asks to commit — it includes this reset.
+
+## Chat
+
+Do **not** paste the full log at the end of a turn.
+
+If this turn **added or edited** a line in `.cursor/uncommitted.md`, quote only that line (or those lines). If this turn did not change the log, omit it from the reply.

@@ -1,12 +1,18 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
+import { isAllowedCorsOrigin } from './cors-origin';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.setGlobalPrefix('api');
+  app.use((_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Cache-Control', 'private, no-store');
+    next();
+  });
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -16,8 +22,12 @@ async function bootstrap() {
     }),
   );
 
+  const frontendUrl = process.env.FRONTEND_URL;
+  const isDev = process.env.NODE_ENV !== 'production';
   app.enableCors({
-    origin: process.env.FRONTEND_URL || '*',
+    origin: (origin, callback) => {
+      callback(null, isAllowedCorsOrigin(origin, { isDev, frontendUrl }));
+    },
     credentials: true,
   });
 

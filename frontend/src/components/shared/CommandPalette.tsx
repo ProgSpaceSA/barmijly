@@ -1,8 +1,10 @@
 "use client";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Search, Ticket as TicketIcon, LayoutDashboard, Users, Building2 } from "lucide-react";
+import { usePermissions } from "@/hooks/usePermissions";
+import type { Action } from "@/lib/permissions";
 
 interface Result {
   id: string;
@@ -12,18 +14,27 @@ interface Result {
   icon?: React.ReactNode;
 }
 
-const QUICK_LINKS: Result[] = [
-  { id: "dash",    label: "لوحة التحكم",      href: "/dashboard",  icon: <LayoutDashboard className="w-4 h-4" /> },
-  { id: "tickets", label: "التذاكر",           href: "/tickets",    icon: <TicketIcon className="w-4 h-4" /> },
-  { id: "new",     label: "تذكرة جديدة",       href: "/tickets/new", icon: <TicketIcon className="w-4 h-4" /> },
-  { id: "users",   label: "المستخدمون",        href: "/users",      icon: <Users className="w-4 h-4" /> },
-  { id: "co",      label: "الشركات والأنظمة",  href: "/companies",  icon: <Building2 className="w-4 h-4" /> },
+/** `action: null` means every signed-in user gets the shortcut. */
+const QUICK_LINKS: (Result & { action: Action | null })[] = [
+  { id: "dash",    label: "لوحة التحكم",      href: "/dashboard",  icon: <LayoutDashboard className="w-4 h-4" />, action: null },
+  { id: "tickets", label: "التذاكر",           href: "/tickets",    icon: <TicketIcon className="w-4 h-4" />,      action: null },
+  { id: "new",     label: "تذكرة جديدة",       href: "/tickets/new", icon: <TicketIcon className="w-4 h-4" />,     action: "ticket:create" },
+  { id: "users",   label: "المستخدمون",        href: "/users",      icon: <Users className="w-4 h-4" />,           action: "user:read" },
+  { id: "co",      label: "الشركات والأنظمة",  href: "/companies",  icon: <Building2 className="w-4 h-4" />,       action: "structure:manage" },
 ];
 
 export function CommandPalette() {
+  const { can: allowed } = usePermissions();
+  // Same gate as the sidebar: a shortcut to a page the role cannot open is a
+  // dead end, and ctrl+k is the one way around a hidden nav link.
+  const quickLinks = useMemo(
+    () => QUICK_LINKS.filter((l) => l.action === null || allowed(l.action)),
+    [allowed],
+  );
+
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Result[]>(QUICK_LINKS);
+  const [results, setResults] = useState<Result[]>(quickLinks);
   const [active, setActive] = useState(0);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -45,13 +56,13 @@ export function CommandPalette() {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 50);
       setQuery("");
-      setResults(QUICK_LINKS);
+      setResults(quickLinks);
       setActive(0);
     }
-  }, [open]);
+  }, [open, quickLinks]);
 
   const search = useCallback(async (q: string) => {
-    if (!q.trim()) { setResults(QUICK_LINKS); return; }
+    if (!q.trim()) { setResults(quickLinks); return; }
     setLoading(true);
     try {
       const res = await api.get("/tickets", { params: { search: q, limit: 8 } });
@@ -64,11 +75,11 @@ export function CommandPalette() {
       }));
       setResults(tickets.length ? tickets : [{ id: "none", label: "لا توجد نتائج", href: "" }]);
     } catch {
-      setResults(QUICK_LINKS);
+      setResults(quickLinks);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [quickLinks]);
 
   useEffect(() => {
     const t = setTimeout(() => search(query), 200);

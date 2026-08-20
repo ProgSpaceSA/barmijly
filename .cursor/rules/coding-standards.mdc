@@ -1,0 +1,36 @@
+---
+description: General coding standards for the Barmijly monorepo
+alwaysApply: true
+---
+
+# Coding Standards
+
+## Scope & diffs
+
+- Minimal, focused changes — no drive-by refactors
+- Match existing patterns in the file/module being edited
+- Reuse existing services, hooks, and DTOs before creating new ones
+
+## TypeScript
+
+- Strict typing; avoid `any` in new code
+- Use Prisma-generated enums (`TicketStatus`, `UserRole`, etc.) — never magic strings
+- Validate inputs with class-validator DTOs (backend) or Zod (frontend forms)
+
+## Naming
+
+- Backend modules: `feature/feature.module.ts`, `feature.service.ts`, `feature.controller.ts`
+- Frontend hooks: `useTickets`, `useReports` in `src/hooks/`
+- Arabic UI labels: add to `frontend/src/lib/constants.ts`
+
+## Git
+
+- Do not commit unless explicitly asked
+- Never commit `.env`, credentials, or upload directories
+- Use skill `barmijly-commit` when asked to commit
+
+## Testing changes
+
+- Backend: verify affected endpoint in Swagger (`/api/docs`)
+- Frontend: check RTL layout and role-based visibility
+- Ticket changes: walk through status flow in `backend/GUIDE.md`

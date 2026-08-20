@@ -1,6 +1,6 @@
 "use client";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -8,15 +8,27 @@ import { SkeletonList } from "@/components/shared/LoadingSpinner";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { StatusBadge, PriorityBadge } from "@/components/shared/StatusBadge";
 import { RelativeTime } from "@/components/shared/RelativeTime";
+import { TicketCodeBadge } from "@/components/shared/TicketCodeBadge";
 import { useTickets } from "@/hooks/useTickets";
-import { useAuthStore } from "@/store/auth";
+import { useAuthStore, type UserRole } from "@/store/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { TICKET_STATUS_LABELS, TICKET_TYPE_LABELS } from "@/lib/constants";
-import { Plus, Search, User } from "lucide-react";
+import { TICKET_MINE_LABEL, TICKET_STATUS_LABELS, TICKET_TYPE_LABELS } from "@/lib/constants";
+import { ticketStatusFilterKeys } from "@/lib/permissions";
+import { format } from "date-fns";
+import { ar } from "date-fns/locale";
+import { Plus, Search, User, Clock } from "lucide-react";
 import Link from "next/link";
 import api from "@/lib/api";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
+import { CodeComment } from "@/components/shared/CodeComment";
+
+const DONE_STATUSES = new Set(["CLOSED", "COMPLETED", "REJECTED"]);
+
+function isOverdue(ticket: { estimatedDeadline?: string | null; status: string }) {
+  if (!ticket.estimatedDeadline || DONE_STATUSES.has(ticket.status)) return false;
+  return new Date(ticket.estimatedDeadline) < new Date();
+}
 
 const STATUS_BAR_COLORS: Record<string, string> = {
   DRAFT:                   "#94A3B8",
@@ -34,19 +46,24 @@ const STATUS_BAR_COLORS: Record<string, string> = {
   ON_HOLD:                 "#94A3B8",
 };
 
-const QUICK_STATUSES = [
-  { key: "", label: "الكل" },
-  { key: "NEW",               label: TICKET_STATUS_LABELS.NEW },
-  { key: "IN_PROGRESS",       label: TICKET_STATUS_LABELS.IN_PROGRESS },
-  { key: "AWAITING_TESTING",  label: TICKET_STATUS_LABELS.AWAITING_TESTING },
-  { key: "COMPLETED",         label: TICKET_STATUS_LABELS.COMPLETED },
-  { key: "CLOSED",            label: TICKET_STATUS_LABELS.CLOSED },
-];
+function statusFilterPills(role: UserRole | undefined) {
+  const keys = ticketStatusFilterKeys(role);
+  const statuses = (keys === null
+    ? Object.entries(TICKET_STATUS_LABELS)
+    : keys.map((key) => [key, TICKET_STATUS_LABELS[key]] as const)
+  ).map(([key, label]) => ({ key, label }));
+  return [
+    { key: "", label: "الكل" },
+    ...statuses,
+    { key: "OVERDUE", label: "متأخرة" },
+  ];
+}
 
-function FilterPill({ label, active, onClick, icon }: { label: string; active: boolean; onClick: () => void; icon?: React.ReactNode }) {
+function FilterPill({ label, active, onClick, icon, ariaLabel }: { label: string; active: boolean; onClick: () => void; icon?: React.ReactNode; ariaLabel?: string }) {
   return (
     <button
       onClick={onClick}
+      aria-label={ariaLabel}
       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap"
       style={{
         background: active ? "var(--card)" : "transparent",
@@ -59,12 +76,23 @@ function FilterPill({ label, active, onClick, icon }: { label: string; active: b
   );
 }
 
-export default function TicketsPage() {
+function TicketsPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const overdueOnLoad = searchParams.get("overdue") === "true";
+  const mineOnLoad = searchParams.get("mine") === "true";
   const { user } = useAuthStore();
-  const [filters, setFilters] = useState<Record<string, string>>({});
-  const [activeStatus, setActiveStatus] = useState("");
+  const [filters, setFilters] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {};
+    if (overdueOnLoad) initial.overdue = "true";
+    if (mineOnLoad) initial.mine = "true";
+    return initial;
+  });
+  const [activeStatus, setActiveStatus] = useState(() =>
+    overdueOnLoad ? "OVERDUE" : ""
+  );
   const [activeCompany, setActiveCompany] = useState("");
+  const [mineOnly, setMineOnly] = useState(mineOnLoad);
   const { data, isLoading } = useTickets(filters);
 
   const isDeveloper = user?.role === "DEVELOPER";
@@ -94,12 +122,24 @@ export default function TicketsPage() {
 
   const setStatusFilter = (status: string) => {
     setActiveStatus(status);
-    setFilter("status", status);
+    setFilters(prev => {
+      const next: Record<string, string> = { ...prev };
+      delete next.status;
+      delete next.overdue;
+      if (status === "OVERDUE") next.overdue = "true";
+      else if (status) next.status = status;
+      return next;
+    });
   };
 
   const setCompanyFilter = (companyId: string) => {
     setActiveCompany(companyId);
     setFilter("companyId", companyId);
+  };
+
+  const setMineFilter = (on: boolean) => {
+    setMineOnly(on);
+    setFilter("mine", on ? "true" : "");
   };
 
   const companyList: any[] = isDeveloper
@@ -116,7 +156,6 @@ export default function TicketsPage() {
     <AppShell>
       <PageHeader
         title="التذاكر"
-        description={`${data?.total ?? 0} تذكرة`}
         action={canCreate ? (
           <Button onClick={() => router.push("/tickets/new")}>
             <Plus className="w-4 h-4 ml-2" /> تذكرة جديدة
@@ -138,7 +177,7 @@ export default function TicketsPage() {
       {companyList.length > 0 && (
         <div className="mb-3">
           <p className="font-brm text-xs mb-2 uppercase tracking-widest" style={{ color: "var(--muted-foreground)" }}>
-            // الشركات
+            <CodeComment>الشركات</CodeComment>
           </p>
           <div className="flex flex-wrap gap-1.5 p-1 rounded-xl w-fit" style={{ background: "var(--muted)" }}>
             <FilterPill label="الكل" active={activeCompany === ""} onClick={() => setCompanyFilter("")} />
@@ -156,16 +195,41 @@ export default function TicketsPage() {
       )}
 
       {/* Status filter */}
-      <div className="mb-6">
+      <div className="mb-3">
         <p className="font-brm text-xs mb-2 uppercase tracking-widest" style={{ color: "var(--muted-foreground)" }}>
-          // الحالة
+          <CodeComment>الحالة</CodeComment>
         </p>
         <div className="flex flex-wrap gap-1.5 p-1 rounded-xl w-fit" style={{ background: "var(--muted)" }}>
-          {QUICK_STATUSES.map(({ key, label }) => (
+          {statusFilterPills(user?.role).map(({ key, label }) => (
             <FilterPill key={key} label={label} active={activeStatus === key} onClick={() => setStatusFilter(key)} />
           ))}
         </div>
       </div>
+
+      {/* Assigned-to-me / my-tasks filter */}
+      <div className="mb-3">
+        <p className="font-brm text-xs mb-2 uppercase tracking-widest" style={{ color: "var(--muted-foreground)" }}>
+          <CodeComment>الإسناد</CodeComment>
+        </p>
+        <div className="flex flex-wrap gap-1.5 p-1 rounded-xl w-fit" style={{ background: "var(--muted)" }} role="group" aria-label="الإسناد">
+          <FilterPill label="الكل" ariaLabel="كل التذاكر" active={!mineOnly} onClick={() => setMineFilter(false)} />
+          <FilterPill
+            label={TICKET_MINE_LABEL}
+            active={mineOnly}
+            onClick={() => setMineFilter(true)}
+            icon={<User className="w-3 h-3" />}
+          />
+        </div>
+      </div>
+
+      {!isLoading && (
+        <p className="mb-4 flex items-baseline gap-2">
+          <span className="text-xl font-bold tabular-nums" style={{ color: "var(--foreground)" }}>
+            {data?.total ?? 0}
+          </span>
+          <span className="text-sm font-medium" style={{ color: "var(--muted-foreground)" }}>تذكرة</span>
+        </p>
+      )}
 
       {isLoading ? (
         <SkeletonList count={6} />
@@ -180,9 +244,13 @@ export default function TicketsPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           {data.data.map((ticket: any) => {
             const barColor = STATUS_BAR_COLORS[ticket.status] ?? "#94A3B8";
-            const brmId = ticket.ticketNumber
-              ? `BRM-${String(ticket.ticketNumber).padStart(4, "0")}`
-              : null;
+            const assignedDev = ticket.assignments?.[0]?.developer;
+            const assignedDevName = [assignedDev?.firstName, assignedDev?.lastName]
+              .filter(Boolean)
+              .join(" ");
+            const assignedDevLabel = assignedDevName
+              ? `المطور المُكلَّف: ${assignedDevName}`
+              : "المطور المُكلَّف";
 
             return (
               <Link key={ticket.id} href={`/tickets/${ticket.id}`} style={{ display: "block" }}>
@@ -202,35 +270,63 @@ export default function TicketsPage() {
                         <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                           <StatusBadge status={ticket.status} />
                           <PriorityBadge priority={ticket.finalPriority || ticket.priority} />
-                          {brmId && (
-                            <span className="font-brm text-xs px-2 py-0.5 rounded-md" style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>
-                              {brmId}
-                            </span>
-                          )}
+                          <TicketCodeBadge ticketNumber={ticket.ticketNumber} />
                           <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>{TICKET_TYPE_LABELS[ticket.type]}</span>
                         </div>
                         <h3 className="font-semibold truncate" style={{ color: "var(--foreground)" }}>{ticket.title}</h3>
                         <div className="flex items-center gap-4 mt-2 flex-wrap">
-                          <span className="flex items-center gap-1 text-xs" style={{ color: "var(--muted-foreground)" }}>
-                            <User className="w-3 h-3" />
+                          <span
+                            className="flex items-center gap-1 text-xs cursor-help"
+                            title="طالب التذكرة"
+                            aria-label="طالب التذكرة"
+                            style={{ color: "var(--muted-foreground)" }}
+                          >
+                            <User className="w-3 h-3" aria-hidden />
                             {ticket.creator?.id === user?.id ? "أنت" : `${ticket.creator?.firstName} ${ticket.creator?.lastName}`}
                           </span>
-                          <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>{ticket.system?.name}</span>
+                          {ticket.system?.name && (
+                            <span
+                              className="text-xs cursor-help"
+                              title="النظام"
+                              aria-label="النظام"
+                              style={{ color: "var(--muted-foreground)" }}
+                            >
+                              {ticket.system.name}
+                            </span>
+                          )}
                           {ticket.company && (
-                            <span className="flex items-center gap-1 text-xs" style={{ color: "var(--muted-foreground)" }}>
+                            <span
+                              className="flex items-center gap-1 text-xs cursor-help"
+                              title="الشركة"
+                              aria-label="الشركة"
+                              style={{ color: "var(--muted-foreground)" }}
+                            >
                               <CompanyLogo company={ticket.company} size="xs" />
                               {ticket.company.name}
                             </span>
                           )}
-                          <RelativeTime date={ticket.createdAt} />
+                          {ticket.estimatedDeadline && (
+                            <span
+                              className={`flex items-center gap-1 text-xs cursor-help ${isOverdue(ticket) ? "brm-overdue" : ""}`}
+                              title="تاريخ التسليم المتوقع"
+                              aria-label="تاريخ التسليم المتوقع"
+                              style={{ color: isOverdue(ticket) ? undefined : "var(--muted-foreground)" }}
+                            >
+                              <Clock className="w-3 h-3" aria-hidden />
+                              التسليم: {format(new Date(ticket.estimatedDeadline), "d MMM yyyy", { locale: ar })}
+                            </span>
+                          )}
+                          <RelativeTime date={ticket.createdAt} label="تاريخ الإنشاء" />
                         </div>
                       </div>
                       {ticket.assignments?.[0] && (
                         <div
-                          className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-indigo-600 text-sm shrink-0"
+                          title={assignedDevLabel}
+                          aria-label={assignedDevLabel}
+                          className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-indigo-600 text-sm shrink-0 cursor-help"
                           style={{ background: "rgba(79,70,229,0.1)" }}
                         >
-                          {ticket.assignments[0].developer?.firstName?.[0]}
+                          {assignedDev?.firstName?.[0]}
                         </div>
                       )}
                     </div>
@@ -257,5 +353,17 @@ export default function TicketsPage() {
         </div>
       )}
     </AppShell>
+  );
+}
+
+export default function TicketsPage() {
+  return (
+    <Suspense fallback={
+      <AppShell>
+        <SkeletonList count={6} />
+      </AppShell>
+    }>
+      <TicketsPageContent />
+    </Suspense>
   );
 }

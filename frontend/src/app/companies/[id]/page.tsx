@@ -1,17 +1,21 @@
 "use client";
 import { use, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusBadge, PriorityBadge } from "@/components/shared/StatusBadge";
 import { RelativeTime } from "@/components/shared/RelativeTime";
+import { TicketCodeBadge } from "@/components/shared/TicketCodeBadge";
+import { CodeComment } from "@/components/shared/CodeComment";
 import { SkeletonList, SkeletonStat } from "@/components/shared/LoadingSpinner";
-import { TICKET_TYPE_LABELS } from "@/lib/constants";
+import { SELECT_PLACEHOLDERS, TICKET_TYPE_LABELS } from "@/lib/constants";
 import { useAuthStore } from "@/store/auth";
+import { usePermissions } from "@/hooks/usePermissions";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import api from "@/lib/api";
-import { ArrowLeft, Globe, Monitor, FolderOpen, Users, Plus, X, ChevronDown, ChevronUp } from "lucide-react";
+import { toast } from "sonner";
+import { ArrowLeft, Globe, Monitor, FolderOpen, Users, Pencil, Plus, X, ChevronDown, ChevronUp } from "lucide-react";
 
 const STATUS_BAR: Record<string, string> = {
   DRAFT:"#94A3B8", NEW:"#3B82F6", AWAITING_INFO:"#F59E0B",
@@ -19,6 +23,13 @@ const STATUS_BAR: Record<string, string> = {
   SCHEDULED:"#8B5CF6", IN_PROGRESS:"#22C55E", AWAITING_TESTING:"#06B6D4",
   AWAITING_OWNER_APPROVAL:"#14B8A6", COMPLETED:"#10B981", CLOSED:"#6B7280", ON_HOLD:"#94A3B8",
 };
+
+const inputCls = "w-full rounded-lg px-3 py-2 text-sm outline-none";
+const inputStyle = { background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" };
+const labelCls = "block text-xs font-semibold mb-1.5";
+
+/** A cleared optional field goes back as null so the API drops the stored value. */
+const orNull = (v: string) => (v.trim() ? v.trim() : null);
 
 function StatBox({ label, value }: { label: string; value: number | undefined }) {
   return (
@@ -29,9 +40,11 @@ function StatBox({ label, value }: { label: string; value: number | undefined })
   );
 }
 
-function SystemCard({ system, allDevs, isManager }: { system: any; allDevs: any[]; isManager: boolean }) {
+function SystemCard({ system, allDevs, canManage }: { system: any; allDevs: any[]; canManage: boolean }) {
   const qc = useQueryClient();
   const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ name: "", description: "", domain: "" });
   const [addingDev, setAddingDev] = useState(false);
   const [selectedDev, setSelectedDev] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -42,6 +55,24 @@ function SystemCard({ system, allDevs, isManager }: { system: any; allDevs: any[
     queryFn: () => api.get(`/systems/${system.id}`).then(r => r.data),
     enabled: expanded,
   });
+
+  const updateSystem = useMutation({
+    mutationFn: (dto: { name: string; description: string | null; domain: string | null }) =>
+      api.patch(`/systems/${system.id}`, dto),
+    onSuccess: () => {
+      toast.success("تم تحديث النظام");
+      setEditing(false);
+      qc.invalidateQueries({ queryKey: ["company"] });
+      qc.invalidateQueries({ queryKey: ["companies"] });
+      if (expanded) refetch();
+    },
+    onError: () => toast.error("فشل تحديث النظام"),
+  });
+
+  const startEdit = () => {
+    setForm({ name: system.name ?? "", description: system.description ?? "", domain: system.domain ?? "" });
+    setEditing(true);
+  };
 
   const assignedDevs: any[] = sysData?.userSystems?.filter((us: any) => us.user?.role === "DEVELOPER") ?? [];
   const assignedIds = new Set(assignedDevs.map((us: any) => us.user?.id));
@@ -73,35 +104,94 @@ function SystemCard({ system, allDevs, isManager }: { system: any; allDevs: any[
 
   return (
     <div className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-      <button
-        onClick={() => setExpanded(e => !e)}
-        className="w-full flex items-center justify-between px-4 py-3 text-right transition-colors"
-        style={{ borderBottom: expanded ? "1px solid var(--border)" : "none" }}
-        onMouseEnter={e => (e.currentTarget.style.background = "var(--muted)")}
-        onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
-            style={{ background: "rgba(79,70,229,0.1)" }}>
-            <Monitor className="w-3.5 h-3.5" style={{ color: "#4F46E5" }} />
+      {editing ? (
+        <div className="p-4 space-y-3" style={{ borderBottom: expanded ? "1px solid var(--border)" : "none" }}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label htmlFor={`system-name-${system.id}`} className={labelCls} style={{ color: "var(--muted-foreground)" }}>
+                اسم النظام
+              </label>
+              <input id={`system-name-${system.id}`} value={form.name} autoFocus
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                className={inputCls} style={inputStyle} />
+            </div>
+            <div>
+              <label htmlFor={`system-domain-${system.id}`} className={labelCls} style={{ color: "var(--muted-foreground)" }}>
+                النطاق (اختياري)
+              </label>
+              <input id={`system-domain-${system.id}`} value={form.domain} dir="ltr"
+                onChange={e => setForm(f => ({ ...f, domain: e.target.value }))}
+                className={inputCls} style={inputStyle} />
+            </div>
+            <div className="sm:col-span-2">
+              <label htmlFor={`system-description-${system.id}`} className={labelCls} style={{ color: "var(--muted-foreground)" }}>
+                الوصف (اختياري)
+              </label>
+              <input id={`system-description-${system.id}`} value={form.description}
+                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                className={inputCls} style={inputStyle} />
+            </div>
           </div>
-          <div className="text-right">
-            <p className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{system.name}</p>
-            {system.domain && (
-              <p className="font-brm text-xs" style={{ color: "var(--muted-foreground)" }} dir="ltr">{system.domain}</p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => updateSystem.mutate({
+                name: form.name.trim(),
+                description: orNull(form.description),
+                domain: orNull(form.domain),
+              })}
+              disabled={!form.name.trim() || updateSystem.isPending}
+              className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50"
+              style={{ background: "#4F46E5" }}>
+              حفظ
+            </button>
+            <button onClick={() => setEditing(false)}
+              className="px-3 py-1.5 rounded-lg text-xs"
+              style={{ border: "1px solid var(--border)", color: "var(--muted-foreground)" }}>
+              إلغاء
+            </button>
+          </div>
+        </div>
+      ) : (
+      <div className="flex items-stretch" style={{ borderBottom: expanded ? "1px solid var(--border)" : "none" }}>
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="flex-1 min-w-0 flex items-center justify-between px-4 py-3 text-right transition-colors"
+          onMouseEnter={e => (e.currentTarget.style.background = "var(--muted)")}
+          onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+              style={{ background: "rgba(79,70,229,0.1)" }}>
+              <Monitor className="w-3.5 h-3.5" style={{ color: "#4F46E5" }} />
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{system.name}</p>
+              {system.domain && (
+                <p className="font-brm text-xs" style={{ color: "var(--muted-foreground)" }} dir="ltr">{system.domain}</p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {!expanded && sysData && (
+              <span className="text-xs px-2 py-0.5 rounded-full"
+                style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>
+                {assignedDevs.length} مطور
+              </span>
             )}
+            {expanded ? <ChevronUp className="w-4 h-4" style={{ color: "var(--muted-foreground)" }} />
+                      : <ChevronDown className="w-4 h-4" style={{ color: "var(--muted-foreground)" }} />}
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {!expanded && sysData && (
-            <span className="text-xs px-2 py-0.5 rounded-full"
-              style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>
-              {assignedDevs.length} مطور
-            </span>
-          )}
-          {expanded ? <ChevronUp className="w-4 h-4" style={{ color: "var(--muted-foreground)" }} />
-                    : <ChevronDown className="w-4 h-4" style={{ color: "var(--muted-foreground)" }} />}
-        </div>
-      </button>
+        </button>
+        {canManage && (
+          <button onClick={startEdit} aria-label={`تعديل النظام ${system.name}`} title="تعديل النظام"
+            className="px-3 flex items-center transition-colors"
+            style={{ color: "var(--muted-foreground)" }}
+            onMouseEnter={e => (e.currentTarget.style.color = "#4F46E5")}
+            onMouseLeave={e => (e.currentTarget.style.color = "var(--muted-foreground)")}>
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+      )}
 
       {expanded && (
         <div className="p-4 space-y-3">
@@ -110,7 +200,7 @@ function SystemCard({ system, allDevs, isManager }: { system: any; allDevs: any[
             المطورون المكلَّفون
           </p>
           {assignedDevs.length === 0 ? (
-            <p className="font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>$ no developers assigned_</p>
+            <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>لم يُعيَّن مطورون بعد</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {assignedDevs.map((us: any) => (
@@ -122,7 +212,7 @@ function SystemCard({ system, allDevs, isManager }: { system: any; allDevs: any[
                     {us.user?.firstName?.[0]}
                   </div>
                   {us.user?.firstName} {us.user?.lastName}
-                  {isManager && (
+                  {canManage && (
                     <button onClick={() => handleRemove(us.user?.id)}
                       className="transition-colors hover:text-red-500 mr-0.5">
                       <X className="w-3 h-3" />
@@ -138,12 +228,22 @@ function SystemCard({ system, allDevs, isManager }: { system: any; allDevs: any[
           )}
 
           {/* Add developer (managers only) */}
-          {isManager && (
+          {canManage && (
             addingDev ? (
               <div className="flex gap-2 items-center">
-                <Select value={selectedDev ?? ""} onValueChange={(v: string | null) => v && setSelectedDev(v)}>
-                  <SelectTrigger className="flex-1 h-8 text-sm"><SelectValue placeholder="اختر مطوراً" /></SelectTrigger>
+                <Select
+                  value={selectedDev}
+                  onValueChange={(v: string | null) => setSelectedDev(v)}
+                  items={[
+                    { value: null, label: SELECT_PLACEHOLDERS.developer },
+                    ...availableDevs.map(d => ({ value: d.id, label: `${d.firstName} ${d.lastName}` })),
+                  ]}
+                >
+                  <SelectTrigger className="flex-1 h-8 text-sm" aria-label={SELECT_PLACEHOLDERS.developer}>
+                    <SelectValue placeholder={SELECT_PLACEHOLDERS.developer} />
+                  </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={null}>{SELECT_PLACEHOLDERS.developer}</SelectItem>
                     {availableDevs.length === 0 ? (
                       <div className="px-3 py-2 text-xs" style={{ color: "var(--muted-foreground)" }}>لا يوجد مطورون متاحون</div>
                     ) : availableDevs.map(d => (
@@ -180,7 +280,12 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
   const { id } = use(params);
   const router = useRouter();
   const { user } = useAuthStore();
-  const isManager = user?.role === "PROGRAMMING_HEAD" || user?.role === "PROJECT_MANAGER";
+  const { can: allowed } = usePermissions();
+  const qc = useQueryClient();
+  // Capability, not role names — the same matrix PATCH /companies/:id gates on.
+  const canManage = allowed("structure:manage");
+  const [editingCompany, setEditingCompany] = useState(false);
+  const [companyForm, setCompanyForm] = useState({ name: "", nameAr: "", domain: "" });
 
   const { data: company, isLoading: companyLoading } = useQuery({
     queryKey: ["company", id],
@@ -196,14 +301,31 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
     queryKey: ["users-list"],
     queryFn: () => api.get("/users").then(r => r.data),
     staleTime: 60_000,
-    enabled: isManager,
+    enabled: canManage,
   });
+
+  const updateCompany = useMutation({
+    mutationFn: (dto: { name: string; nameAr: string | null; domain: string | null }) =>
+      api.patch(`/companies/${id}`, dto),
+    onSuccess: () => {
+      toast.success("تم تحديث بيانات الشركة");
+      setEditingCompany(false);
+      qc.invalidateQueries({ queryKey: ["company", id] });
+      qc.invalidateQueries({ queryKey: ["companies"] });
+    },
+    onError: () => toast.error("فشل تحديث بيانات الشركة"),
+  });
+
+  const startCompanyEdit = () => {
+    setCompanyForm({ name: company?.name ?? "", nameAr: company?.nameAr ?? "", domain: company?.domain ?? "" });
+    setEditingCompany(true);
+  };
 
   const tickets: any[] = ticketsData?.data ?? [];
   const allDevs: any[] = (allUsersData ?? []).filter((u: any) => u.role === "DEVELOPER");
 
   return (
-    <AppShell>
+    <AppShell requires="structure:manage">
       <div className="max-w-4xl space-y-6">
         {/* Back */}
         <button onClick={() => router.back()}
@@ -226,32 +348,90 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                   {company.name?.[0]}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-3 flex-wrap mb-1">
-                    <h1 className="text-xl font-bold" style={{ color: "var(--foreground)" }}>{company.name}</h1>
-                    {company.nameAr && company.nameAr !== company.name && (
-                      <span className="text-sm" style={{ color: "var(--muted-foreground)" }}>{company.nameAr}</span>
-                    )}
-                    {!company.isActive && (
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold"
-                        style={{ background: "rgba(220,38,38,.1)", color: "#DC2626" }}>غير نشطة</span>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-5 text-sm" style={{ color: "var(--muted-foreground)" }}>
-                    {company.domain && (
-                      <span className="flex items-center gap-1.5 font-brm" dir="ltr">
-                        <Globe className="w-3.5 h-3.5" /> {company.domain}
-                      </span>
-                    )}
-                    <span className="flex items-center gap-1.5">
-                      <FolderOpen className="w-3.5 h-3.5" /> {company.departments?.length ?? 0} قسم
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <Monitor className="w-3.5 h-3.5" /> {company.systems?.length ?? 0} نظام
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <Users className="w-3.5 h-3.5" /> {company._count?.users ?? 0} مستخدم
-                    </span>
-                  </div>
+                  {editingCompany ? (
+                    <div className="space-y-3">
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <label htmlFor="company-name" className={labelCls} style={{ color: "var(--muted-foreground)" }}>
+                            اسم الشركة
+                          </label>
+                          <input id="company-name" value={companyForm.name} autoFocus
+                            onChange={e => setCompanyForm(f => ({ ...f, name: e.target.value }))}
+                            className={inputCls} style={inputStyle} />
+                        </div>
+                        <div>
+                          <label htmlFor="company-nameAr" className={labelCls} style={{ color: "var(--muted-foreground)" }}>
+                            الاسم بالعربية (اختياري)
+                          </label>
+                          <input id="company-nameAr" value={companyForm.nameAr}
+                            onChange={e => setCompanyForm(f => ({ ...f, nameAr: e.target.value }))}
+                            className={inputCls} style={inputStyle} />
+                        </div>
+                        <div>
+                          <label htmlFor="company-domain" className={labelCls} style={{ color: "var(--muted-foreground)" }}>
+                            النطاق (اختياري)
+                          </label>
+                          <input id="company-domain" value={companyForm.domain} dir="ltr"
+                            onChange={e => setCompanyForm(f => ({ ...f, domain: e.target.value }))}
+                            className={inputCls} style={inputStyle} />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => updateCompany.mutate({
+                            name: companyForm.name.trim(),
+                            nameAr: orNull(companyForm.nameAr),
+                            domain: orNull(companyForm.domain),
+                          })}
+                          disabled={!companyForm.name.trim() || updateCompany.isPending}
+                          className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50"
+                          style={{ background: "#4F46E5" }}>
+                          حفظ
+                        </button>
+                        <button onClick={() => setEditingCompany(false)}
+                          className="px-3 py-1.5 rounded-lg text-xs"
+                          style={{ border: "1px solid var(--border)", color: "var(--muted-foreground)" }}>
+                          إلغاء
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-3 flex-wrap mb-1">
+                        <h1 className="text-xl font-bold" style={{ color: "var(--foreground)" }}>{company.name}</h1>
+                        {company.nameAr && company.nameAr !== company.name && (
+                          <span className="text-sm" style={{ color: "var(--muted-foreground)" }}>{company.nameAr}</span>
+                        )}
+                        {!company.isActive && (
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold"
+                            style={{ background: "rgba(220,38,38,.1)", color: "#DC2626" }}>غير نشطة</span>
+                        )}
+                        {canManage && (
+                          <button onClick={startCompanyEdit}
+                            className="flex items-center gap-1 text-xs font-medium transition-colors"
+                            style={{ color: "#4F46E5" }}>
+                            <Pencil className="w-3.5 h-3.5" /> تعديل
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-5 text-sm" style={{ color: "var(--muted-foreground)" }}>
+                        {company.domain && (
+                          <span className="flex items-center gap-1.5 font-brm" dir="ltr">
+                            <Globe className="w-3.5 h-3.5" /> {company.domain}
+                          </span>
+                        )}
+                        <span className="flex items-center gap-1.5">
+                          <FolderOpen className="w-3.5 h-3.5" /> {company.departments?.length ?? 0} قسم
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <Monitor className="w-3.5 h-3.5" /> {company.systems?.length ?? 0} نظام
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <Users className="w-3.5 h-3.5" /> {company._count?.users ?? 0} مستخدم
+                        </span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -268,11 +448,11 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
             {company.systems?.length > 0 && (
               <div>
                 <p className="font-brm text-xs uppercase tracking-widest mb-3" style={{ color: "var(--muted-foreground)" }}>
-                  // الأنظمة والمطورون
+                  <CodeComment>الأنظمة والمطورون</CodeComment>
                 </p>
                 <div className="space-y-2">
                   {company.systems.map((s: any) => (
-                    <SystemCard key={s.id} system={s} allDevs={allDevs} isManager={isManager} />
+                    <SystemCard key={s.id} system={s} allDevs={allDevs} canManage={canManage} />
                   ))}
                 </div>
               </div>
@@ -283,7 +463,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
         {/* Tickets */}
         <div>
           <p className="font-brm text-xs uppercase tracking-widest mb-3" style={{ color: "var(--muted-foreground)" }}>
-            // تذاكر الشركة
+            <CodeComment>تذاكر الشركة</CodeComment>
           </p>
 
           {ticketsLoading ? (
@@ -296,7 +476,13 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
             <div className="flex flex-col gap-2.5">
               {tickets.map((ticket: any) => {
                 const bar = STATUS_BAR[ticket.status] ?? "#94A3B8";
-                const brmId = ticket.ticketNumber ? `BRM-${String(ticket.ticketNumber).padStart(4, "0")}` : null;
+                const assignedDev = ticket.assignments?.[0]?.developer;
+                const assignedDevName = [assignedDev?.firstName, assignedDev?.lastName]
+                  .filter(Boolean)
+                  .join(" ");
+                const assignedDevLabel = assignedDevName
+                  ? `المطور المُكلَّف: ${assignedDevName}`
+                  : "المطور المُكلَّف";
                 return (
                   <Link key={ticket.id} href={`/tickets/${ticket.id}`}>
                     <div className="rounded-xl flex overflow-hidden transition-all hover:shadow-md"
@@ -308,10 +494,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                             <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                               <StatusBadge status={ticket.status} />
                               <PriorityBadge priority={ticket.finalPriority || ticket.priority} />
-                              {brmId && (
-                                <span className="font-brm text-xs px-2 py-0.5 rounded-md"
-                                  style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>{brmId}</span>
-                              )}
+                              <TicketCodeBadge ticketNumber={ticket.ticketNumber} />
                               <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
                                 {TICKET_TYPE_LABELS[ticket.type]}
                               </span>
@@ -324,9 +507,12 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                             </div>
                           </div>
                           {ticket.assignments?.[0] && (
-                            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                            <div
+                              title={assignedDevLabel}
+                              aria-label={assignedDevLabel}
+                              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 cursor-help"
                               style={{ background: "rgba(79,70,229,0.1)", color: "#4F46E5" }}>
-                              {ticket.assignments[0].developer?.firstName?.[0]}
+                              {assignedDev?.firstName?.[0]}
                             </div>
                           )}
                         </div>

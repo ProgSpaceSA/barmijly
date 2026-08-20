@@ -8,9 +8,10 @@ import { AppShell } from "@/components/layout/AppShell";
 import { useCreateTicket } from "@/hooks/useTickets";
 import api from "@/lib/api";
 import { Switch } from "@/components/ui/switch";
-import { TICKET_TYPE_LABELS } from "@/lib/constants";
+import { SELECT_PLACEHOLDERS, TICKET_TYPE_LABELS } from "@/lib/constants";
 import { ArrowLeft, ImagePlus, Paperclip, X, FileText } from "lucide-react";
-import { useAuthStore } from "@/store/auth";
+import { usePermissions } from "@/hooks/usePermissions";
+import { MarkdownEditor } from "@/components/shared/MarkdownEditor";
 
 const schema = z.object({
   title: z.string().min(5, "العنوان مطلوب"),
@@ -25,8 +26,6 @@ const schema = z.object({
   financialLossDetails: z.string().optional(),
   priority: z.string().optional(),
 });
-
-const RESTRICTED_ROLES = ["TICKET_REQUESTER", "SYSTEM_OWNER"];
 
 function formatBytes(b: number) {
   if (b < 1024) return `${b} B`;
@@ -126,7 +125,7 @@ function BlockedMessage({ icon, title, body, onBack }: { icon: string; title: st
 
 export default function NewTicketPage() {
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { can: allowed } = usePermissions();
   const { mutateAsync: createTicket } = useCreateTicket();
   const [companies, setCompanies] = useState<any[]>([]);
   const [systems, setSystems] = useState<any[]>([]);
@@ -139,7 +138,9 @@ export default function NewTicketPage() {
   const coverInputRef = useRef<HTMLInputElement>(null);
   const attachInputRef = useRef<HTMLInputElement>(null);
 
-  const isRestricted = RESTRICTED_ROLES.includes(user?.role ?? "");
+  // The business-side roles see only their own companies and systems; every
+  // role holding structure:read-all gets the full pickers.
+  const isRestricted = !allowed("structure:read-all");
 
   const { register, handleSubmit, watch, setValue, reset, control, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(schema),
@@ -285,7 +286,7 @@ export default function NewTicketPage() {
                     className="w-full rounded-xl px-4 py-2.5 text-sm opacity-40" style={fieldStyle} />
                 ) : (
                   <FormSelect register={register} name="companyId" error={errors.companyId}>
-                    <option value="">اختر شركة...</option>
+                    <option value="">{SELECT_PLACEHOLDERS.company}</option>
                     {companies.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </FormSelect>
                 )}
@@ -306,7 +307,7 @@ export default function NewTicketPage() {
                         style={fieldStyle}
                         onFocus={(e: any) => (e.target.style.borderColor = "#4F46E5")}
                       >
-                        <option value="">اختر النظام...</option>
+                        <option value="">{SELECT_PLACEHOLDERS.system}</option>
                         {systems.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
                       </select>
                       {companyId && systemsLoaded && systems.length === 0
@@ -320,13 +321,14 @@ export default function NewTicketPage() {
               <div>
                 <Label>نوع الطلب *</Label>
                 <FormSelect register={register} name="type" error={errors.type}>
-                  <option value="">اختر نوع الطلب...</option>
+                  <option value="">{SELECT_PLACEHOLDERS.ticketType}</option>
                   {Object.entries(TICKET_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </FormSelect>
               </div>
               <div>
                 <Label>الأولوية المقترحة</Label>
                 <FormSelect register={register} name="priority">
+                  <option value="">{SELECT_PLACEHOLDERS.priority}</option>
                   <option value="CRITICAL">حرجة</option>
                   <option value="HIGH">عالية</option>
                   <option value="MEDIUM">متوسطة</option>
@@ -341,7 +343,25 @@ export default function NewTicketPage() {
           <FormSection title="تفاصيل الطلب">
             <div>
               <Label>الوصف التفصيلي *</Label>
-              <FormTextarea register={register} name="description" rows={4} placeholder="اشرح الطلب بالتفصيل..." error={errors.description} />
+              <Controller
+                name="description"
+                control={control}
+                defaultValue=""
+                render={({ field, fieldState }) => (
+                  <>
+                    <MarkdownEditor
+                      value={field.value ?? ""}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      invalid={!!fieldState.error}
+                      placeholder="اشرح الطلب بالتفصيل — يمكنك استخدام العناوين والقوائم والجداول وكتل الكود…"
+                      ariaLabel="الوصف التفصيلي"
+                      minHeight={200}
+                    />
+                    {fieldState.error && <p className="text-red-500 text-xs mt-1">{fieldState.error.message}</p>}
+                  </>
+                )}
+              />
             </div>
             <div>
               <Label>سبب الطلب / المشكلة (اختياري)</Label>

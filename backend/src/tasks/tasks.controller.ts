@@ -14,8 +14,8 @@ export class TasksController {
   constructor(private tasksService: TasksService) {}
 
   @Get('tickets/:ticketId/tasks')
-  findByTicket(@Param('ticketId') ticketId: string) {
-    return this.tasksService.findByTicket(ticketId);
+  findByTicket(@Param('ticketId') ticketId: string, @CurrentUser() user: any) {
+    return this.tasksService.findByTicket(ticketId, user);
   }
 
   @Post('tickets/:ticketId/tasks')

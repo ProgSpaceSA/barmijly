@@ -1,6 +1,7 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
+import type { DeveloperStat } from "@/lib/report-charts";
 
 export function useDashboardStats(companyId?: string) {
   return useQuery({
@@ -9,10 +10,12 @@ export function useDashboardStats(companyId?: string) {
   });
 }
 
-export function useDeveloperStats() {
+/** `enabled: false` for roles without report:read-team — the API answers 403. */
+export function useDeveloperStats(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["reports-developers"],
-    queryFn: () => api.get("/reports/developers").then(r => r.data),
+    queryFn: () => api.get("/reports/developers").then((r) => r.data as DeveloperStat[]),
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -23,9 +26,11 @@ export function useOverdueTickets() {
   });
 }
 
-export function useTicketTrend(months = 6) {
+/** `enabled: false` for roles without report:read-team — the API answers 403. */
+export function useTicketTrend(months = 6, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["reports-trend", months],
     queryFn: () => api.get("/reports/trend", { params: { months } }).then(r => r.data),
+    enabled: options?.enabled ?? true,
   });
 }

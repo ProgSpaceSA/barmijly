@@ -1,5 +1,5 @@
 import { Controller, Get, Patch, Param, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -19,7 +19,7 @@ export class NotificationsController {
     @Query('limit') limit?: string,
   ) {
     return this.notificationsService.findAll(
-      user.id,
+      user,
       unreadOnly === 'true',
       page  ? parseInt(page)  : 1,
       limit ? parseInt(limit) : 20,
@@ -28,7 +28,13 @@ export class NotificationsController {
 
   @Get('unread-count')
   countUnread(@CurrentUser() user: any) {
-    return this.notificationsService.countUnread(user.id);
+    return this.notificationsService.countUnread(user);
+  }
+
+  @Patch('ticket/:ticketId/read')
+  @ApiOperation({ summary: 'Mark all unread notifications for a ticket as read' })
+  markTicketRead(@Param('ticketId') ticketId: string, @CurrentUser() user: any) {
+    return this.notificationsService.markTicketRead(ticketId, user.id);
   }
 
   @Patch(':id/read')

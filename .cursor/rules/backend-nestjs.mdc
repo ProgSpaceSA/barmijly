@@ -1,0 +1,51 @@
+---
+description: NestJS backend patterns for Barmijly API
+globs: backend/**/*.ts
+alwaysApply: false
+---
+
+# Backend (NestJS) Conventions
+
+## Module pattern
+
+Each domain is a NestJS module under `backend/src/`:
+`controller` → HTTP + Swagger decorators · `service` → business logic · `dto/` → validation
+
+## Auth & roles
+
+```typescript
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD)
+```
+
+- `@Public()` skips JWT on auth endpoints
+- `@CurrentUser()` injects authenticated user
+- Role filtering belongs in the **service**, not only the controller
+
+## Ticket actions checklist
+
+When adding/modifying ticket transitions:
+
+1. Validate current status allows the transition
+2. Write `TicketStatusHistory` record
+3. Call `AuditService.log(...)`
+4. Send notification via `NotificationsService`
+5. Send email via `EmailService` when user-facing
+
+## Prisma
+
+- Use `PrismaService` (injected globally)
+- Prisma 7 uses `@prisma/adapter-pg` — see `backend/src/prisma/prisma.service.ts`
+- Migrations: `npx prisma migrate dev --name <name>` from `backend/`
+
+## DTOs
+
+- Use `class-validator` decorators on all request DTOs
+- Export enums from DTO files when shared (e.g. `ApprovalDecision`)
+- Swagger: `@ApiTags`, `@ApiBearerAuth`, `@ApiOperation`
+
+## Errors
+
+- `NotFoundException` — missing entity
+- `ForbiddenException` — role/ownership violation
+- `BadRequestException` — invalid status transition or input

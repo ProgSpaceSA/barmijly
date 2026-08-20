@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { resetQueryCache } from "@/lib/query-client";
 
 export type UserRole =
   | "TICKET_REQUESTER" | "SYSTEM_OWNER" | "PROGRAMMING_HEAD"
@@ -29,14 +30,13 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       token: null,
       user: null,
-      setAuth: (token, user) => set({ token, user }),
+      setAuth: (token, user) => {
+        resetQueryCache();
+        set({ token, user });
+      },
       logout: () => {
+        resetQueryCache();
         set({ token: null, user: null });
-        if (typeof window !== "undefined") {
-          localStorage.removeItem("token");
-          localStorage.removeItem("user");
-          window.location.href = "/login";
-        }
       },
       isAuthenticated: () => !!get().token,
       hasRole: (...roles) => roles.includes(get().user?.role as UserRole),

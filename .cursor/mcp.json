@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "barmijly-postgres": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "${env:DATABASE_URL}"
+      ],
+      "envFile": "${workspaceFolder}/backend/.env"
+    }
+  }
+}

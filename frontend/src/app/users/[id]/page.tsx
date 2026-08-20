@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusBadge, PriorityBadge } from "@/components/shared/StatusBadge";
+import { AttachmentImage } from "@/components/shared/AttachmentImage";
 import { RelativeTime } from "@/components/shared/RelativeTime";
+import { TicketCodeBadge } from "@/components/shared/TicketCodeBadge";
+import { CodeComment } from "@/components/shared/CodeComment";
 import { SkeletonList, SkeletonStat } from "@/components/shared/LoadingSpinner";
 import { ROLE_LABELS, TICKET_TYPE_LABELS } from "@/lib/constants";
 import api from "@/lib/api";
@@ -76,7 +79,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
   const roleColor = ROLE_COLOR[user?.role] ?? "#6B7280";
 
   return (
-    <AppShell>
+    <AppShell requires="user:read">
       <div className="max-w-4xl space-y-6">
         {/* Back */}
         <button onClick={() => router.back()}
@@ -171,7 +174,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
         {activeTab === "tickets" && (
           <div>
             <p className="font-brm text-xs uppercase tracking-widest mb-3" style={{ color: "var(--muted-foreground)" }}>
-              // {isDev ? "التذاكر المخصصة" : "التذاكر المُنشأة"}
+              <CodeComment>{isDev ? "التذاكر المخصصة" : "التذاكر المُنشأة"}</CodeComment>
             </p>
             {ticketsLoading ? (
               <SkeletonList count={4} />
@@ -183,7 +186,6 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
               <div className="flex flex-col gap-2.5">
                 {tickets.map((ticket: any) => {
                   const bar = STATUS_BAR[ticket.status] ?? "#94A3B8";
-                  const brmId = ticket.ticketNumber ? `BRM-${String(ticket.ticketNumber).padStart(4, "0")}` : null;
                   return (
                     <Link key={ticket.id} href={`/tickets/${ticket.id}`}>
                       <div className="rounded-xl flex overflow-hidden transition-all hover:shadow-md"
@@ -195,10 +197,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                               <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                                 <StatusBadge status={ticket.status} />
                                 <PriorityBadge priority={ticket.finalPriority || ticket.priority} />
-                                {brmId && (
-                                  <span className="font-brm text-xs px-2 py-0.5 rounded-md"
-                                    style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>{brmId}</span>
-                                )}
+                                <TicketCodeBadge ticketNumber={ticket.ticketNumber} />
                                 <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
                                   {TICKET_TYPE_LABELS[ticket.type]}
                                 </span>
@@ -224,7 +223,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
         {activeTab === "chats" && (
           <div>
             <p className="font-brm text-xs uppercase tracking-widest mb-3" style={{ color: "var(--muted-foreground)" }}>
-              // المحادثات والإشارات
+              <CodeComment>المحادثات والإشارات</CodeComment>
             </p>
             {commentsLoading ? (
               <SkeletonList count={4} />
@@ -281,7 +280,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                             {commentImgs.length > 0 && (
                               <div className="flex gap-1.5 mt-2 flex-wrap">
                                 {commentImgs.slice(0, 3).map((a: any) => (
-                                  <img key={a.id} src={`${FILE_BASE}${a.url}`} alt={a.fileName}
+                                  <AttachmentImage key={a.id} attachmentId={a.id} alt={a.fileName}
                                     className="w-16 h-12 object-cover rounded-lg"
                                     style={{ border: "1px solid var(--border)" }} />
                                 ))}

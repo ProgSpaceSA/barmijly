@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": "node .cursor/hooks/format.js",
+        "timeout": 20
+      }
+    ],
+    "afterTabFileEdit": [
+      {
+        "command": "node .cursor/hooks/format.js",
+        "timeout": 20
+      }
+    ],
+    "beforeReadFile": [
+      {
+        "command": "node .cursor/hooks/protect-secrets.js",
+        "failClosed": true,
+        "timeout": 5
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "node .cursor/hooks/protect-secrets.js",
+        "failClosed": true,
+        "timeout": 5
+      }
+    ]
+  }
+}

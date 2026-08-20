@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { NotificationType } from '@prisma/client';
+import { AccessService } from '../access/access.service';
+import type { Actor } from '../access/permissions';
+import { NotificationType, Prisma } from '@prisma/client';
 
 interface NotifyPayload {
   type: NotificationType;
@@ -12,7 +14,7 @@ interface NotifyPayload {
 
 @Injectable()
 export class NotificationsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private access: AccessService) {}
 
   async notify(userId: string, payload: NotifyPayload) {
     return this.prisma.notification.create({
@@ -21,16 +23,36 @@ export class NotificationsService {
   }
 
   async notifyMany(userIds: string[], payload: NotifyPayload) {
+    const unique = [...new Set(userIds)].filter(Boolean);
+    if (!unique.length) return { count: 0 };
     return this.prisma.notification.createMany({
-      data: userIds.map((userId) => ({ userId, ...payload })),
+      data: unique.map((userId) => ({ userId, ...payload })),
     });
   }
 
-  async findAll(userId: string, unreadOnly = false, page = 1, limit = 20) {
-    const where = { userId, ...(unreadOnly && { isRead: false }) };
+  async findAll(user: Actor, unreadOnly = false, page = 1, limit = 20) {
+    const where = await this.scopedWhere(user, unreadOnly);
     const skip  = (page - 1) * limit;
     const [data, total] = await Promise.all([
-      this.prisma.notification.findMany({ where, orderBy: { createdAt: 'desc' }, skip, take: limit }),
+      this.prisma.notification.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        include: {
+          ticket: {
+            select: {
+              id: true,
+              title: true,
+              ticketNumber: true,
+              estimatedDeadline: true,
+              status: true,
+              company: { select: { id: true, name: true, logoUrl: true } },
+              system: { select: { id: true, name: true } },
+            },
+          },
+        },
+      }),
       this.prisma.notification.count({ where }),
     ]);
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
@@ -50,7 +72,34 @@ export class NotificationsService {
     });
   }
 
-  async countUnread(userId: string) {
-    return this.prisma.notification.count({ where: { userId, isRead: false } });
+  async markTicketRead(ticketId: string, userId: string) {
+    return this.prisma.notification.updateMany({
+      where: { userId, ticketId, isRead: false },
+      data: { isRead: true },
+    });
+  }
+
+  async countUnread(user: Actor) {
+    return this.prisma.notification.count({ where: await this.scopedWhere(user, true) });
+  }
+
+  /**
+   * Notifications addressed to the user, minus any whose ticket has since moved
+   * out of their reach.
+   *
+   * Being the addressee is the primary filter, but a portfolio can be taken
+   * away after the fact, and the row carries the ticket title. Notifications
+   * with no ticket attached are always kept.
+   */
+  private async scopedWhere(user: Actor, unreadOnly: boolean): Promise<Prisma.NotificationWhereInput> {
+    const base: Prisma.NotificationWhereInput = {
+      userId: user.id,
+      ...(unreadOnly && { isRead: false }),
+    };
+
+    const scope = await this.access.ticketScope(user);
+    if (!scope) return base;
+
+    return { ...base, OR: [{ ticketId: null }, { ticket: scope }] };
   }
 }

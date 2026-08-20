@@ -1,19 +1,12 @@
 import {
   Controller, Post, Patch, Delete, Param, Body, UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { CommentsService } from './comments.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
+import { UpdateCommentDto } from './dto/update-comment.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { IsString } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
-
-class UpdateCommentDto {
-  @ApiProperty()
-  @IsString()
-  content: string;
-}
 
 @ApiTags('Comments')
 @ApiBearerAuth()
@@ -23,6 +16,7 @@ export class CommentsController {
   constructor(private commentsService: CommentsService) {}
 
   @Post()
+  @ApiOperation({ summary: 'Post a comment, notifying the mentioned users' })
   create(
     @Param('ticketId') ticketId: string,
     @Body() dto: CreateCommentDto,
@@ -32,15 +26,19 @@ export class CommentsController {
   }
 
   @Patch(':id')
+  @ApiOperation({
+    summary: 'Edit your own comment; sending mentions replaces the mention list',
+  })
   update(
     @Param('id') id: string,
     @Body() dto: UpdateCommentDto,
     @CurrentUser() user: any,
   ) {
-    return this.commentsService.update(id, dto.content, user);
+    return this.commentsService.update(id, dto, user);
   }
 
   @Delete(':id')
+  @ApiOperation({ summary: 'Delete your own comment (moderators may delete any)' })
   delete(@Param('id') id: string, @CurrentUser() user: any) {
     return this.commentsService.delete(id, user);
   }

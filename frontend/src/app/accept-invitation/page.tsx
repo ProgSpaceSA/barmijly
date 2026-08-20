@@ -29,12 +29,11 @@ function AcceptForm() {
     try {
       const res = await api.post("/auth/set-password", { token, password: data.password });
       const { access_token } = res.data;
-      localStorage.setItem("token", access_token);
       const me = await api.get("/auth/me", { headers: { Authorization: `Bearer ${access_token}` } });
       setAuth(access_token, me.data);
       toast.success("تم تفعيل الحساب بنجاح");
-      // Hard redirect so Zustand persist fully hydrates from localStorage before AppShell mounts
-      window.location.href = "/dashboard";
+      router.refresh();
+      router.replace("/dashboard");
     } catch (e: any) {
       toast.error(e.response?.data?.message || "الرابط غير صالح أو منتهي");
     }

@@ -9,28 +9,29 @@ import {
 } from "lucide-react";
 import { ROLE_LABELS } from "@/lib/constants";
 import { useUnreadCount } from "@/hooks/useNotifications";
-
-const navItems = [
-  { href: "/dashboard",       label: "لوحة التحكم",      icon: LayoutDashboard, roles: [] },
-  { href: "/tickets",         label: "التذاكر",           icon: Ticket,          roles: [] },
-  { href: "/tickets/archived", label: "الأرشيف",          icon: Archive,         roles: ["PROGRAMMING_HEAD", "PROJECT_MANAGER", "SENIOR_MANAGEMENT"] },
-  { href: "/notifications",   label: "الإشعارات",         icon: Bell,            roles: [] },
-  { href: "/reports",         label: "التقارير",          icon: BarChart3,       roles: ["PROGRAMMING_HEAD", "PROJECT_MANAGER", "SENIOR_MANAGEMENT"] },
-  { href: "/users",           label: "المستخدمون",        icon: Users,           roles: ["PROGRAMMING_HEAD", "PROJECT_MANAGER", "SENIOR_MANAGEMENT"] },
-  { href: "/companies",       label: "الشركات والأنظمة", icon: Building2,       roles: ["PROGRAMMING_HEAD", "PROJECT_MANAGER", "SENIOR_MANAGEMENT"] },
-  { href: "/invitations",     label: "الدعوات",           icon: Mail,            roles: ["PROGRAMMING_HEAD", "PROJECT_MANAGER", "SENIOR_MANAGEMENT"] },
-  { href: "/signup-requests", label: "طلبات التسجيل",    icon: UserPlus,        roles: ["PROGRAMMING_HEAD", "PROJECT_MANAGER", "SENIOR_MANAGEMENT"] },
+import { usePermissions } from "@/hooks/usePermissions";
+import type { Action } from "@/lib/permissions";
+/** `action: null` means every signed-in user gets the link. */
+const navItems: { href: string; label: string; icon: any; action: Action | null }[] = [
+  { href: "/dashboard",        label: "لوحة التحكم",       icon: LayoutDashboard, action: null },
+  { href: "/tickets",          label: "التذاكر",            icon: Ticket,          action: null },
+  { href: "/tickets/archived", label: "الأرشيف",            icon: Archive,         action: "ticket:read-archived" },
+  { href: "/notifications",    label: "الإشعارات",          icon: Bell,            action: null },
+  { href: "/reports",          label: "التقارير",           icon: BarChart3,       action: "report:read-team" },
+  { href: "/users",            label: "المستخدمون",         icon: Users,           action: "user:read" },
+  { href: "/companies",        label: "الشركات والأنظمة",  icon: Building2,       action: "structure:manage" },
+  { href: "/invitations",      label: "الدعوات",            icon: Mail,            action: "invitation:manage" },
+  { href: "/signup-requests",  label: "طلبات التسجيل",     icon: UserPlus,        action: "signup:review" },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { user, logout, hasRole } = useAuthStore();
+  const { user, logout } = useAuthStore();
+  const { can: allowed } = usePermissions();
   const { isDark, toggle } = useTheme();
   const { data: unreadCount } = useUnreadCount();
 
-  const visibleItems = navItems.filter(item =>
-    item.roles.length === 0 || item.roles.some(r => hasRole(r as any))
-  );
+  const visibleItems = navItems.filter(item => item.action === null || allowed(item.action));
 
   const initials = `${user?.firstName?.[0] ?? ""}${user?.lastName?.[0] ?? ""}`;
 
@@ -42,11 +43,16 @@ export function Sidebar() {
         borderLeft: "1px solid var(--sidebar-border)",
       }}
     >
-      {/* Logo */}
       <div className="px-5 py-5 flex items-center gap-3" style={{ borderBottom: "1px solid var(--sidebar-border)" }}>
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="36" height="36" className="shrink-0 rounded-lg">
-          <rect width="32" height="32" fill="#000" rx="5"/>
-          <text x="16" y="22.5" textAnchor="middle" fontFamily="'Courier New', Courier, monospace" fontWeight="800" fontSize="15" fill="#A855F7" letterSpacing="-0.5" direction="ltr">br.</text>
+          <defs>
+            <linearGradient id="brmSidebarLogo" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#4F46E5" />
+              <stop offset="1" stopColor="#7C3AED" />
+            </linearGradient>
+          </defs>
+          <rect width="32" height="32" fill="url(#brmSidebarLogo)" rx="8"/>
+          <text x="16" y="22.5" textAnchor="middle" fontFamily="'Courier New', Courier, monospace" fontWeight="800" fontSize="15" fill="#fff" letterSpacing="-0.5" direction="ltr">br.</text>
         </svg>
         <div>
           <p className="font-bold text-base leading-none" style={{ color: "var(--sidebar-foreground)" }}>برمجلي</p>
@@ -54,7 +60,6 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Nav */}
       <nav className="flex-1 px-3 py-4 overflow-y-auto" style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
         {visibleItems.map((item) => {
           const Icon = item.icon;
@@ -63,21 +68,28 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150"
-              style={{
-                color: active ? "#818CF8" : "var(--sidebar-foreground)",
-                background: active ? "var(--sidebar-active)" : "transparent",
-                borderRight: active ? "3px solid #818CF8" : "3px solid transparent",
-              }}
-              onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "var(--sidebar-muted)"; }}
-              onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+              className="brm-nav-link"
+              data-active={active ? "true" : undefined}
             >
-              <span className="relative shrink-0">
+              <span className="relative inline-flex w-4 h-4 shrink-0">
                 <Icon className="w-4 h-4" />
-                {item.href === "/notifications" && (unreadCount as any) > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full text-white flex items-center justify-center font-brm font-bold"
-                    style={{ fontSize: 9, background: "#EF4444", lineHeight: 1 }}>
-                    {(unreadCount as any) > 99 ? "99+" : unreadCount}
+                {item.href === "/notifications" && (unreadCount as number) > 0 && (
+                  <span
+                    className="absolute font-brm font-bold text-white inline-flex items-center justify-center rounded-full pointer-events-none"
+                    style={{
+                      top: -7,
+                      insetInlineEnd: -8,
+                      width: (unreadCount as number) > 99 ? undefined : 16,
+                      height: 16,
+                      minWidth: 16,
+                      paddingInline: (unreadCount as number) > 99 ? 4 : 0,
+                      boxSizing: "border-box",
+                      fontSize: (unreadCount as number) > 9 ? 8 : 9,
+                      lineHeight: 1,
+                      background: "#EF4444",
+                    }}
+                  >
+                    {(unreadCount as number) > 99 ? "99+" : unreadCount}
                   </span>
                 )}
               </span>
@@ -87,69 +99,40 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Bottom section */}
       <div className="px-3 py-4" style={{ borderTop: "1px solid var(--sidebar-border)" }}>
-        {/* User info */}
         <div className="flex items-center gap-3 px-2 mb-3">
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-            style={{ background: "rgba(99,102,241,0.18)", color: "#818CF8" }}
-          >
-            {initials}
-          </div>
+          <div className="brm-dev-avatar">{initials}</div>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold truncate" style={{ color: "var(--sidebar-foreground)" }}>
               {user?.firstName} {user?.lastName}
             </p>
-            <p className="truncate" style={{ fontSize: "0.6rem", color: "var(--sidebar-foreground-dim)" }}>
+            <p className="truncate" style={{ fontSize: "0.65rem", color: "var(--sidebar-foreground-dim)" }}>
               {user?.email}
             </p>
-            <p className="font-brm truncate" style={{ fontSize: "0.6rem", color: "var(--sidebar-foreground-dim)" }}>
+            <p className="font-brm truncate" style={{ fontSize: "0.65rem", color: "var(--sidebar-foreground-dim)" }}>
               {ROLE_LABELS[user?.role ?? ""] ?? user?.role}
             </p>
           </div>
         </div>
 
-        {/* Actions row */}
         <div className="flex gap-2">
-          {/* Theme toggle */}
           <button
             onClick={toggle}
-            className="flex items-center justify-center w-9 h-9 rounded-lg transition-all"
-            style={{ color: "var(--sidebar-foreground-dim)" }}
+            className="brm-sidebar-btn flex items-center justify-center w-9 h-9 rounded-lg"
             title={isDark ? "الوضع الفاتح" : "الوضع الداكن"}
-            onMouseEnter={e => {
-              (e.currentTarget as HTMLElement).style.background = "var(--sidebar-muted)";
-              (e.currentTarget as HTMLElement).style.color = "var(--sidebar-foreground)";
-            }}
-            onMouseLeave={e => {
-              (e.currentTarget as HTMLElement).style.background = "transparent";
-              (e.currentTarget as HTMLElement).style.color = "var(--sidebar-foreground-dim)";
-            }}
           >
             {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
 
-          {/* Logout */}
           <button
             onClick={logout}
-            className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-all"
-            style={{ color: "var(--sidebar-foreground-dim)" }}
-            onMouseEnter={e => {
-              (e.currentTarget as HTMLElement).style.background = "rgba(239,68,68,0.1)";
-              (e.currentTarget as HTMLElement).style.color = "#EF4444";
-            }}
-            onMouseLeave={e => {
-              (e.currentTarget as HTMLElement).style.background = "transparent";
-              (e.currentTarget as HTMLElement).style.color = "var(--sidebar-foreground-dim)";
-            }}
+            className="brm-sidebar-btn brm-logout flex-1 flex items-center gap-2 px-3 py-2 rounded-lg text-xs"
           >
             <LogOut className="w-3.5 h-3.5" />
             تسجيل الخروج
           </button>
         </div>
 
-        {/* Ctrl+K hint */}
         <div className="text-center mt-3">
           <span className="font-brm text-[10px]" style={{ color: "var(--sidebar-foreground-dim)" }}>
             ctrl+k للبحث السريع

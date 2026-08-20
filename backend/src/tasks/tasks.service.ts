@@ -1,28 +1,35 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { AccessService } from '../access/access.service';
+import { assertCan, can } from '../access/permissions';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '../email/email.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
-import { UserRole, NotificationType } from '@prisma/client';
-
-const MANAGERS = [UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT];
+import { NotificationType } from '@prisma/client';
 
 @Injectable()
 export class TasksService {
   constructor(
     private prisma: PrismaService,
+    private access: AccessService,
     private notifications: NotificationsService,
     private email: EmailService,
     private config: ConfigService,
   ) {}
 
   async create(ticketId: string, dto: CreateTaskDto, user: any) {
-    if (!MANAGERS.includes(user.role)) throw new ForbiddenException('Only managers can create tasks');
+    assertCan(user, 'task:manage');
 
     const ticket = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
     if (!ticket) throw new NotFoundException('Ticket not found');
+    await this.access.assertCanViewTicket(ticketId, user);
+
+    // The assignee gets the ticket in their queue, so they must be someone who
+    // is allowed to see it.
+    const [eligible] = await this.access.filterMentionable(ticket, [dto.assignedToId]);
+    if (!eligible) throw new ForbiddenException('Assignee cannot access this ticket');
 
     const task = await this.prisma.ticketTask.create({
       data: { ticketId, title: dto.title, description: dto.description, assignedToId: dto.assignedToId, createdById: user.id, ...(dto.dueDate ? { dueDate: new Date(dto.dueDate) } : {}) },
@@ -84,7 +91,8 @@ export class TasksService {
     });
   }
 
-  async findByTicket(ticketId: string) {
+  async findByTicket(ticketId: string, user: any) {
+    await this.access.assertCanViewTicket(ticketId, user);
     return this.prisma.ticketTask.findMany({
       where: { ticketId },
       include: {
@@ -100,10 +108,11 @@ export class TasksService {
     const task = await this.prisma.ticketTask.findUnique({ where: { id } });
     if (!task) throw new NotFoundException('Task not found');
 
-    const isManager = MANAGERS.includes(user.role);
+    const isManager = can(user.role, 'task:manage');
     const isAssignee = task.assignedToId === user.id;
 
     if (!isManager && !isAssignee) throw new ForbiddenException('Access denied');
+    await this.access.assertCanViewTicket(task.ticketId, user);
 
     // Developers can only change status, not title/description
     const data: any = {};
@@ -125,9 +134,10 @@ export class TasksService {
   }
 
   async remove(id: string, user: any) {
-    if (!MANAGERS.includes(user.role)) throw new ForbiddenException('Only managers can delete tasks');
+    assertCan(user, 'task:manage');
     const task = await this.prisma.ticketTask.findUnique({ where: { id } });
     if (!task) throw new NotFoundException('Task not found');
+    await this.access.assertCanViewTicket(task.ticketId, user);
     return this.prisma.ticketTask.delete({ where: { id } });
   }
 }

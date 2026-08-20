@@ -41,11 +41,12 @@ export function useTicketAction(id: string) {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["ticket", id] });
     qc.invalidateQueries({ queryKey: ["tickets"] });
+    qc.invalidateQueries({ queryKey: ["my-created-tickets"] });
   };
   return {
     submit: useMutation({ mutationFn: () => api.patch(`/tickets/${id}/submit`).then(r => r.data), onSuccess: () => { invalidate(); toast.success("تم إرسال التذكرة"); }, onError: (e: any) => toast.error(e.response?.data?.message || "حدث خطأ") }),
     approve: useMutation({ mutationFn: (data: any) => api.patch(`/tickets/${id}/approve`, data).then(r => r.data), onSuccess: () => { invalidate(); toast.success("تم اتخاذ القرار"); }, onError: (e: any) => toast.error(e.response?.data?.message || "حدث خطأ") }),
-    assign: useMutation({ mutationFn: (data: any) => api.patch(`/tickets/${id}/assign`, data).then(r => r.data), onSuccess: () => { invalidate(); toast.success("تم الإسناد"); }, onError: (e: any) => toast.error(e.response?.data?.message || "حدث خطأ") }),
+    assign: useMutation({ mutationFn: (data: any) => api.patch(`/tickets/${id}/assign`, data).then(r => r.data), onSuccess: () => { invalidate(); qc.invalidateQueries({ queryKey: ["ticket-tasks", id] }); qc.invalidateQueries({ queryKey: ["my-tasks"] }); toast.success("تم الإسناد"); }, onError: (e: any) => toast.error(e.response?.data?.message || "حدث خطأ") }),
     startWork: useMutation({ mutationFn: () => api.patch(`/tickets/${id}/start`).then(r => r.data), onSuccess: () => { invalidate(); toast.success("بدأ العمل"); }, onError: (e: any) => toast.error(e.response?.data?.message || "حدث خطأ") }),
     submitForTesting: useMutation({ mutationFn: () => api.patch(`/tickets/${id}/submit-for-testing`).then(r => r.data), onSuccess: () => { invalidate(); toast.success("جاهز للاختبار"); }, onError: (e: any) => toast.error(e.response?.data?.message || "حدث خطأ") }),
     approveCompletion: useMutation({ mutationFn: () => api.patch(`/tickets/${id}/approve-completion`).then(r => r.data), onSuccess: () => { invalidate(); toast.success("تم الاعتماد"); }, onError: (e: any) => toast.error(e.response?.data?.message || "حدث خطأ") }),
@@ -57,11 +58,28 @@ export function useTicketAction(id: string) {
   };
 }
 
+/**
+ * Posting, editing, and deleting stay quiet on purpose: a comment can carry
+ * attachments, and the thread only refreshes and reports once every upload has
+ * landed. Toasting or invalidating here would announce a half-uploaded comment.
+ */
 export function useAddComment(ticketId: string) {
-  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: any) => api.post(`/tickets/${ticketId}/comments`, data).then(r => r.data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["ticket", ticketId] }); toast.success("تم إضافة التعليق"); },
-    onError: (e: any) => toast.error(e.response?.data?.message || "حدث خطأ"),
+    mutationFn: (data: { content: string; visibility?: string; mentions?: string[] }) =>
+      api.post(`/tickets/${ticketId}/comments`, data).then(r => r.data),
+  });
+}
+
+export function useUpdateComment(ticketId: string) {
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; content: string; mentions?: string[] }) =>
+      api.patch(`/tickets/${ticketId}/comments/${id}`, data).then(r => r.data),
+  });
+}
+
+export function useDeleteComment(ticketId: string) {
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.delete(`/tickets/${ticketId}/comments/${id}`).then(r => r.data),
   });
 }

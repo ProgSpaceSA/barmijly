@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,6 +9,21 @@ import { useAuthStore } from "@/store/auth";
 import { toast } from "sonner";
 import { Eye, EyeOff, ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { CodeComment } from "@/components/shared/CodeComment";
+
+function loginErrorMessage(error: unknown): string {
+  const message =
+    error && typeof error === "object" && "response" in error
+      ? (error as { response?: { data?: { message?: unknown } } }).response?.data?.message
+      : undefined;
+  if (typeof message === "string" && message.trim()) {
+    return message === "Invalid credentials" ? "بيانات الدخول غير صحيحة" : message;
+  }
+  if (Array.isArray(message) && message.length) {
+    return message.map(String).join(" — ");
+  }
+  return "بيانات الدخول غير صحيحة";
+}
 
 const schema = z.object({
   email: z.string().email("بريد إلكتروني غير صالح"),
@@ -76,14 +91,20 @@ export default function LoginPage() {
     try {
       const res = await api.post("/auth/login", data);
       const { access_token } = res.data;
-      localStorage.setItem("token", access_token);
       const me = await api.get("/auth/me", { headers: { Authorization: `Bearer ${access_token}` } });
       setAuth(access_token, me.data);
       toast.success("مرحباً بك!");
+      router.refresh();
       router.replace("/dashboard");
-    } catch (e: any) {
-      toast.error(e.response?.data?.message || "بيانات الدخول غير صحيحة");
+    } catch (error) {
+      toast.error(loginErrorMessage(error));
     }
+  };
+
+  const submitLogin = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    void handleSubmit(onSubmit)(e);
   };
 
   return (
@@ -103,7 +124,9 @@ export default function LoginPage() {
         </div>
 
         <div className="relative z-10">
-          <p className="font-brm text-xs mb-4" style={{ color: "rgba(129,140,248,0.7)" }}>// ticket management system</p>
+          <p className="font-brm text-xs mb-4" style={{ color: "rgba(129,140,248,0.7)" }}>
+            <CodeComment>ticket management system</CodeComment>
+          </p>
           <h2 className="text-4xl font-bold leading-snug mb-4" style={{ color: "#E2E8F0" }}>
             نظام إدارة<br />طلبات البرمجة
           </h2>
@@ -121,7 +144,9 @@ export default function LoginPage() {
                 className="rounded-xl p-4"
                 style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
               >
-                <p className="font-brm text-xs mb-1" style={{ color: "rgba(129,140,248,0.7)" }}>{f.code}</p>
+                <p className="font-brm text-xs mb-1" style={{ color: "rgba(129,140,248,0.7)" }}>
+                  <span className="ltr-isolate">{f.code}</span>
+                </p>
                 <p className="text-sm font-semibold" style={{ color: "rgba(224,231,255,0.8)" }}>{f.label}</p>
               </div>
             ))}
@@ -147,7 +172,7 @@ export default function LoginPage() {
           <h1 className="text-2xl font-bold mb-1" style={{ color: "var(--foreground)" }}>تسجيل الدخول</h1>
           <p className="text-sm mb-8" style={{ color: "var(--muted-foreground)" }}>أدخل بياناتك للوصول إلى حسابك</p>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={submitLogin} noValidate className="space-y-4">
             <div>
               <label className="block text-sm font-semibold mb-1.5" style={{ color: "var(--foreground)" }}>البريد الإلكتروني</label>
               <input
@@ -168,13 +193,15 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold mb-1.5" style={{ color: "var(--foreground)" }}>كلمة المرور</label>
+              <label htmlFor="login-password" className="block text-sm font-semibold mb-1.5" style={{ color: "var(--foreground)" }}>كلمة المرور</label>
               <div className="relative">
                 <input
                   {...register("password")}
+                  id="login-password"
+                  dir="ltr"
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
-                  className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all placeholder:opacity-40"
+                  className="w-full rounded-xl py-3 pe-4 ps-10 text-sm outline-none transition-all placeholder:opacity-40"
                   style={{
                     background: "var(--card)",
                     border: "1px solid var(--border)",
@@ -186,6 +213,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
                   className="absolute left-3 top-1/2 -translate-y-1/2 transition-colors"
                   style={{ color: "var(--muted-foreground)" }}
                 >

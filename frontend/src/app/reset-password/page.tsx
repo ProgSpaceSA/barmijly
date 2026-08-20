@@ -67,9 +67,10 @@ function ResetForm() {
         <div className="relative">
           <input
             {...register("password")}
+            dir="ltr"
             type={showPassword ? "text" : "password"}
             placeholder="8 أحرف على الأقل"
-            className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all placeholder:text-slate-400"
+            className="w-full border border-slate-200 rounded-xl py-3 pe-4 ps-10 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all placeholder:text-slate-400"
           />
           <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
             {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -83,9 +84,10 @@ function ResetForm() {
         <div className="relative">
           <input
             {...register("confirm")}
+            dir="ltr"
             type={showConfirm ? "text" : "password"}
             placeholder="أعد كتابة كلمة المرور"
-            className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all placeholder:text-slate-400"
+            className="w-full border border-slate-200 rounded-xl py-3 pe-4 ps-10 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all placeholder:text-slate-400"
           />
           <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
             {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}

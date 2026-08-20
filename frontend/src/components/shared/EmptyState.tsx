@@ -1,5 +1,6 @@
 "use client";
 import { Button } from "@/components/ui/button";
+import { CodeComment } from "@/components/shared/CodeComment";
 
 interface EmptyStateProps {
   title: string;
@@ -12,7 +13,7 @@ export function EmptyState({ title, description, action, command }: EmptyStatePr
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
       <div
-        className="font-brm text-sm mb-2 flex items-center gap-2"
+        className="font-brm text-sm mb-2 inline-flex items-center gap-2 ltr-isolate"
         style={{ color: "var(--muted-foreground)" }}
       >
         <span style={{ color: "#22C55E" }}>$</span>
@@ -27,7 +28,7 @@ export function EmptyState({ title, description, action, command }: EmptyStatePr
           className="font-brm text-xs mt-1 mb-6"
           style={{ color: "var(--muted-foreground)", opacity: 0.6 }}
         >
-          // {description}
+          <CodeComment>{description}</CodeComment>
         </p>
       )}
       {action && (

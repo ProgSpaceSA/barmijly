@@ -1,0 +1,49 @@
+---
+description: Next.js frontend patterns for Barmijly
+globs: frontend/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Frontend (Next.js) Conventions
+
+## Critical: Next.js 16
+
+This is NOT standard Next.js. Read `node_modules/next/dist/docs/` before writing App Router code. Heed deprecation notices.
+
+## Stack
+
+- App Router in `src/app/`
+- Data fetching: `@tanstack/react-query` hooks in `src/hooks/`
+- HTTP client: `src/lib/api.ts` (axios + JWT interceptor)
+- UI: shadcn/ui in `src/components/ui/`
+- State: Zustand for client state; React Query for server state
+- Forms: react-hook-form + Zod
+
+## API calls
+
+```typescript
+import api from "@/lib/api";
+const { data } = await api.get("/tickets");
+```
+
+Token is auto-attached from `localStorage`. 401 redirects to `/login`.
+
+## Labels & enums
+
+All Arabic labels for statuses, priorities, types, roles → `src/lib/constants.ts`.
+Backend enum keys stay English; display labels are Arabic.
+
+## Role-based UI
+
+Hide actions the user's role cannot perform. Backend still enforces — UI hiding is UX only.
+
+## Components
+
+- Shared: `src/components/shared/` (EmptyState, LoadingSpinner, etc.)
+- Layout: `src/components/layout/` (Sidebar, etc.)
+- Pages: thin — delegate to hooks and shared components
+
+## Styling
+
+- Tailwind CSS 4 with brand colors from `req.md` §17
+- RTL-first: layout assumes `dir="rtl"` on `<html>`

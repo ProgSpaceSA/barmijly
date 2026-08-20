@@ -1,0 +1,15 @@
+---
+description: How to test Barmijly ticket and API changes
+globs: "{backend/**/*.spec.ts,backend/test/**,QA_TESTING.md}"
+alwaysApply: false
+---
+
+# Testing
+
+- Backend unit: `cd backend && npm test`
+- Backend e2e: `cd backend && npm run test:e2e`
+- Tests never send email (SMTP is skipped under Jest; e2e overrides `EmailService`)
+- Ticket changes: walk the status flow in `backend/GUIDE.md`
+- Role checks: reproduce with accounts in `QA_TESTING.md` (`barmijly-qa-testing` skill)
+- New endpoint: hit Swagger `http://localhost:3001/api/docs`, then the matching frontend hook
+- Do not add English-only assertions for UI copy — labels live in `constants.ts`

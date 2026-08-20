@@ -52,7 +52,7 @@ export function SkeletonList({ count = 5 }: { count?: number }) {
 export function SkeletonStat() {
   return (
     <div
-      className="rounded-xl border p-6"
+      className="rounded-xl border p-4"
       style={{ background: "var(--card)", borderColor: "var(--border)" }}
     >
       <div className="skeleton h-3 w-24 mb-4" />

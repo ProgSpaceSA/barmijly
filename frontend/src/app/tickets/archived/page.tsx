@@ -1,12 +1,12 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SkeletonList } from "@/components/shared/LoadingSpinner";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { StatusBadge, PriorityBadge } from "@/components/shared/StatusBadge";
 import { RelativeTime } from "@/components/shared/RelativeTime";
+import { TicketCodeBadge } from "@/components/shared/TicketCodeBadge";
 import { useTickets } from "@/hooks/useTickets";
 import { useAuthStore } from "@/store/auth";
 import { Input } from "@/components/ui/input";
@@ -17,8 +17,7 @@ import Link from "next/link";
 import api from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
-
-const ALLOWED_ROLES = ["PROGRAMMING_HEAD", "PROJECT_MANAGER", "SENIOR_MANAGEMENT"];
+import { CodeComment } from "@/components/shared/CodeComment";
 
 const STATUS_BAR_COLORS: Record<string, string> = {
   DRAFT:                   "#94A3B8",
@@ -35,7 +34,6 @@ const STATUS_BAR_COLORS: Record<string, string> = {
 };
 
 export default function ArchivedTicketsPage() {
-  const router = useRouter();
   const { user } = useAuthStore();
   const [filters, setFilters] = useState<Record<string, string>>({ isArchived: "true" });
   const [activeCompany, setActiveCompany] = useState("");
@@ -47,11 +45,6 @@ export default function ArchivedTicketsPage() {
     staleTime: 60_000,
   });
 
-  if (user && !ALLOWED_ROLES.includes(user.role)) {
-    router.replace("/tickets");
-    return null;
-  }
-
   const setFilter = (key: string, val: string) => {
     setFilters(prev =>
       val ? { ...prev, [key]: val } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== key))
@@ -61,7 +54,7 @@ export default function ArchivedTicketsPage() {
   const companyList: any[] = Array.isArray(companies) ? companies : (companies as any)?.data ?? [];
 
   return (
-    <AppShell>
+    <AppShell requires="ticket:read-archived">
       <PageHeader
         title="الأرشيف"
         description={`${data?.total ?? 0} تذكرة مؤرشفة`}
@@ -81,7 +74,7 @@ export default function ArchivedTicketsPage() {
       {companyList.length > 0 && (
         <div className="mb-6">
           <p className="font-brm text-xs mb-2 uppercase tracking-widest" style={{ color: "var(--muted-foreground)" }}>
-            // الشركات
+            <CodeComment>الشركات</CodeComment>
           </p>
           <div className="flex flex-wrap gap-1.5 p-1 rounded-xl w-fit" style={{ background: "var(--muted)" }}>
             <button
@@ -121,9 +114,13 @@ export default function ArchivedTicketsPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           {data.data.map((ticket: any) => {
             const barColor = STATUS_BAR_COLORS[ticket.status] ?? "#94A3B8";
-            const brmId = ticket.ticketNumber
-              ? `BRM-${String(ticket.ticketNumber).padStart(4, "0")}`
-              : null;
+            const assignedDev = ticket.assignments?.[0]?.developer;
+            const assignedDevName = [assignedDev?.firstName, assignedDev?.lastName]
+              .filter(Boolean)
+              .join(" ");
+            const assignedDevLabel = assignedDevName
+              ? `المطور المُكلَّف: ${assignedDevName}`
+              : "المطور المُكلَّف";
 
             return (
               <Link key={ticket.id} href={`/tickets/${ticket.id}`} style={{ display: "block" }}>
@@ -148,11 +145,7 @@ export default function ArchivedTicketsPage() {
                           </span>
                           <StatusBadge status={ticket.status} />
                           <PriorityBadge priority={ticket.finalPriority || ticket.priority} />
-                          {brmId && (
-                            <span className="font-brm text-xs px-2 py-0.5 rounded-md" style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>
-                              {brmId}
-                            </span>
-                          )}
+                          <TicketCodeBadge ticketNumber={ticket.ticketNumber} />
                           <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>{TICKET_TYPE_LABELS[ticket.type]}</span>
                         </div>
                         <h3 className="font-semibold truncate" style={{ color: "var(--foreground)" }}>{ticket.title}</h3>
@@ -173,10 +166,12 @@ export default function ArchivedTicketsPage() {
                       </div>
                       {ticket.assignments?.[0] && (
                         <div
-                          className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-indigo-600 text-sm shrink-0"
+                          title={assignedDevLabel}
+                          aria-label={assignedDevLabel}
+                          className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-indigo-600 text-sm shrink-0 cursor-help"
                           style={{ background: "rgba(79,70,229,0.1)" }}
                         >
-                          {ticket.assignments[0].developer?.firstName?.[0]}
+                          {assignedDev?.firstName?.[0]}
                         </div>
                       )}
                     </div>

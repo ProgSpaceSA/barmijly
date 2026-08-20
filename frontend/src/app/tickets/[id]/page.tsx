@@ -1,39 +1,42 @@
 "use client";
 import { use, useRef, useState, useEffect, useCallback, useReducer } from "react";
-import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { SkeletonList } from "@/components/shared/LoadingSpinner";
 import { StatusBadge, PriorityBadge } from "@/components/shared/StatusBadge";
 import { RelativeTime } from "@/components/shared/RelativeTime";
-import { useTicket, useTicketAction, useAddComment } from "@/hooks/useTickets";
+import { TicketCodeBadge } from "@/components/shared/TicketCodeBadge";
+import { useTicket, useTicketAction } from "@/hooks/useTickets";
+import { useMarkTicketRead } from "@/hooks/useNotifications";
 import { useAuthStore } from "@/store/auth";
+import { usePermissions } from "@/hooks/usePermissions";
+import { downloadAttachment, fetchAttachmentObjectUrl } from "@/lib/attachments";
+import { AttachmentImage } from "@/components/shared/AttachmentImage";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TICKET_TYPE_LABELS } from "@/lib/constants";
+import { COMMENT_LABELS, SELECT_PLACEHOLDERS, TICKET_TYPE_LABELS } from "@/lib/constants";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import {
-  ArrowRight, Send, Clock, User, Building2, Monitor, Lock,
-  Paperclip, FileText, Trash2, Download, Copy, Check, AlertTriangle, X, AtSign, Plus, Eye, Loader2,
+  ArrowRight, Clock, User, Building2, Monitor, Lock,
+  Paperclip, FileText, Trash2, Download, Check, AlertTriangle, X, Plus, Eye, Loader2,
   ChevronDown, ChevronLeft,
 } from "lucide-react";
 import api from "@/lib/api";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
+import { CodeComment } from "@/components/shared/CodeComment";
+import { Markdown } from "@/components/shared/Markdown";
+import { CommentThread } from "@/components/tickets/CommentThread";
+import { formatBytes } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
 const FILE_BASE = API_BASE.replace("/api", "");
 
-function formatBytes(b: number) {
-  if (b < 1024) return `${b} B`;
-  if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`;
-  return `${(b / 1048576).toFixed(1)} MB`;
-}
 const isImg = (t: string) => t.startsWith("image/");
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+    <div className="rounded-xl overflow-visible" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
       <div className="px-5 py-3.5" style={{ borderBottom: "1px solid var(--border)" }}>
         <h3 className="font-semibold text-sm" style={{ color: "var(--foreground)" }}>{title}</h3>
       </div>
@@ -45,7 +48,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="font-brm text-xs mb-1.5" style={{ color: "var(--muted-foreground)" }}>// {label}</p>
+      <p className="font-brm text-xs mb-1.5" style={{ color: "var(--muted-foreground)" }}>
+        <CodeComment>{label}</CodeComment>
+      </p>
       <div className="text-sm leading-relaxed" style={{ color: "var(--foreground)" }}>{children}</div>
     </div>
   );
@@ -152,19 +157,24 @@ function LightboxViewer({ url, alt, onClose }: { url: string; alt?: string; onCl
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
 
       {/* Close */}
-      <button onClick={onClose}
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="إغلاق"
+        title="إغلاق (Esc)"
         style={{
-          position: "absolute", top: 16, right: 16, zIndex: 1,
-          width: 36, height: 36, borderRadius: "50%",
-          background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)",
-          color: "#fff", cursor: "pointer", fontSize: 20, lineHeight: 1,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          transition: "background 0.1s",
+          position: "absolute", top: 20, right: 20, zIndex: 1,
+          width: 40, height: 40, padding: 0, borderRadius: "50%",
+          background: "rgba(20,20,28,0.72)", border: "1px solid rgba(255,255,255,0.16)",
+          color: "#fff", cursor: "pointer", lineHeight: 0,
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          backdropFilter: "blur(10px)",
+          boxShadow: "0 2px 12px rgba(0,0,0,0.4)",
+          transition: "background 0.15s",
         }}
         onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.18)")}
-        onMouseLeave={e => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
-        title="إغلاق (Esc)">
-        ×
+        onMouseLeave={e => (e.currentTarget.style.background = "rgba(20,20,28,0.72)")}>
+        <X size={18} strokeWidth={2.25} aria-hidden />
       </button>
 
       {/* Image area */}
@@ -222,73 +232,45 @@ function LightboxViewer({ url, alt, onClose }: { url: string; alt?: string; onCl
   );
 }
 
-function renderContent(content: string, mentionedUsers: any[]) {
-  if (!mentionedUsers.length) return <span className="whitespace-pre-wrap">{content}</span>;
-  const parts: React.ReactNode[] = [];
-  let last = 0;
-  const regex = /@(\w+)/g;
-  let m: RegExpExecArray | null;
-  while ((m = regex.exec(content)) !== null) {
-    if (m.index > last) parts.push(content.slice(last, m.index));
-    const handle = m[1];
-    const matched = mentionedUsers.find(
-      u => `${u.firstName}${u.lastName}`.replace(/\s/g, "").toLowerCase() === handle.toLowerCase() ||
-           `${u.firstName}_${u.lastName}`.toLowerCase() === handle.toLowerCase()
-    );
-    if (matched) {
-      parts.push(
-        <span key={m.index} className="font-semibold" style={{ color: "#4F46E5" }}>@{handle}</span>
-      );
-    } else {
-      parts.push(m[0]);
-    }
-    last = m.index + m[0].length;
-  }
-  if (last < content.length) parts.push(content.slice(last));
-  return <span className="whitespace-pre-wrap">{parts}</span>;
-}
-
 export default function TicketDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
   const { user } = useAuthStore();
+  const { can: allowed } = usePermissions();
+
+  /** Lightbox source for an attachment, fetched through the authorised route. */
+  const openAttachment = (attachmentId: string) =>
+    fetchAttachmentObjectUrl(attachmentId)
+      .then(setLightboxUrl)
+      .catch(() => {});
   const qc = useQueryClient();
   const { data: ticket, isLoading } = useTicket(id);
+  const { mutate: markTicketRead } = useMarkTicketRead();
   const actions = useTicketAction(id);
-  const { mutateAsync: addComment, isPending: commentPending } = useAddComment(id);
-
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-  const [comment, setComment] = useState("");
-  const [commentVisibility, setCommentVisibility] = useState("PUBLIC");
   const [approvalNotes, setApprovalNotes] = useState("");
   const [closureNotes, setClosureNotes] = useState("");
   const [uploading, setUploading] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
-  const [mentionStart, setMentionStart] = useState(0);
-  const [selectedMentions, setSelectedMentions] = useState<any[]>([]);
-  const [mentionRect, setMentionRect] = useState<DOMRect | null>(null);
   const attachInputRef = useRef<HTMLInputElement>(null);
-  const commentFileRef = useRef<HTMLInputElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (mentionQuery !== null && textareaRef.current) {
-      setMentionRect(textareaRef.current.getBoundingClientRect());
-    } else {
-      setMentionRect(null);
-    }
-  }, [mentionQuery]);
+    if (!ticket?.id) return;
+    markTicketRead(ticket.id);
+    // Opened the ticket — mark that thread read once per id, not on mutate identity changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticket?.id]);
 
+  // Scoped by ticket: the API returns exactly the people it will accept a
+  // mention for, so the picker cannot offer a name that is dropped on save.
   const { data: allUsers } = useQuery({
-    queryKey: ["users-mentionable"],
-    queryFn: () => api.get("/users/mentionable").then(r => r.data),
+    queryKey: ["users-mentionable", id],
+    queryFn: () => api.get("/users/mentionable", { params: { ticketId: id } }).then(r => r.data),
+    enabled: !!id,
     staleTime: 60_000,
   });
-  const userList: any[] = allUsers ?? [];
+  const mentionableUsers: any[] = allUsers ?? [];
 
   const { data: tasksData, refetch: refetchTasks } = useQuery({
     queryKey: ["ticket-tasks", id],
@@ -353,97 +335,38 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     refetchTasks();
   };
 
-  // Users who can see this ticket:
-  // - any manager / QA / senior role (sees all tickets)
-  const ALL_ACCESS_ROLES = new Set(["PROGRAMMING_HEAD", "PROJECT_MANAGER", "QA", "SENIOR_MANAGEMENT"]);
-  const assignedDevIds = new Set((ticket?.assignments ?? []).map((a: any) => a.developerId ?? a.developer?.id));
-  const mentionableUsers = ticket
-    ? userList.filter((u: any) =>
-        ALL_ACCESS_ROLES.has(u.role) ||
-        u.id === ticket.creatorId ||
-        u.id === ticket.systemOwnerId ||
-        assignedDevIds.has(u.id) ||
-        (u.companyId === ticket.companyId) ||
-        (u.role === "DEVELOPER" && u.isActive !== false)
-      )
-    : userList;
-
-  const filteredMentions = mentionQuery !== null
-    ? mentionableUsers.filter(u =>
-        `${u.firstName} ${u.lastName}`.toLowerCase().includes(mentionQuery.toLowerCase()) ||
-        u.email?.toLowerCase().includes(mentionQuery.toLowerCase())
-      ).slice(0, 8)
-    : [];
-
-  const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value;
-    setComment(val);
-    const cursor = e.target.selectionStart ?? val.length;
-    const before = val.slice(0, cursor);
-    const atIdx = before.lastIndexOf("@");
-    if (atIdx !== -1 && !before.slice(atIdx + 1).includes(" ")) {
-      setMentionQuery(before.slice(atIdx + 1));
-      setMentionStart(atIdx);
-    } else {
-      setMentionQuery(null);
-    }
-  };
-
-  const insertMention = (u: any) => {
-    const handle = `${u.firstName}${u.lastName}`;
-    const before = comment.slice(0, mentionStart);
-    const after = comment.slice(textareaRef.current?.selectionStart ?? comment.length);
-    const newVal = `${before}@${handle} ${after}`;
-    setComment(newVal);
-    setMentionQuery(null);
-    if (!selectedMentions.find(m => m.id === u.id)) {
-      setSelectedMentions(prev => [...prev, u]);
-    }
-    setTimeout(() => textareaRef.current?.focus(), 0);
-  };
-
-  const removeMention = (uid: string) => {
-    setSelectedMentions(prev => prev.filter(m => m.id !== uid));
-  };
-
-  const copyBrmId = (s: string) => {
-    navigator.clipboard.writeText(s).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
-  };
-
-  const isHead     = user?.role === "PROGRAMMING_HEAD";
-  const isSenior   = user?.role === "SENIOR_MANAGEMENT";
-  const isManager  = user?.role === "PROJECT_MANAGER" || isHead || isSenior;
-  const isDeveloper = user?.role === "DEVELOPER";
-  const isQA       = user?.role === "QA";
+  const assignedDev = ticket?.assignments?.[0]?.developer;
+  const assignedDevName = [assignedDev?.firstName, assignedDev?.lastName].filter(Boolean).join(" ");
+  const assignedDevLabel = assignedDevName
+    ? `المطور المُكلَّف: ${assignedDevName}`
+    : "المطور المُكلَّف";
+  // Capability flags, not role names: these mirror the backend action matrix in
+  // lib/permissions.ts, so a visible button is always one the API will accept.
+  const isHead      = user?.role === "PROGRAMMING_HEAD";
   const isRequester = user?.role === "TICKET_REQUESTER";
+  const isManager   = allowed("ticket:archive");
+  const isDeveloper = user?.role === "DEVELOPER";
+  const canApprove       = allowed("ticket:approve");
+  const canAssign        = allowed("ticket:assign");
+  const canVerifyTesting = allowed("ticket:verify-testing");
+  const canClose         = allowed("ticket:close");
+  const canReopen        = allowed("ticket:reopen");
+  const canArchive       = allowed("ticket:archive");
+  const canForceStatus   = allowed("ticket:force-status");
+  const canManageTasks   = allowed("task:manage");
+  const canPostInternal  = allowed("comment:internal");
 
-  const handleComment = async () => {
-    if (!comment.trim() && !pendingFiles.length) return;
-    const filesToUpload = [...pendingFiles];
-    const newComment = await addComment({
-      content: comment,
-      visibility: commentVisibility,
-      mentions: selectedMentions.map(m => m.id),
-    });
-    setComment("");
-    setSelectedMentions([]);
-    setPendingFiles([]);
-    setMentionQuery(null);
-    const commentId = newComment?.id;
-    if (filesToUpload.length && commentId) {
-      setUploading(true);
-      try {
-        for (const file of filesToUpload) {
-          const form = new FormData();
-          form.append("file", file);
-          await api.post(`/attachments/upload?ticketId=${id}&commentId=${commentId}`, form, {
-            headers: { "Content-Type": "multipart/form-data" },
-          });
-        }
-        qc.invalidateQueries({ queryKey: ["ticket", id] });
-      } finally { setUploading(false); }
-    }
-  };
+  if (isLoading) return <AppShell><SkeletonList count={4} /></AppShell>;
+  if (!ticket)   return <AppShell><p className="text-sm" style={{ color: "var(--muted-foreground)" }}>التذكرة غير موجودة</p></AppShell>;
+
+  // Owner sign-off is the requester's or a system owner's call (req.md §3);
+  // leadership may stand in for an absent owner. "مالك النظام" is the role
+  // that can already open this ticket, not only the named systemOwnerId.
+  const isOwnerSide =
+    ticket.creatorId === user?.id ||
+    ticket.systemOwnerId === user?.id ||
+    user?.role === "SYSTEM_OWNER";
+  const canAcceptDelivery = allowed("ticket:accept-delivery") && (isOwnerSide || canClose);
 
   const handleAttachUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -471,20 +394,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     }
   };
 
-  const addCommentFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-    setPendingFiles(prev => [...prev, ...files]);
-    e.target.value = "";
-  };
-
-  if (isLoading) return <AppShell><SkeletonList count={4} /></AppShell>;
-  if (!ticket)   return <AppShell><p className="text-sm" style={{ color: "var(--muted-foreground)" }}>التذكرة غير موجودة</p></AppShell>;
-
   const ticketAttachments = (ticket.attachments || []).filter((a: any) => !a.commentId);
   const imageAttachments  = ticketAttachments.filter((a: any) => isImg(a.mimeType));
   const fileAttachments   = ticketAttachments.filter((a: any) => !isImg(a.mimeType));
-  const brmId = ticket.ticketNumber ? `BRM-${String(ticket.ticketNumber).padStart(4, "0")}` : null;
 
   return (
     <>
@@ -510,18 +422,10 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         {/* Hero */}
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-3 flex-wrap">
-            {brmId && (
-              <button onClick={() => copyBrmId(brmId)}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg font-brm text-sm font-semibold transition-all"
-                style={{ background: "rgba(79,70,229,0.1)", color: "#4F46E5", border: "1px solid rgba(79,70,229,0.2)" }}
-                title="نسخ الرقم">
-                {brmId}
-                {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3 opacity-50" />}
-              </button>
-            )}
+            <TicketCodeBadge ticketNumber={ticket.ticketNumber} />
             <StatusBadge status={ticket.status} />
             <PriorityBadge priority={ticket.finalPriority || ticket.priority} />
-            <span className="text-xs px-2.5 py-0.5 rounded-full font-medium"
+            <span className="inline-flex h-6 items-center text-xs px-2.5 rounded-full font-medium leading-4"
               style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>
               {TICKET_TYPE_LABELS[ticket.type]}
             </span>
@@ -547,7 +451,13 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
             {/* Details */}
             <Section title="تفاصيل الطلب">
               <div className="space-y-5">
-                <Field label="الوصف"><span className="whitespace-pre-wrap">{ticket.description}</span></Field>
+                <Field label="الوصف">
+                  <Markdown
+                    content={ticket.description}
+                    baseUrl={FILE_BASE}
+                    onImageClick={(src) => setLightboxUrl(src)}
+                  />
+                </Field>
                 <div className="h-px" style={{ background: "var(--border)" }} />
                 <Field label="السبب">{ticket.reason}</Field>
                 <div className="h-px" style={{ background: "var(--border)" }} />
@@ -583,15 +493,15 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                       {imageAttachments.map((att: any) => (
                         <div key={att.id} className="group relative rounded-lg overflow-hidden aspect-video"
                           style={{ border: "1px solid var(--border)", background: "var(--muted)", cursor: "pointer" }}
-                          onClick={() => setLightboxUrl(`${FILE_BASE}${att.url}`)}>
-                          <img src={`${FILE_BASE}${att.url}`} alt={att.fileName} className="w-full h-full object-cover" />
+                          onClick={() => openAttachment(att.id)}>
+                          <AttachmentImage attachmentId={att.id} alt={att.fileName} className="w-full h-full object-cover" />
                           <div className="absolute inset-0 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-all" style={{ background: "rgba(0,0,0,0.45)" }}>
-                            <button onClick={(e) => { e.stopPropagation(); setLightboxUrl(`${FILE_BASE}${att.url}`); }} className="p-1.5 rounded-full bg-white text-slate-700 hover:text-indigo-600" title="عرض">
+                            <button onClick={(e) => { e.stopPropagation(); openAttachment(att.id); }} className="p-1.5 rounded-full bg-white text-slate-700 hover:text-indigo-600" title="عرض">
                               <Eye className="w-3.5 h-3.5" />
                             </button>
-                            <a href={`${FILE_BASE}${att.url}`} download={att.fileName} onClick={e => e.stopPropagation()} className="p-1.5 rounded-full bg-white text-slate-700 hover:text-indigo-600" title="تحميل">
+                            <button onClick={e => { e.stopPropagation(); downloadAttachment(att.id, att.fileName); }} className="p-1.5 rounded-full bg-white text-slate-700 hover:text-indigo-600" title="تحميل">
                               <Download className="w-3.5 h-3.5" />
-                            </a>
+                            </button>
                             <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(att.id); }} className="p-1.5 rounded-full bg-white text-slate-700 hover:text-red-600" title="حذف">
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -610,12 +520,12 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                             <p className="font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>{formatBytes(att.fileSize)}</p>
                           </div>
                           <div className="flex items-center gap-1">
-                            <a href={`${FILE_BASE}${att.url}`} download={att.fileName} className="p-1.5 rounded-lg transition-colors" style={{ color: "var(--muted-foreground)" }}
+                            <button onClick={() => downloadAttachment(att.id, att.fileName)} className="p-1.5 rounded-lg transition-colors" style={{ color: "var(--muted-foreground)" }}
                               onMouseEnter={e => (e.currentTarget.style.color = "#4F46E5")}
                               onMouseLeave={e => (e.currentTarget.style.color = "var(--muted-foreground)")}
                               title="تحميل">
                               <Download className="w-4 h-4" />
-                            </a>
+                            </button>
                             <button onClick={() => setConfirmDeleteId(att.id)} className="p-1.5 rounded-lg transition-colors" style={{ color: "var(--muted-foreground)" }}
                               onMouseEnter={e => (e.currentTarget.style.color = "#EF4444")}
                               onMouseLeave={e => (e.currentTarget.style.color = "var(--muted-foreground)")}
@@ -733,21 +643,21 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                             {(t.attachments ?? []).length > 0 && (
                               <div className="flex flex-wrap gap-1.5 mt-2">
                                 {(t.attachments as any[]).filter(a => isImg(a.mimeType)).map((a: any) => (
-                                  <button key={a.id} onClick={() => setLightboxUrl(`${FILE_BASE}${a.url}`)}>
-                                    <img src={`${FILE_BASE}${a.url}`} alt={a.fileName}
+                                  <button key={a.id} onClick={() => openAttachment(a.id)}>
+                                    <AttachmentImage attachmentId={a.id} alt={a.fileName}
                                       className="w-14 h-11 object-cover rounded-lg hover:opacity-90 transition-opacity"
                                       style={{ border: "1px solid var(--border)" }} />
                                   </button>
                                 ))}
                                 {(t.attachments as any[]).filter(a => !isImg(a.mimeType)).map((a: any) => (
-                                  <a key={a.id} href={`${FILE_BASE}${a.url}`} target="_blank" rel="noreferrer"
+                                  <button key={a.id} onClick={() => downloadAttachment(a.id, a.fileName)}
                                     className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-colors"
                                     style={{ background: "var(--card)", color: "var(--muted-foreground)", border: "1px solid var(--border)" }}
                                     onMouseEnter={e => (e.currentTarget.style.color = "#4F46E5")}
                                     onMouseLeave={e => (e.currentTarget.style.color = "var(--muted-foreground)")}>
                                     <FileText className="w-3 h-3 shrink-0" />
                                     <span className="truncate max-w-28">{a.fileName}</span>
-                                  </a>
+                                  </button>
                                 ))}
                               </div>
                             )}
@@ -777,15 +687,19 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                 {isManager && (
                   taskForm ? (
                     <div className="space-y-2 pt-2" style={{ borderTop: "1px solid var(--border)" }}>
-                      <Select value={newTask.assignedToId} onValueChange={(v: string | null) => v && setNewTask(p => ({ ...p, assignedToId: v }))}>
-                        <SelectTrigger className="w-full h-9 text-sm">
-                          <SelectValue placeholder="اختر المطور">
-                            {newTask.assignedToId
-                              ? (() => { const d = developerList.find(u => u.id === newTask.assignedToId); return d ? `${d.firstName} ${d.lastName}` : "اختر المطور"; })()
-                              : "اختر المطور"}
-                          </SelectValue>
+                      <Select
+                        value={newTask.assignedToId || null}
+                        onValueChange={(v: string | null) => setNewTask(p => ({ ...p, assignedToId: v ?? "" }))}
+                        items={[
+                          { value: null, label: SELECT_PLACEHOLDERS.developer },
+                          ...developerList.map((u: any) => ({ value: u.id, label: `${u.firstName} ${u.lastName}` })),
+                        ]}
+                      >
+                        <SelectTrigger className="w-full h-9 text-sm" aria-label={SELECT_PLACEHOLDERS.developer}>
+                          <SelectValue placeholder={SELECT_PLACEHOLDERS.developer} />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value={null}>{SELECT_PLACEHOLDERS.developer}</SelectItem>
                           {developerList.map((u: any) => (
                             <SelectItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</SelectItem>
                           ))}
@@ -882,164 +796,16 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
             )}
 
             {/* Comments */}
-            <Section title="التعليقات">
-              <div className="space-y-5 mb-5">
-                {ticket.comments?.length === 0 ? (
-                  <p className="font-brm text-xs text-center py-4" style={{ color: "var(--muted-foreground)" }}>$ no comments yet_</p>
-                ) : ticket.comments?.map((c: any) => {
-                  const commentImgs = (c.attachments || []).filter((a: any) => isImg(a.mimeType));
-                  const commentFiles = (c.attachments || []).filter((a: any) => !isImg(a.mimeType));
-                  const mentionedInComment = (c.mentions || [])
-                    .map((mid: string) => userList.find(u => u.id === mid))
-                    .filter(Boolean);
-                  return (
-                    <div key={c.id} className="flex gap-3">
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 text-indigo-300"
-                        style={{ background: "rgba(79,70,229,0.18)" }}>
-                        {c.author?.firstName?.[0]}{c.author?.lastName?.[0]}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
-                            {c.author?.firstName} {c.author?.lastName}
-                          </span>
-                          {c.visibility === "INTERNAL" && (
-                            <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded"
-                              style={{ background: "rgba(245,158,11,0.1)", color: "#B45309" }}>
-                              <Lock className="w-3 h-3" /> داخلي
-                            </span>
-                          )}
-                          <RelativeTime date={c.createdAt} />
-                        </div>
-                        <p className="text-sm leading-relaxed" style={{ color: "var(--foreground)" }}>
-                          {renderContent(c.content, mentionedInComment)}
-                        </p>
-                        {/* Comment attachments */}
-                        {commentImgs.length > 0 && (
-                          <div className="grid grid-cols-3 gap-1.5 mt-2">
-                            {commentImgs.map((att: any) => (
-                              <button key={att.id} onClick={() => setLightboxUrl(`${FILE_BASE}${att.url}`)}
-                                className="rounded-lg overflow-hidden aspect-video block w-full"
-                                style={{ border: "1px solid var(--border)", cursor: "pointer" }}>
-                                <img src={`${FILE_BASE}${att.url}`} alt={att.fileName}
-                                  className="w-full h-full object-cover hover:opacity-90 transition-opacity" />
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        {commentFiles.length > 0 && (
-                          <div className="flex flex-col gap-1.5 mt-2">
-                            {commentFiles.map((att: any) => (
-                              <a key={att.id} href={`${FILE_BASE}${att.url}`} target="_blank" rel="noreferrer"
-                                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-                                style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}
-                                onMouseEnter={e => (e.currentTarget.style.color = "#4F46E5")}
-                                onMouseLeave={e => (e.currentTarget.style.color = "var(--muted-foreground)")}>
-                                <FileText className="w-3.5 h-3.5 shrink-0" />
-                                <span className="truncate max-w-48">{att.fileName}</span>
-                                <span className="font-brm opacity-60 shrink-0">{formatBytes(att.fileSize)}</span>
-                              </a>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Comment form */}
-              <div className="pt-4" style={{ borderTop: "1px solid var(--border)" }}>
-                {/* Mention chips */}
-                {selectedMentions.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {selectedMentions.map(m => (
-                      <span key={m.id} className="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full"
-                        style={{ background: "rgba(79,70,229,0.1)", color: "#4F46E5", border: "1px solid rgba(79,70,229,0.2)" }}>
-                        @{m.firstName}{m.lastName}
-                        <button onClick={() => removeMention(m.id)} className="hover:text-red-500 transition-colors">
-                          <X className="w-3 h-3" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {/* Textarea with mention dropdown */}
-                <div className="relative">
-                  <textarea
-                    ref={textareaRef}
-                    value={comment}
-                    onChange={handleCommentChange}
-                    placeholder="اكتب تعليقك... استخدم @ لذكر شخص"
-                    rows={3}
-                    className="w-full rounded-xl px-4 py-3 text-sm outline-none resize-none transition-all"
-                    style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }}
-                    onFocus={e => (e.target.style.borderColor = "#4F46E5")}
-                    onBlur={e => { setTimeout(() => setMentionQuery(null), 200); e.target.style.borderColor = "var(--border)"; }}
-                  />
-                  {/* portal dropdown rendered outside the clipping card */}
-                </div>
-
-                {/* Pending comment files preview */}
-                {pendingFiles.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {pendingFiles.map((f, i) => (
-                      f.type.startsWith("image/") ? (
-                        <div key={i} className="relative group">
-                          <img src={URL.createObjectURL(f)} alt={f.name}
-                            className="w-16 h-14 object-cover rounded-lg"
-                            style={{ border: "1px solid var(--border)" }} />
-                          <button onClick={() => setPendingFiles(prev => prev.filter((_, idx) => idx !== i))}
-                            className="absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white"
-                            style={{ background: "#EF4444" }}>
-                            <X className="w-2.5 h-2.5" />
-                          </button>
-                        </div>
-                      ) : (
-                        <div key={i} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
-                          style={{ background: "var(--muted)", color: "var(--muted-foreground)", border: "1px solid var(--border)" }}>
-                          <FileText className="w-3.5 h-3.5 shrink-0" style={{ color: "#4F46E5" }} />
-                          <span className="truncate max-w-32">{f.name}</span>
-                          <button onClick={() => setPendingFiles(prev => prev.filter((_, idx) => idx !== i))}
-                            className="hover:text-red-500 transition-colors">
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      )
-                    ))}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between mt-2">
-                  <div className="flex items-center gap-2">
-                    {!isRequester && (
-                      <Select value={commentVisibility} onValueChange={(v: string | null) => v && setCommentVisibility(v)}>
-                        <SelectTrigger className="w-32 h-8 text-xs">
-                          <SelectValue>{commentVisibility === "PUBLIC" ? "عام" : "داخلي"}</SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="PUBLIC">عام</SelectItem>
-                          <SelectItem value="INTERNAL">داخلي</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
-                    <input ref={commentFileRef} type="file" multiple className="hidden" onChange={addCommentFile} />
-                    <button onClick={() => commentFileRef.current?.click()}
-                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
-                      style={{ color: "var(--muted-foreground)", border: "1px solid var(--border)", background: "var(--muted)" }}
-                      onMouseEnter={e => (e.currentTarget.style.color = "#4F46E5")}
-                      onMouseLeave={e => (e.currentTarget.style.color = "var(--muted-foreground)")}>
-                      <Paperclip className="w-3.5 h-3.5" /> مرفق
-                    </button>
-                  </div>
-                  <button onClick={handleComment} disabled={(!comment.trim() && !pendingFiles.length) || commentPending || uploading}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
-                    style={{ background: "linear-gradient(135deg, #4F46E5, #6C5CE7)" }}>
-                    {(commentPending || uploading) ? "جارٍ الإرسال..." : <><Send className="w-3.5 h-3.5" /> إرسال</>}
-                  </button>
-                </div>
-              </div>
+            <Section title={`${COMMENT_LABELS.sectionTitle}${ticket.comments?.length ? ` · ${ticket.comments.length}` : ""}`}>
+              <CommentThread
+                ticketId={id}
+                comments={ticket.comments ?? []}
+                users={mentionableUsers}
+                currentUserId={user?.id}
+                currentUserName={[user?.firstName, user?.lastName].filter(Boolean).join(" ")}
+                canPostInternal={canPostInternal}
+                onOpenImage={setLightboxUrl}
+              />
             </Section>
           </div>
 
@@ -1051,7 +817,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
               onClick={() => setMobileSidebarOpen(o => !o)}
               className="lg:hidden w-full flex items-center justify-between px-4 py-3 rounded-xl mb-1 transition-colors"
               style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--foreground)" }}>
-              <span className="font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>// التفاصيل والإجراءات</span>
+              <span className="font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>
+                <CodeComment>التفاصيل والإجراءات</CodeComment>
+              </span>
               <ChevronDown className="w-4 h-4 transition-transform duration-200" style={{
                 color: "var(--muted-foreground)",
                 transform: mobileSidebarOpen ? "rotate(180deg)" : "rotate(0deg)",
@@ -1075,32 +843,37 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
             {/* Ticket info */}
             <div className="rounded-xl p-4 space-y-3" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
               {[
-                { icon: User,    label: ticket.creatorId === user?.id ? "أنت" : `${ticket.creator?.firstName} ${ticket.creator?.lastName}` },
-                { icon: Monitor, label: ticket.system?.name },
-                { icon: Clock,   label: format(new Date(ticket.createdAt), "d MMM yyyy", { locale: ar }) },
-                ...(ticket.estimatedDeadline ? [{ icon: Clock, label: `التسليم: ${format(new Date(ticket.estimatedDeadline), "d MMM yyyy", { locale: ar })}` }] : []),
-              ].map(({ icon: Icon, label }, i) => label && (
+                { icon: User,    label: ticket.creatorId === user?.id ? "أنت" : `${ticket.creator?.firstName} ${ticket.creator?.lastName}`, field: "طالب التذكرة" },
+                { icon: Monitor, label: ticket.system?.name, field: "النظام" },
+                { icon: Clock,   label: format(new Date(ticket.createdAt), "d MMM yyyy", { locale: ar }), field: "تاريخ الإنشاء" },
+                ...(ticket.estimatedDeadline ? [{ icon: Clock, label: `التسليم: ${format(new Date(ticket.estimatedDeadline), "d MMM yyyy", { locale: ar })}`, field: "تاريخ التسليم المتوقع" }] : []),
+              ].map(({ icon: Icon, label, field }, i) => label && (
                 <div key={i} className="flex items-center gap-2 text-sm" style={{ color: "var(--muted-foreground)" }}>
-                  <Icon className="w-3.5 h-3.5 shrink-0" />
+                  <span title={field} aria-label={field} className="shrink-0 cursor-help">
+                    <Icon className="w-3.5 h-3.5" aria-hidden />
+                  </span>
                   <span>{label}</span>
                 </div>
               ))}
               {ticket.company && (
                 <div className="flex items-center gap-2 text-sm" style={{ color: "var(--muted-foreground)" }}>
-                  <CompanyLogo company={ticket.company} size="xs" />
+                  <span title="الشركة" aria-label="الشركة" className="shrink-0 cursor-help">
+                    <CompanyLogo company={ticket.company} size="xs" />
+                  </span>
                   <span>{ticket.company.name}</span>
                 </div>
               )}
-              {ticket.assignments?.[0]?.developer && (
+              {assignedDev && (
                 <div className="flex items-center gap-2 pt-1" style={{ borderTop: "1px solid var(--border)" }}>
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-indigo-300"
+                  <div title={assignedDevLabel} aria-label={assignedDevLabel}
+                    className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-indigo-300 cursor-help"
                     style={{ background: "rgba(79,70,229,0.18)" }}>
-                    {ticket.assignments[0].developer.firstName?.[0]}
+                    {assignedDev.firstName?.[0]}
                   </div>
                   <div>
                     <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>المطور المُكلَّف</p>
                     <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>
-                      {ticket.assignments[0].developer.firstName} {ticket.assignments[0].developer.lastName}
+                      {assignedDevName}
                     </p>
                   </div>
                 </div>
@@ -1109,7 +882,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
 
             {/* Actions */}
             <div className="rounded-xl p-4 space-y-2" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-              <p className="font-brm text-xs mb-3" style={{ color: "var(--muted-foreground)" }}>// الإجراءات</p>
+              <p className="font-brm text-xs mb-3" style={{ color: "var(--muted-foreground)" }}>
+                <CodeComment>الإجراءات</CodeComment>
+              </p>
 
               {ticket.status === "DRAFT" && ticket.creatorId === user?.id && (
                 <ActionBtn onClick={() => actions.submit.mutate(undefined)} disabled={actions.submit.isPending}>
@@ -1127,7 +902,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                         طُلبت منك معلومات إضافية. يمكنك تعديل التذكرة ثم إعادة إرسالها للمراجعة.
                       </p>
                       <p className="font-brm text-xs mt-1" style={{ color: "#92400E" }}>
-                        // راجع التعليقات للاطلاع على التفاصيل المطلوبة
+                        <CodeComment>راجع التعليقات للاطلاع على التفاصيل المطلوبة</CodeComment>
                       </p>
                     </div>
                   </div>
@@ -1137,14 +912,14 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                 </div>
               )}
 
-              {ticket.status === "NEW" && isHead && (
+              {ticket.status === "NEW" && canApprove && (
                 <>
                   <textarea value={approvalNotes} onChange={e => setApprovalNotes(e.target.value)}
                     placeholder="ملاحظات (اختياري)" rows={2}
                     className="w-full rounded-xl px-3 py-2 text-xs outline-none resize-none"
                     style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }} />
                   <p className="font-brm text-xs mb-2" style={{ color: "var(--muted-foreground)" }}>
-                    // ستُنشر الملاحظات كتعليق على التذكرة
+                    <CodeComment>ستُنشر الملاحظات كتعليق على التذكرة</CodeComment>
                   </p>
                   <ActionBtn onClick={() => actions.approve.mutate({ decision: "APPROVED", notes: approvalNotes })} disabled={actions.approve.isPending}>
                     {actions.approve.isPending ? <><Spinner />جارٍ الاعتماد...</> : "اعتماد"}
@@ -1158,18 +933,22 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                 </>
               )}
 
-              {ticket.status === "APPROVED" && isManager && (
+              {ticket.status === "APPROVED" && canAssign && (
                 assignForm ? (
                   <div className="space-y-2">
-                    <Select value={assignDevId} onValueChange={v => v && setAssignDevId(v)}>
-                      <SelectTrigger className="w-full h-9 text-xs">
-                        <SelectValue placeholder="اختر المطور">
-                          {assignDevId
-                            ? (() => { const d = developerList.find(x => x.id === assignDevId); return d ? `${d.firstName} ${d.lastName}` : "اختر المطور"; })()
-                            : "اختر المطور"}
-                        </SelectValue>
+                    <Select
+                      value={assignDevId || null}
+                      onValueChange={v => setAssignDevId(v ?? "")}
+                      items={[
+                        { value: null, label: SELECT_PLACEHOLDERS.developer },
+                        ...developerList.map((d: any) => ({ value: d.id, label: `${d.firstName} ${d.lastName}` })),
+                      ]}
+                    >
+                      <SelectTrigger className="w-full h-9 text-xs" aria-label={SELECT_PLACEHOLDERS.developer}>
+                        <SelectValue placeholder={SELECT_PLACEHOLDERS.developer} />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value={null}>{SELECT_PLACEHOLDERS.developer}</SelectItem>
                         {developerList.map((d: any) => (
                           <SelectItem key={d.id} value={d.id}>{d.firstName} {d.lastName}</SelectItem>
                         ))}
@@ -1237,12 +1016,12 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                   {actions.submitForTesting.isPending ? <><Spinner />جارٍ الإرسال...</> : "إرسال للاختبار"}
                 </ActionBtn>
               )}
-              {(ticket.status === "AWAITING_TESTING" || ticket.status === "AWAITING_OWNER_APPROVAL") && (isQA || isRequester || isManager) && (
+              {((ticket.status === "AWAITING_TESTING" && canVerifyTesting) || (ticket.status === "AWAITING_OWNER_APPROVAL" && canAcceptDelivery)) && (
                 <ActionBtn onClick={() => actions.approveCompletion.mutate(undefined)} disabled={actions.approveCompletion.isPending}>
                   {actions.approveCompletion.isPending ? <><Spinner />جارٍ الاعتماد...</> : "اعتماد الإكمال"}
                 </ActionBtn>
               )}
-              {ticket.status === "COMPLETED" && isManager && (
+              {ticket.status === "COMPLETED" && canClose && (
                 <>
                   <textarea value={closureNotes} onChange={e => setClosureNotes(e.target.value)}
                     placeholder="ملاحظات الإغلاق *" rows={2}
@@ -1253,12 +1032,12 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                   </ActionBtn>
                 </>
               )}
-              {["CLOSED", "REJECTED"].includes(ticket.status) && isManager && (
+              {["CLOSED", "REJECTED"].includes(ticket.status) && canReopen && (
                 <ActionBtn variant="outline" onClick={() => actions.reopen.mutate(undefined)} disabled={actions.reopen.isPending}>
                   {actions.reopen.isPending ? <><Spinner />جارٍ الفتح...</> : "إعادة الفتح"}
                 </ActionBtn>
               )}
-              {isManager && !ticket.isArchived && (
+              {canArchive && !ticket.isArchived && (
                 confirmArchive ? (
                   <div className="flex gap-2">
                     <button
@@ -1281,7 +1060,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                   <ActionBtn variant="ghost" onClick={() => setConfirmArchive(true)}>أرشفة</ActionBtn>
                 )
               )}
-              {isManager && ticket.isArchived && (
+              {canArchive && ticket.isArchived && (
                 <ActionBtn
                   variant="outline"
                   onClick={() => actions.unarchive.mutate(undefined)}
@@ -1292,13 +1071,15 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
               )}
 
               {/* Force status — project manager and above */}
-              {(user?.role === "PROJECT_MANAGER" || user?.role === "PROGRAMMING_HEAD" || user?.role === "SENIOR_MANAGEMENT") && (
+              {canForceStatus && (
                 <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12, marginTop: 4 }}>
                   <button
                     onClick={() => setForceStatusOpen(o => !o)}
                     className="w-full flex items-center justify-between text-xs font-semibold transition-colors"
                     style={{ color: "var(--muted-foreground)" }}>
-                    <span className="font-brm">// تغيير الحالة يدوياً</span>
+                    <span className="font-brm">
+                      <CodeComment>تغيير الحالة يدوياً</CodeComment>
+                    </span>
                     <span style={{ fontSize: 16, lineHeight: 1 }}>{forceStatusOpen ? "−" : "+"}</span>
                   </button>
 
@@ -1396,41 +1177,6 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
       </div>
     )}
 
-    {/* Mentions dropdown portal — escapes all overflow:hidden ancestors */}
-    {mentionQuery !== null && filteredMentions.length > 0 && mentionRect && createPortal(
-      <div
-        style={{
-          position: "fixed",
-          bottom: window.innerHeight - mentionRect.top + 4,
-          left: mentionRect.left,
-          width: mentionRect.width,
-          zIndex: 9999,
-          background: "var(--card)",
-          border: "1px solid var(--border)",
-          borderRadius: "12px",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-          maxHeight: "220px",
-          overflowY: "auto",
-        }}>
-        {filteredMentions.map(u => (
-          <button key={u.id} onMouseDown={() => insertMention(u)}
-            className="w-full flex items-center gap-3 px-3 py-2 text-sm text-right transition-colors"
-            style={{ color: "var(--foreground)" }}
-            onMouseEnter={e => (e.currentTarget.style.background = "var(--muted)")}
-            onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
-            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-              style={{ background: "rgba(79,70,229,0.18)", color: "#818CF8" }}>
-              {u.firstName?.[0]}{u.lastName?.[0]}
-            </div>
-            <div className="min-w-0">
-              <p className="font-medium truncate">{u.firstName} {u.lastName}</p>
-              <p className="font-brm text-xs truncate" style={{ color: "var(--muted-foreground)" }}>{u.email}</p>
-            </div>
-          </button>
-        ))}
-      </div>,
-      document.body
-    )}
     </>
   );
 }

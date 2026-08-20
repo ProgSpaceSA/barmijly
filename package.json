@@ -1,0 +1,15 @@
+{
+  "name": "barmijly",
+  "private": true,
+  "scripts": {
+    "prepare": "husky",
+    "lint": "npm run lint --prefix backend && npm run lint --prefix frontend",
+    "lint:check": "npm run lint:check --prefix backend && npm run lint:check --prefix frontend",
+    "test": "npm test --prefix backend && npm test --prefix frontend",
+    "build": "npm run build --prefix backend && npm run build --prefix frontend",
+    "check": "npm run lint:check && npm test && npm run build"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
+  }
+}

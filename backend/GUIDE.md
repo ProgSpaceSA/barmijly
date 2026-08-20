@@ -71,6 +71,13 @@ MAX_FILE_SIZE=10485760   # 10 MB
 
 REDIS_URL="redis://localhost:6379"
 
+# Daily summary email (see "Daily Digest" below)
+DAILY_DIGEST_TIME="09:00"              # HH:mm, defaults to 09:00
+DAILY_DIGEST_TIMEZONE="Asia/Riyadh"    # IANA zone, defaults to Asia/Riyadh
+DAILY_DIGEST_DAYS="0-4"                # cron day-of-week; 0-4 = Sun–Thu (skips Fri/Sat)
+DAILY_DIGEST_ENABLED=true              # set to "false" to disable the cron
+DAILY_DIGEST_LOOKBACK_HOURS=24         # how far back "new activity" looks
+
 PORT=3001
 NODE_ENV="development"
 FRONTEND_URL="https://barmijly.ai"
@@ -131,7 +138,7 @@ Authorization: Bearer <token>
 ### Companies / Departments / Systems
 
 Standard CRUD on `/companies`, `/departments`, `/systems`.  
-Each has `GET`, `POST`, `PATCH :id`, `PATCH :id/deactivate`.
+Each has `GET`, `POST`, `PATCH :id`, `PATCH :id/deactivate`. Systems also have `PATCH :id/activate` (Head, Senior) to turn a deactivated system back on.
 
 ### Tickets — Full Workflow
 
@@ -144,12 +151,13 @@ Each has `GET`, `POST`, `PATCH :id`, `PATCH :id/deactivate`.
 | PATCH | `/tickets/:id/assign` | Manager / Head | Assign developer + set metadata |
 | PATCH | `/tickets/:id/start` | Developer | Mark IN_PROGRESS |
 | PATCH | `/tickets/:id/submit-for-testing` | Developer | Move to AWAITING_TESTING |
-| PATCH | `/tickets/:id/approve-completion` | QA / Creator | QA passes → owner approval / owner approves → COMPLETED |
+| PATCH | `/tickets/:id/approve-completion` | QA / requester / system owner / Head, PM | QA passes → owner approval; requester or system owner (or leadership) accepts → COMPLETED |
 | PATCH | `/tickets/:id/close` | Manager / Head | Close with closure notes |
 | PATCH | `/tickets/:id/archive` | Manager / Head | Archive (soft) |
 | PATCH | `/tickets/:id/reopen` | Manager / Head | Reopen closed/rejected ticket |
 | POST | `/tickets/:id/duplicate` | Any | Clone ticket as new draft |
-| GET | `/tickets` | Role-filtered | List tickets with filters + pagination |
+| GET | `/tickets` | Role-filtered | List tickets with filters + pagination (`status`, `companyId`, `search`, `overdue=true`, `mine=true`, …). `mine=true` keeps tickets the caller is assigned to, or that have at least one task assigned to them |
+| GET | `/tickets/my-created` | Signed in | Dashboard activity queue: tickets the user filed or owns, plus the statuses their role must act on (same buckets as the daily digest) |
 | GET | `/tickets/:id` | Role-filtered | Ticket detail with full history |
 
 #### Ticket Status Flow
@@ -174,10 +182,13 @@ DRAFT → NEW → AWAITING_APPROVAL → APPROVED → SCHEDULED → IN_PROGRESS
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/tickets/:ticketId/comments` | Add comment (PUBLIC or INTERNAL) |
-| PATCH | `/tickets/:ticketId/comments/:id` | Edit own comment |
-| DELETE | `/tickets/:ticketId/comments/:id` | Delete own comment (managers can delete any) |
+| PATCH | `/tickets/:ticketId/comments/:id` | Edit own comment; sending `mentions` replaces the mention list |
+| DELETE | `/tickets/:ticketId/comments/:id` | Delete own comment — authors only, no override |
 
 `INTERNAL` comments are hidden from `TICKET_REQUESTER` role.
+
+Deleting a comment removes its attachments (rows and files) first — the
+attachment foreign key would otherwise block the delete and strand the uploads.
 
 ### Attachments
 
@@ -193,10 +204,54 @@ Files stored at `./uploads/` and served at `/uploads/`.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/notifications` | All notifications (pass `?unreadOnly=true`) |
+| GET | `/notifications` | All notifications (pass `?unreadOnly=true`); each row includes the linked ticket (code, company, system, deadline) |
 | GET | `/notifications/unread-count` | Count of unread |
+| PATCH | `/notifications/ticket/:ticketId/read` | Mark all unread for that ticket as read |
 | PATCH | `/notifications/:id/read` | Mark one as read |
 | PATCH | `/notifications/read-all` | Mark all as read |
+
+### Daily Digest
+
+One scheduled job (`daily-digest`) emails every active user a personal Arabic summary.
+**There are no digest endpoints — the cron is the only trigger.**
+
+It is an in-process cron registered by `DigestService.onModuleInit` ([src/digest/digest.service.ts](src/digest/digest.service.ts)),
+so it starts with the API and needs no OS crontab. Nothing to install: run the
+backend and the job is live. Confirm it on boot with:
+
+```
+[DigestService] Daily digest scheduled at 09:00 Asia/Riyadh on days 0-4 (cron "0 9 * * 0-4")
+```
+
+Defaults to **09:00 `Asia/Riyadh`, Sunday–Thursday** — `DAILY_DIGEST_DAYS` is the
+cron day-of-week field, so `0-4` skips Friday (5) and Saturday (6). All four
+variables are optional; an invalid value logs a warning and falls back rather
+than failing boot.
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `DAILY_DIGEST_TIME` | `09:00` | Send time, `HH:mm` |
+| `DAILY_DIGEST_TIMEZONE` | `Asia/Riyadh` | IANA zone the time is read in |
+| `DAILY_DIGEST_DAYS` | `0-4` | Cron day-of-week (`0`=Sun … `6`=Sat) |
+| `DAILY_DIGEST_ENABLED` | on | `"false"` registers no job at all |
+| `DAILY_DIGEST_LOOKBACK_HOURS` | `24` | Window for new activity (mentions, unread comments, newly waiting tickets, newly overdue) |
+
+Each digest contains, scoped to what that user may see:
+
+| Section | Source |
+|---------|--------|
+| بانتظار إجراءك | Tickets that *entered* a status that role can move, in the lookback window. The chip is the full queue. |
+| تمت الإشارة إليك | Comments from the lookback window mentioning the user |
+| تعليقات لم تقرأها | Unread `COMMENT_ADDED` notifications from the lookback window, grouped by ticket |
+| مهامك المفتوحة | Open tasks assigned to the user that were created in the window, or are due within 3 days |
+| تجاوزت الموعد اليوم | Tickets whose deadline fell in the lookback window (not the whole overdue backlog) |
+| مواعيد قريبة | `estimatedDeadline` within the next 3 days — these may repeat until the date passes |
+
+The email lists at most 8 rows per section and says so: **لا تظهر كل التذاكر في هذا البريد — افتح لوحة التحكم لعرض الكل.** A long overdue pile or an unchanged action queue does not get re-listed every morning; open the dashboard for the full set.
+
+Users with nothing in any *activity* section are skipped — no empty emails. Ticket visibility
+comes from `AccessService.ticketScope`, the same rule the ticket list uses, and
+`INTERNAL` comments are gated on `ticket:read-internal`.
 
 ### Invitations
 
@@ -218,7 +273,7 @@ Files stored at `./uploads/` and served at `/uploads/`.
 | GET | `/reports/systems` | Per-system ticket counts |
 | GET | `/reports/companies` | Per-company counts |
 | GET | `/reports/overdue` | All overdue tickets with assignments |
-| GET | `/reports/trend?months=6` | Monthly created vs closed trend |
+| GET | `/reports/trend?months=6` | Monthly created vs closed trend (empty months filled with zeros) |
 
 All reports accept `?companyId=` to scope by company.  
 Accessible to: `PROGRAMMING_HEAD`, `PROJECT_MANAGER`, `SENIOR_MANAGEMENT`.
@@ -231,11 +286,11 @@ Accessible to: `PROGRAMMING_HEAD`, `PROJECT_MANAGER`, `SENIOR_MANAGEMENT`.
 |------|----------------|
 | `TICKET_REQUESTER` | Create/submit own tickets, view own tickets, add public comments |
 | `SYSTEM_OWNER` | View company tickets, add comments |
-| `PROGRAMMING_HEAD` | Approve/reject tickets, manage all users, full reports |
-| `PROJECT_MANAGER` | Assign tickets, manage companies/systems, full reports |
+| `PROGRAMMING_HEAD` | Approve/reject tickets, manage users and roles, invitations, signup requests, org structure, full reports |
+| `PROJECT_MANAGER` | Assign tickets, close/reopen/archive, tasks, full reports — no user, invitation, signup or org-structure administration |
 | `DEVELOPER` | View assigned tickets, start work, submit for testing |
 | `QA` | Approve completion after testing |
-| `SENIOR_MANAGEMENT` | Read-only reports and dashboard |
+| `SENIOR_MANAGEMENT` | Co-admin: users, invitations, signup requests, org structure, full reports |
 
 ---
 

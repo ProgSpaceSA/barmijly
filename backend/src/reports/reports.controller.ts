@@ -1,7 +1,7 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
 import { ReportsService } from './reports.service';
+import { rolesWith } from '../access/permissions';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -14,42 +14,43 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 export class ReportsController {
   constructor(private reportsService: ReportsService) {}
 
-  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT, UserRole.DEVELOPER, UserRole.QA, UserRole.SYSTEM_OWNER)
+  @Roles(...rolesWith('report:read'))
   @Get('dashboard')
   getDashboard(@CurrentUser() user: any, @Query('companyId') companyId?: string) {
     return this.reportsService.getDashboardStats(user.id, user.role, companyId);
   }
 
-  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT, UserRole.DEVELOPER, UserRole.QA, UserRole.SYSTEM_OWNER)
+  @Roles(...rolesWith('report:read'))
   @Get('overdue')
   getOverdue(@CurrentUser() user: any, @Query('companyId') companyId?: string) {
     return this.reportsService.getOverdueTickets(user.id, user.role, companyId);
   }
 
-  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT)
+  @Roles(...rolesWith('report:read-team'))
   @Get('developers')
-  getDeveloperStats(@Query('from') from?: string, @Query('to') to?: string) {
+  getDeveloperStats(@CurrentUser() user: any, @Query('from') from?: string, @Query('to') to?: string) {
     return this.reportsService.getDeveloperStats(
+      user,
       from ? new Date(from) : undefined,
       to ? new Date(to) : undefined,
     );
   }
 
-  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT)
+  @Roles(...rolesWith('report:read-team'))
   @Get('systems')
-  getSystemStats(@Query('companyId') companyId?: string) {
-    return this.reportsService.getSystemStats(companyId);
+  getSystemStats(@CurrentUser() user: any, @Query('companyId') companyId?: string) {
+    return this.reportsService.getSystemStats(user, companyId);
   }
 
-  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT)
+  @Roles(...rolesWith('report:read-team'))
   @Get('companies')
-  getCompanyStats(@Query('companyId') companyId?: string) {
-    return this.reportsService.getCompanyStats(companyId);
+  getCompanyStats(@CurrentUser() user: any, @Query('companyId') companyId?: string) {
+    return this.reportsService.getCompanyStats(user, companyId);
   }
 
-  @Roles(UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT)
+  @Roles(...rolesWith('report:read-team'))
   @Get('trend')
-  getTrend(@Query('months') months?: string, @Query('companyId') companyId?: string) {
-    return this.reportsService.getTicketTrend(months ? parseInt(months) : 6, companyId);
+  getTrend(@CurrentUser() user: any, @Query('months') months?: string, @Query('companyId') companyId?: string) {
+    return this.reportsService.getTicketTrend(user, months ? parseInt(months) : 6, companyId);
   }
 }

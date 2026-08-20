@@ -6,7 +6,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { AppShell } from '@/components/layout/AppShell';
 import { useAuthStore } from '@/store/auth';
-import { ROLE_LABELS } from '@/lib/constants';
+import { usePermissions } from "@/hooks/usePermissions";
+import { ROLE_LABELS, SELECT_PLACEHOLDERS } from '@/lib/constants';
 import { toast } from 'sonner';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -32,6 +33,31 @@ interface User {
   company?: { name: string };
   companies?: { company: { id: string; name: string } }[];
   createdAt: string;
+}
+
+function CompanyChecklist({
+  companies,
+  ids,
+  onChange,
+}: {
+  companies: { id: string; name: string }[];
+  ids: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  return (
+    <div className="rounded-xl p-3 space-y-1.5 max-h-36 overflow-y-auto" style={{ border: '1px solid var(--border)', background: 'var(--muted)' }}>
+      {companies.map((c) => (
+        <label key={c.id} className="flex items-center gap-2 cursor-pointer rounded-lg px-2 py-1 transition-colors"
+          onMouseEnter={e => (e.currentTarget.style.background = 'var(--border)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+          <input type="checkbox" checked={ids.includes(c.id)}
+            onChange={e => onChange(e.target.checked ? [...ids, c.id] : ids.filter(x => x !== c.id))}
+            className="w-4 h-4 rounded accent-indigo-600" />
+          <span className="text-sm" style={{ color: 'var(--foreground)' }}>{c.name}</span>
+        </label>
+      ))}
+    </div>
+  );
 }
 
 const ROLES = [
@@ -83,17 +109,19 @@ function Modal({ title, sub, icon: Icon, onClose, children }: {
 
 export default function UsersPage() {
   const router = useRouter();
-  const { hasRole } = useAuthStore();
+  const { can: allowed } = usePermissions();
   const queryClient = useQueryClient();
   const [showInvite, setShowInvite] = useState(false);
   const [search, setSearch] = useState('');
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editFirstName, setEditFirstName] = useState('');
   const [editLastName, setEditLastName] = useState('');
+  const [editRole, setEditRole] = useState('');
   const [editCompanyIds, setEditCompanyIds] = useState<string[]>([]);
   const [inviteCompanyIds, setInviteCompanyIds] = useState<string[]>([]);
 
-  const canManage = hasRole('SENIOR_MANAGEMENT', 'PROGRAMMING_HEAD', 'PROJECT_MANAGER');
+  const canManage = allowed('user:manage');
+  const canAssignRole = allowed('user:assign-role');
 
   const { data, isLoading } = useQuery({
     queryKey: ['users'],
@@ -123,8 +151,8 @@ export default function UsersPage() {
   });
 
   const editMutation = useMutation({
-    mutationFn: ({ id, firstName, lastName, companyIds }: { id: string; firstName: string; lastName: string; companyIds: string[] }) =>
-      api.patch(`/users/${id}`, { firstName, lastName, companyIds }),
+    mutationFn: ({ id, firstName, lastName, role, companyIds }: { id: string; firstName: string; lastName: string; role: string; companyIds: string[] }) =>
+      api.patch(`/users/${id}`, { firstName, lastName, role, companyIds }),
     onSuccess: () => { toast.success('تم تحديث بيانات المستخدم'); setEditingUser(null); queryClient.invalidateQueries({ queryKey: ['users'] }); },
     onError: (e: any) => toast.error(e.response?.data?.message || 'فشل التحديث'),
   });
@@ -133,6 +161,7 @@ export default function UsersPage() {
     setEditingUser(user);
     setEditFirstName(user.firstName);
     setEditLastName(user.lastName);
+    setEditRole(user.role);
     setEditCompanyIds(user.companies?.map(uc => uc.company.id) || []);
   };
 
@@ -144,23 +173,8 @@ export default function UsersPage() {
   const companies = companiesData || [];
   const stats = { total: users.length, active: users.filter(u => u.isActive).length, inactive: users.filter(u => !u.isActive).length };
 
-  const CompanyChecklist = ({ ids, onChange }: { ids: string[]; onChange: (ids: string[]) => void }) => (
-    <div className="rounded-xl p-3 space-y-1.5 max-h-36 overflow-y-auto" style={{ border: '1px solid var(--border)', background: 'var(--muted)' }}>
-      {companies.map((c: any) => (
-        <label key={c.id} className="flex items-center gap-2 cursor-pointer rounded-lg px-2 py-1 transition-colors"
-          onMouseEnter={e => (e.currentTarget.style.background = 'var(--border)')}
-          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-          <input type="checkbox" checked={ids.includes(c.id)}
-            onChange={e => onChange(e.target.checked ? [...ids, c.id] : ids.filter(x => x !== c.id))}
-            className="w-4 h-4 rounded accent-indigo-600" />
-          <span className="text-sm" style={{ color: 'var(--foreground)' }}>{c.name}</span>
-        </label>
-      ))}
-    </div>
-  );
-
   return (
-    <AppShell>
+    <AppShell requires="user:read">
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -191,97 +205,6 @@ export default function UsersPage() {
           ))}
         </div>
 
-        {/* Invite Modal */}
-        {showInvite && (
-          <Modal title="دعوة مستخدم جديد" sub="سيتلقى المستخدم بريداً لإعداد كلمة المرور" icon={Shield} onClose={() => { setShowInvite(false); reset(); }}>
-            <form onSubmit={handleSubmit(d => inviteMutation.mutate({ ...d, companyIds: inviteCompanyIds }))} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--muted-foreground)' }}>الاسم الأول</label>
-                  <input {...register('firstName')} placeholder="محمد" className={inputCls} style={inputStyle} onFocus={focusBorder} onBlur={blurBorder} />
-                  {errors.firstName && <p className="text-red-500 text-xs mt-1">{errors.firstName.message}</p>}
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--muted-foreground)' }}>اسم العائلة</label>
-                  <input {...register('lastName')} placeholder="العلي" className={inputCls} style={inputStyle} onFocus={focusBorder} onBlur={blurBorder} />
-                  {errors.lastName && <p className="text-red-500 text-xs mt-1">{errors.lastName.message}</p>}
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--muted-foreground)' }}>البريد الإلكتروني</label>
-                <input {...register('email')} type="email" dir="ltr" placeholder="user@company.com" className={inputCls} style={inputStyle} onFocus={focusBorder} onBlur={blurBorder} />
-                {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
-              </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--muted-foreground)' }}>الدور</label>
-                <select {...register('role')} className={inputCls} style={inputStyle} onFocus={focusBorder} onBlur={blurBorder}>
-                  <option value="">اختر الدور...</option>
-                  {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                </select>
-                {errors.role && <p className="text-red-500 text-xs mt-1">{errors.role.message}</p>}
-              </div>
-              {companies.length > 0 && (
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--muted-foreground)' }}>الشركات (اختياري)</label>
-                  <CompanyChecklist ids={inviteCompanyIds} onChange={setInviteCompanyIds} />
-                </div>
-              )}
-              <div className="flex gap-3 pt-2">
-                <button type="submit" disabled={inviteMutation.isPending} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60"
-                  style={{ background: 'linear-gradient(135deg, #4F46E5, #6C5CE7)' }}>
-                  {inviteMutation.isPending ? 'جارٍ الإرسال...' : 'إرسال الدعوة'}
-                </button>
-                <button type="button" onClick={() => { setShowInvite(false); reset(); setInviteCompanyIds([]); }}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
-                  style={{ border: '1px solid var(--border)', color: 'var(--muted-foreground)', background: 'transparent' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                  إلغاء
-                </button>
-              </div>
-            </form>
-          </Modal>
-        )}
-
-        {/* Edit Modal */}
-        {editingUser && (
-          <Modal title="تعديل بيانات المستخدم" onClose={() => setEditingUser(null)}>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--muted-foreground)' }}>الاسم الأول</label>
-                  <input value={editFirstName} onChange={e => setEditFirstName(e.target.value)} className={inputCls} style={inputStyle} onFocus={focusBorder} onBlur={blurBorder} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--muted-foreground)' }}>اسم العائلة</label>
-                  <input value={editLastName} onChange={e => setEditLastName(e.target.value)} className={inputCls} style={inputStyle} onFocus={focusBorder} onBlur={blurBorder} />
-                </div>
-              </div>
-              {companies.length > 0 && (
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--muted-foreground)' }}>الشركات</label>
-                  <CompanyChecklist ids={editCompanyIds} onChange={setEditCompanyIds} />
-                </div>
-              )}
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => editMutation.mutate({ id: editingUser.id, firstName: editFirstName, lastName: editLastName, companyIds: editCompanyIds })}
-                  disabled={!editFirstName.trim() || !editLastName.trim() || editMutation.isPending}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60"
-                  style={{ background: 'linear-gradient(135deg, #4F46E5, #6C5CE7)' }}>
-                  {editMutation.isPending ? 'جارٍ الحفظ...' : 'حفظ التغييرات'}
-                </button>
-                <button onClick={() => setEditingUser(null)}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
-                  style={{ border: '1px solid var(--border)', color: 'var(--muted-foreground)' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                  إلغاء
-                </button>
-              </div>
-            </div>
-          </Modal>
-        )}
-
         {/* Search + Table */}
         <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
           <div className="px-6 py-4" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -310,7 +233,11 @@ export default function UsersPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((user, i) => (
+                {filtered.map((user, i) => {
+                  const companyNames = user.companies?.length
+                    ? user.companies.map((uc) => uc.company.name).join('، ')
+                    : user.company?.name || '';
+                  return (
                   <tr key={user.id} style={{ borderTop: i > 0 ? '1px solid var(--border)' : undefined, cursor: 'pointer' }}
                     onClick={() => router.push(`/users/${user.id}`)}
                     onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted)')}
@@ -327,20 +254,24 @@ export default function UsersPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold"
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap"
                         style={{ background: `${ROLE_DOT[user.role]}18`, color: ROLE_DOT[user.role] }}>
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: ROLE_DOT[user.role] }} />
+                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: ROLE_DOT[user.role] }} />
                         {ROLE_LABELS[user.role as keyof typeof ROLE_LABELS] || user.role}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm" style={{ color: 'var(--muted-foreground)' }}>
-                      {user.companies?.length
-                        ? user.companies.map((uc: any) => uc.company.name).join('، ')
-                        : user.company?.name || '—'}
+                    <td className="px-6 py-4 text-sm max-w-0 w-full">
+                      <span
+                        className="block truncate"
+                        title={companyNames || undefined}
+                        style={{ color: 'var(--muted-foreground)' }}
+                      >
+                        {companyNames || '—'}
+                      </span>
                     </td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold"
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap"
                         style={{
                           background: user.isActive ? 'rgba(5,150,105,0.1)' : 'rgba(148,163,184,0.1)',
                           color: user.isActive ? '#059669' : 'var(--muted-foreground)',
@@ -350,17 +281,17 @@ export default function UsersPage() {
                       </span>
                     </td>
                     {canManage && (
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex gap-2">
                           <button onClick={e => { e.stopPropagation(); openEdit(user); }}
-                            className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all"
+                            className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all whitespace-nowrap"
                             style={{ border: '1px solid rgba(79,70,229,0.3)', color: '#4F46E5' }}
                             onMouseEnter={e => (e.currentTarget.style.background = 'rgba(79,70,229,0.08)')}
                             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                             تعديل
                           </button>
                           <button onClick={e => { e.stopPropagation(); toggleMutation.mutate({ id: user.id, active: !user.isActive }); }}
-                            className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all"
+                            className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all whitespace-nowrap"
                             style={{ border: user.isActive ? '1px solid rgba(220,38,38,0.3)' : '1px solid rgba(5,150,105,0.3)', color: user.isActive ? '#DC2626' : '#059669' }}
                             onMouseEnter={e => (e.currentTarget.style.background = user.isActive ? 'rgba(220,38,38,0.06)' : 'rgba(5,150,105,0.06)')}
                             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
@@ -370,12 +301,108 @@ export default function UsersPage() {
                       </td>
                     )}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           )}
         </div>
       </div>
+
+      {showInvite && (
+        <Modal title="دعوة مستخدم جديد" sub="سيتلقى المستخدم بريداً لإعداد كلمة المرور" icon={Shield} onClose={() => { setShowInvite(false); reset(); }}>
+          <form onSubmit={handleSubmit(d => inviteMutation.mutate({ ...d, companyIds: inviteCompanyIds }))} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--muted-foreground)' }}>الاسم الأول</label>
+                <input {...register('firstName')} placeholder="محمد" className={inputCls} style={inputStyle} onFocus={focusBorder} onBlur={blurBorder} />
+                {errors.firstName && <p className="text-red-500 text-xs mt-1">{errors.firstName.message}</p>}
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--muted-foreground)' }}>اسم العائلة</label>
+                <input {...register('lastName')} placeholder="العلي" className={inputCls} style={inputStyle} onFocus={focusBorder} onBlur={blurBorder} />
+                {errors.lastName && <p className="text-red-500 text-xs mt-1">{errors.lastName.message}</p>}
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--muted-foreground)' }}>البريد الإلكتروني</label>
+              <input {...register('email')} type="email" dir="ltr" placeholder="user@company.com" className={inputCls} style={inputStyle} onFocus={focusBorder} onBlur={blurBorder} />
+              {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--muted-foreground)' }}>الدور</label>
+              <select {...register('role')} className={inputCls} style={inputStyle} onFocus={focusBorder} onBlur={blurBorder}>
+                <option value="">{SELECT_PLACEHOLDERS.role}</option>
+                {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+              {errors.role && <p className="text-red-500 text-xs mt-1">{errors.role.message}</p>}
+            </div>
+            {companies.length > 0 && (
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--muted-foreground)' }}>الشركات (اختياري)</label>
+                <CompanyChecklist companies={companies} ids={inviteCompanyIds} onChange={setInviteCompanyIds} />
+              </div>
+            )}
+            <div className="flex gap-3 pt-2">
+              <button type="submit" disabled={inviteMutation.isPending} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60"
+                style={{ background: 'linear-gradient(135deg, #4F46E5, #6C5CE7)' }}>
+                {inviteMutation.isPending ? 'جارٍ الإرسال...' : 'إرسال الدعوة'}
+              </button>
+              <button type="button" onClick={() => { setShowInvite(false); reset(); setInviteCompanyIds([]); }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
+                style={{ border: '1px solid var(--border)', color: 'var(--muted-foreground)', background: 'transparent' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                إلغاء
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {editingUser && (
+        <Modal title="تعديل بيانات المستخدم" onClose={() => setEditingUser(null)}>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="edit-first-name" className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--muted-foreground)' }}>الاسم الأول</label>
+                <input id="edit-first-name" value={editFirstName} onChange={e => setEditFirstName(e.target.value)} className={inputCls} style={inputStyle} onFocus={focusBorder} onBlur={blurBorder} />
+              </div>
+              <div>
+                <label htmlFor="edit-last-name" className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--muted-foreground)' }}>اسم العائلة</label>
+                <input id="edit-last-name" value={editLastName} onChange={e => setEditLastName(e.target.value)} className={inputCls} style={inputStyle} onFocus={focusBorder} onBlur={blurBorder} />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="edit-role" className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--muted-foreground)' }}>الدور</label>
+              <select id="edit-role" value={editRole} onChange={e => setEditRole(e.target.value)} className={inputCls} style={inputStyle} onFocus={focusBorder} onBlur={blurBorder}>
+                {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+            </div>
+            {companies.length > 0 && (
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--muted-foreground)' }}>الشركات</label>
+                <CompanyChecklist companies={companies} ids={editCompanyIds} onChange={setEditCompanyIds} />
+              </div>
+            )}
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => editMutation.mutate({ id: editingUser.id, firstName: editFirstName, lastName: editLastName, role: editRole, companyIds: editCompanyIds })}
+                disabled={!editFirstName.trim() || !editLastName.trim() || !editRole || editMutation.isPending}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60"
+                style={{ background: 'linear-gradient(135deg, #4F46E5, #6C5CE7)' }}>
+                {editMutation.isPending ? 'جارٍ الحفظ...' : 'حفظ التغييرات'}
+              </button>
+              <button onClick={() => setEditingUser(null)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
+                style={{ border: '1px solid var(--border)', color: 'var(--muted-foreground)' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </AppShell>
   );
 }

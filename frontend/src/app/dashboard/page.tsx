@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SkeletonStat, SkeletonList } from "@/components/shared/LoadingSpinner";
@@ -7,15 +7,74 @@ import { StatusBadge, PriorityBadge } from "@/components/shared/StatusBadge";
 import { useDashboardStats, useOverdueTickets, useDeveloperStats, useTicketTrend } from "@/hooks/useReports";
 import { useMyTasks, useUpdateTaskStatus } from "@/hooks/useTasks";
 import { useMyCreatedTickets } from "@/hooks/useTickets";
+import { useMarkTicketRead } from "@/hooks/useNotifications";
 import { useAuthStore } from "@/store/auth";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ROLE_LABELS } from "@/lib/constants";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
-import { AlertTriangle, Clock, TrendingUp, Activity, Check, ChevronRight } from "lucide-react";
+import { usePermissions } from "@/hooks/usePermissions";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { personalGreetingFor, ROLE_LABELS, TREND_SERIES_LABELS } from "@/lib/constants";
+import { formatTrendMonth, niceYAxisMax, rankDevelopers, trendTooltipRows, yAxisTicks } from "@/lib/report-charts";
+import { Area, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Activity, AlertTriangle, Check, Clock, TrendingUp, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
-import { format, formatDistanceToNow, isAfter, isBefore, addDays } from "date-fns";
+import { TicketCodeBadge } from "@/components/shared/TicketCodeBadge";
+import { CodeComment } from "@/components/shared/CodeComment";
+import { addDays, format, formatDistanceToNow, isBefore } from "date-fns";
 import { ar } from "date-fns/locale";
+
+function TrendYTick({
+  x = 0,
+  y = 0,
+  payload,
+}: {
+  x?: number | string;
+  y?: number | string;
+  payload?: { value: number | string };
+}) {
+  const cx = Number(x);
+  const cy = Number(y);
+  return (
+    <text
+      x={cx - 22}
+      y={cy}
+      dy={4}
+      textAnchor="middle"
+      fontSize={10}
+      fontFamily="IBM Plex Mono, monospace"
+      fill="currentColor"
+      style={{ direction: "ltr", unicodeBidi: "isolate" }}
+    >
+      {payload?.value}
+    </text>
+  );
+}
+
+function TrendTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: Array<{ name?: string; value?: number; color?: string; dataKey?: string | number }>;
+  label?: string;
+}) {
+  const rows = trendTooltipRows(payload);
+  if (!active || !rows.length || !label) return null;
+  return (
+    <div className="rounded-md border bg-card px-3 py-2 text-xs shadow-md" dir="rtl">
+      <p className="mb-1.5 font-medium text-foreground">{formatTrendMonth(label, "tooltip")}</p>
+      {rows.map((row) => (
+        <p key={row.key} className="flex items-center justify-between gap-6 tabular-nums">
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            <span className="size-2 shrink-0 rounded-full" style={{ background: row.color }} />
+            {row.label}
+          </span>
+          <span className="font-medium text-foreground">{row.value}</span>
+        </p>
+      ))}
+    </div>
+  );
+}
 
 function CountUp({ value }: { value: number | undefined }) {
   const [display, setDisplay] = useState(0);
@@ -48,41 +107,72 @@ function CountUp({ value }: { value: number | undefined }) {
 }
 
 function MiniSparkline({ data, color }: { data: number[]; color: string }) {
-  if (!data.length) return null;
+  if (data.length < 2) return null;
   const max = Math.max(...data, 1);
-  const w = 64;
-  const h = 28;
-  const pts = data.map((v, i) => {
+  const w = 80;
+  const h = 24;
+  const coords = data.map((v, i) => {
     const x = (i / (data.length - 1)) * w;
-    const y = h - (v / max) * h;
-    return `${x},${y}`;
-  }).join(" ");
+    const y = h - (v / max) * (h - 2) - 1;
+    return { x, y };
+  });
+  const line = coords.map((p) => `${p.x},${p.y}`).join(" ");
+  const area = `0,${h} ${line} ${w},${h}`;
 
   return (
     <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none">
-      <polyline points={pts} stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" opacity="0.7" />
+      <polygon points={area} fill={color} opacity="0.14" />
+      <polyline points={line} stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   );
 }
 
-function StatCard({ title, value, icon: Icon, color, sparkData, sparkColor }: any) {
+const STAT_TONES = {
+  indigo: "#6366F1",
+  blue: "#3B82F6",
+  violet: "#8B5CF6",
+  red: "#EF4444",
+} as const;
+
+function StatCard({
+  title,
+  value,
+  icon: Icon,
+  tone,
+  sparkData,
+  alert,
+}: {
+  title: string;
+  value: number | undefined;
+  icon: LucideIcon;
+  tone: keyof typeof STAT_TONES;
+  sparkData?: number[];
+  alert?: boolean;
+}) {
+  const color = STAT_TONES[tone];
   return (
-    <Card>
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between mb-2">
-          <p className="text-sm font-medium" style={{ color: "var(--muted-foreground)" }}>{title}</p>
-          <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${color}`}>
-            <Icon className="w-4 h-4 text-white" />
-          </div>
+    <div
+      className="brm-stat"
+      data-alert={alert ? "true" : undefined}
+      style={{ "--stat-tone": color } as CSSProperties}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="brm-stat-label">{title}</p>
+          <p className="brm-stat-value">
+            <CountUp value={value} />
+          </p>
         </div>
-        <p className="text-3xl font-bold mt-1 mb-3" style={{ color: "var(--foreground)" }}>
-          <CountUp value={value} />
-        </p>
-        {sparkData && (
-          <MiniSparkline data={sparkData} color={sparkColor ?? "#4F46E5"} />
-        )}
-      </CardContent>
-    </Card>
+        <div className="brm-stat-icon">
+          <Icon className="w-4 h-4" />
+        </div>
+      </div>
+      {sparkData && sparkData.length > 1 && (
+        <div className="brm-stat-spark">
+          <MiniSparkline data={sparkData} color={color} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -96,11 +186,10 @@ const GREETINGS: Record<string, string> = {
   SENIOR_MANAGEMENT: "الصورة الكاملة هنا.",
 };
 
-const STATUS_ORDER: Record<string, number> = { IN_PROGRESS: 0, NEW: 1, COMPLETED: 2 };
 const STATUS_CFG = {
-  NEW:         { label: "جديدة",       color: "#3B82F6", bg: "rgba(59,130,246,0.12)",  flag: "--new" },
-  IN_PROGRESS: { label: "قيد التنفيذ", color: "#F59E0B", bg: "rgba(245,158,11,0.12)", flag: "--in-progress" },
-  COMPLETED:   { label: "مكتملة",      color: "#10B981", bg: "rgba(16,185,129,0.12)", flag: "--completed" },
+  NEW:         { label: "جديدة",       color: "#3B82F6", bg: "rgba(59,130,246,0.12)" },
+  IN_PROGRESS: { label: "قيد التنفيذ", color: "#F59E0B", bg: "rgba(245,158,11,0.12)" },
+  COMPLETED:   { label: "مكتملة",      color: "#10B981", bg: "rgba(16,185,129,0.12)" },
 };
 const NEXT_STATUS: Record<string, string> = { NEW: "IN_PROGRESS", IN_PROGRESS: "COMPLETED", COMPLETED: "NEW" };
 
@@ -124,6 +213,7 @@ function TaskStatusDot({ status, onClick, pending }: { status: string; onClick: 
   const cfg = STATUS_CFG[status as keyof typeof STATUS_CFG] ?? STATUS_CFG.NEW;
   return (
     <button
+      type="button"
       onClick={e => { e.preventDefault(); onClick(); }}
       disabled={pending}
       title={`→ ${STATUS_CFG[NEXT_STATUS[status] as keyof typeof STATUS_CFG]?.label}`}
@@ -151,10 +241,9 @@ function DueDateLabel({ date }: { date: string | null }) {
   const d = new Date(date);
   const now = new Date();
   const isOverdue = isBefore(d, now);
-  const isSoon   = !isOverdue && isBefore(d, addDays(now, 3));
-  const color = isOverdue ? "#EF4444" : isSoon ? "#F59E0B" : "var(--muted-foreground)";
+  const isSoon = !isOverdue && isBefore(d, addDays(now, 3));
   return (
-    <span className="font-brm" style={{ fontSize: 11, color, whiteSpace: "nowrap" }}>
+    <span className={`font-brm ${isOverdue ? "brm-overdue" : isSoon ? "brm-soon" : ""}`} style={{ fontSize: 11, color: isOverdue || isSoon ? undefined : "var(--muted-foreground)", whiteSpace: "nowrap" }}>
       {isOverdue ? "⚠ " : ""}{format(d, "dd MMM", { locale: ar })}
     </span>
   );
@@ -172,6 +261,7 @@ function DevTaskHub() {
   const { data: tasks,          isLoading: tasksLoading   } = useMyTasks();
   const { data: createdTickets, isLoading: ticketsLoading } = useMyCreatedTickets();
   const { mutate: updateStatus, isPending } = useUpdateTaskStatus();
+  const { mutate: markTicketRead } = useMarkTicketRead();
   const [pendingId, setPendingId] = useState<string | null>(null);
 
   const DONE_TASK_STATUSES   = new Set(["COMPLETED"]);
@@ -202,36 +292,34 @@ function DevTaskHub() {
   const isLoading = tasksLoading || ticketsLoading;
 
   return (
-    <div style={{ borderRadius: 14, overflow: "hidden", border: "1px solid var(--border)", boxShadow: "0 2px 12px rgba(0,0,0,0.07)" }}>
-      {/* macOS terminal header */}
-      <div style={{ background: "var(--foreground)", padding: "10px 16px", display: "flex", alignItems: "center", gap: 10 }}>
+    <div className="brm-term">
+      <div className="brm-term-bar">
         <div style={{ display: "flex", gap: 6 }}>
           <span style={{ width: 12, height: 12, borderRadius: "50%", background: "#FF5F57", display: "block" }} />
           <span style={{ width: 12, height: 12, borderRadius: "50%", background: "#FEBC2E", display: "block" }} />
           <span style={{ width: 12, height: 12, borderRadius: "50%", background: "#28C840", display: "block" }} />
         </div>
-        <span className="font-brm" style={{ color: "var(--background)", fontSize: 12, opacity: 0.7, flex: 1 }}>
+        <span className="font-brm ltr-isolate" dir="ltr" style={{ fontSize: 12, opacity: 0.8, flex: 1 }}>
           $ brmctl activity --user:me --active
         </span>
-        <span className="font-brm" style={{ fontSize: 11, color: activeTasks > 0 ? "#28C840" : "rgba(255,255,255,0.3)" }}>
+        <span className="font-brm" style={{ fontSize: 11, color: activeTasks > 0 ? "#34D399" : "rgba(255,255,255,0.35)" }}>
           {activeTasks > 0 ? `● ${activeTasks} active` : "○ idle"}
         </span>
       </div>
 
-      <div style={{ background: "var(--card)" }}>
-        {/* Summary strip */}
-        <div className="font-brm" style={{ display: "flex", gap: 16, padding: "10px 20px", fontSize: 11, borderBottom: "1px solid var(--border)", flexWrap: "wrap" }}>
-          <span style={{ color: "var(--muted-foreground)" }}>
+      <div>
+        <div className="brm-term-strip font-brm">
+          <span>
             tasks <span style={{ color: "var(--foreground)", fontWeight: 700 }}>{taskItems.length}</span>
           </span>
           <span style={{ color: "var(--border)" }}>|</span>
-          <span style={{ color: "var(--muted-foreground)" }}>
+          <span>
             tickets <span style={{ color: "var(--foreground)", fontWeight: 700 }}>{ticketItems.length}</span>
           </span>
           {totalUpdates > 0 && (
             <>
               <span style={{ color: "var(--border)" }}>|</span>
-              <span style={{ color: "#D97706", display: "flex", alignItems: "center", gap: 4 }}>
+              <span className="brm-soon" style={{ display: "flex", alignItems: "center", gap: 4 }}>
                 <span className="relative flex" style={{ width: 7, height: 7, display: "inline-flex" }}>
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: "#F59E0B" }} />
                   <span className="relative inline-flex rounded-full" style={{ width: 7, height: 7, background: "#F59E0B" }} />
@@ -242,36 +330,32 @@ function DevTaskHub() {
           )}
         </div>
 
-        {/* Unified list */}
-        <div style={{ padding: "4px 0 8px" }}>
+        <div className="brm-term-body" role="region" aria-label="النشاط الحالي">
           {isLoading ? (
             <div style={{ padding: "16px 24px" }}><SkeletonList count={4} /></div>
           ) : allItems.length === 0 ? (
-            <div style={{ padding: "32px 24px", textAlign: "center" }}>
-              <div className="font-brm" style={{ color: "var(--muted-foreground)", fontSize: 13 }}>// no active items</div>
+            <div style={{ padding: "28px 24px", textAlign: "center" }}>
+              <div className="font-brm" style={{ color: "var(--muted-foreground)", fontSize: 13 }}>
+                <CodeComment>no active items</CodeComment>
+              </div>
             </div>
           ) : allItems.map((item: any) => {
             if (item._kind === "task") {
               const cfg = STATUS_CFG[item.status as keyof typeof STATUS_CFG] ?? STATUS_CFG.NEW;
-              const brmNum = item.ticket?.ticketNumber ? `BRM-${String(item.ticket.ticketNumber).padStart(4, "0")}` : null;
               const isPendingThis = pendingId === item.id && isPending;
               return (
-                <div key={`task-${item.id}`}
-                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 20px", borderBottom: "1px solid var(--border)", transition: "background 0.1s" }}
-                  onMouseEnter={e => (e.currentTarget.style.background = "var(--muted)")}
-                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-                >
+                <div key={`task-${item.id}`} className="brm-term-row">
                   <TaskStatusDot status={item.status} onClick={() => cycleStatus(item)} pending={isPendingThis} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                      <span className="font-brm" style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: "rgba(59,130,246,0.12)", color: "#3B82F6", border: "1px solid rgba(59,130,246,0.25)", flexShrink: 0 }}>TASK</span>
+                      <span className="brm-kind brm-kind-task">TASK</span>
                       <Link href={`/tickets/${item.ticket?.id}`} style={{ fontWeight: 600, fontSize: 14, color: "var(--foreground)" }} className="truncate hover:underline">
                         {item.title}
                       </Link>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                      {brmNum && <span className="font-brm" style={{ fontSize: 11, color: "#4F46E5", opacity: 0.8 }}>{brmNum}</span>}
-                      {brmNum && <span style={{ color: "var(--border)", fontSize: 10 }}>·</span>}
+                      <TicketCodeBadge ticketNumber={item.ticket?.ticketNumber} />
+                      {item.ticket?.ticketNumber != null && <span style={{ color: "var(--border)", fontSize: 10 }}>·</span>}
                       <Link href={`/tickets/${item.ticket?.id}`} className="truncate">
                         <span style={{ fontSize: 11, color: "var(--muted-foreground)" }}>{item.ticket?.title}</span>
                       </Link>
@@ -279,23 +363,21 @@ function DevTaskHub() {
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                     <DueDateLabel date={item.dueDate} />
-                    <span className="font-brm" style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}33`, whiteSpace: "nowrap" }}>{item.status}</span>
+                    <span className="font-brm" style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}33`, whiteSpace: "nowrap" }}>{cfg.label}</span>
                     <TimeAgo date={item.updatedAt} />
                   </div>
                 </div>
               );
             }
 
-            // ticket row
             const scfg = TICKET_STATUS_CFG[item.status] ?? { label: item.status, color: "#6B7280", bg: "rgba(107,114,128,0.12)" };
-            const brmNum = `BRM-${String(item.ticketNumber).padStart(4, "0")}`;
             return (
-              <Link key={`ticket-${item.id}`} href={`/tickets/${item.id}`}
-                style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 20px", borderBottom: "1px solid var(--border)", transition: "background 0.1s", textDecoration: "none" }}
-                onMouseEnter={e => (e.currentTarget.style.background = "var(--muted)")}
-                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+              <Link
+                key={`ticket-${item.id}`}
+                href={`/tickets/${item.id}`}
+                className="brm-term-row"
+                onClick={() => { if (item.hasUpdates) markTicketRead(item.id); }}
               >
-                {/* Update dot */}
                 <div style={{ width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   {item.hasUpdates ? (
                     <span className="relative flex" style={{ width: 10, height: 10 }}>
@@ -309,16 +391,16 @@ function DevTaskHub() {
 
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                    <span className="font-brm" style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: "rgba(139,92,246,0.12)", color: "#8B5CF6", border: "1px solid rgba(139,92,246,0.25)", flexShrink: 0 }}>TICKET</span>
+                    <span className="brm-kind brm-kind-ticket">TICKET</span>
                     <span style={{ fontWeight: 600, fontSize: 14, color: "var(--foreground)" }} className="truncate">{item.title}</span>
                     {item.hasUpdates && (
-                      <span className="font-brm" style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: "rgba(245,158,11,0.12)", color: "#D97706", border: "1px solid rgba(245,158,11,0.3)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                      <span className="font-brm brm-soon" style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)", whiteSpace: "nowrap", flexShrink: 0 }}>
                         {item.unreadCount} جديد
                       </span>
                     )}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                    <span className="font-brm" style={{ fontSize: 11, color: "#4F46E5", opacity: 0.8 }}>{brmNum}</span>
+                    <TicketCodeBadge ticketNumber={item.ticketNumber} />
                     <span style={{ color: "var(--border)", fontSize: 10 }}>·</span>
                     <CompanyLogo company={item.company} size="xs" />
                     <span style={{ fontSize: 11, color: "var(--muted-foreground)" }}>{item.company?.name}</span>
@@ -341,19 +423,26 @@ function DevTaskHub() {
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
+  const { can: allowed } = usePermissions();
+  // The team panels come from endpoints gated on report:read-team. Asking for
+  // them without the action is a guaranteed 403, so the queries stay off.
+  const isManager = allowed("report:read-team");
+
   const { data: stats, isLoading } = useDashboardStats();
   const { data: overdue } = useOverdueTickets();
-  const { data: devStats } = useDeveloperStats();
-  const { data: trend } = useTicketTrend();
+  const { data: devStats } = useDeveloperStats({ enabled: isManager });
+  const { data: trend } = useTicketTrend(6, { enabled: isManager });
 
-  const isManager = user?.role && ["PROGRAMMING_HEAD", "PROJECT_MANAGER", "SENIOR_MANAGEMENT"].includes(user.role);
   const isDeveloper = user?.role === "DEVELOPER";
   const isSeniorManagement = user?.role === "SENIOR_MANAGEMENT";
   const showTaskHub = !isSeniorManagement;
-  const greeting = GREETINGS[user?.role ?? ""] ?? "";
+  const greeting = personalGreetingFor(user?.email) ?? GREETINGS[user?.role ?? ""] ?? "";
 
   const trendCreated = trend?.map((t: any) => t.created) ?? [];
-  const trendClosed  = trend?.map((t: any) => t.closed)  ?? [];
+  const trendMax = Math.max(0, ...(trend ?? []).flatMap((t: { created: number; closed: number }) => [t.created, t.closed]));
+  const trendYMax = niceYAxisMax(trendMax);
+  const trendYTicks = yAxisTicks(trendMax);
+  const rankedDevs = rankDevelopers(devStats ?? []);
 
   return (
     <AppShell>
@@ -364,67 +453,117 @@ export default function DashboardPage() {
 
       {isLoading ? (
         <div className="space-y-6">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {[0,1,2,3].map(i => <SkeletonStat key={i} />)}
           </div>
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-5">
 
-          {/* Task hub for everyone except senior management */}
           {showTaskHub && <DevTaskHub />}
 
-          {/* KPI cards for non-developers */}
           {!isDeveloper && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard title="إجمالي التذاكر"     value={stats?.totalTickets}      icon={Activity}      color="bg-indigo-500"  sparkData={trendCreated} sparkColor="#6366F1" />
-              <StatCard title="تذاكر مفتوحة"      value={stats?.openTickets}       icon={Clock}         color="bg-blue-500"    sparkData={trendCreated} sparkColor="#3B82F6" />
-              <StatCard title="قيد التنفيذ"        value={stats?.inProgressTickets} icon={TrendingUp}    color="bg-violet-500"  />
-              <StatCard title="متأخرة"             value={stats?.overdueTickets}    icon={AlertTriangle} color="bg-red-500"     sparkData={[]} sparkColor="#EF4444" />
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <StatCard title="إجمالي التذاكر" value={stats?.totalTickets}      icon={Activity}      tone="indigo" sparkData={trendCreated} />
+              <StatCard title="تذاكر مفتوحة"  value={stats?.openTickets}       icon={Clock}         tone="blue"   sparkData={trendCreated} />
+              <StatCard title="قيد التنفيذ"    value={stats?.inProgressTickets} icon={TrendingUp}    tone="violet" />
+              <StatCard title="متأخرة"         value={stats?.overdueTickets}    icon={AlertTriangle} tone="red"    alert={(stats?.overdueTickets ?? 0) > 0} />
             </div>
           )}
 
-          {/* Charts for managers */}
           {isManager && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {trend && trend.length > 0 && (
-                <Card>
-                  <CardHeader><CardTitle className="text-base">اتجاه التذاكر (6 أشهر)</CardTitle></CardHeader>
+                <Card size="sm" className="overflow-visible">
+                  <CardHeader className="pb-0">
+                    <CardTitle className="text-base">اتجاه التذاكر (6 أشهر)</CardTitle>
+                    <CardDescription className="text-[11px]">مُنشأة مقابل مُغلقة</CardDescription>
+                  </CardHeader>
                   <CardContent>
-                    <ResponsiveContainer width="100%" height={180}>
-                      <LineChart data={trend} margin={{ left: 8, right: 8, bottom: 0, top: 4 }}>
-                        <XAxis dataKey="month" tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, monospace" }} />
-                        <YAxis tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, monospace" }} width={28} />
-                        <Tooltip contentStyle={{ fontFamily: "Cairo, sans-serif", fontSize: 12, background: "var(--card)", border: "1px solid var(--border)" }} />
-                        <Line type="monotone" dataKey="created" stroke="#4F46E5" name="مُنشأة" strokeWidth={2} dot={false} />
-                        <Line type="monotone" dataKey="closed"  stroke="#10B981" name="مُغلقة" strokeWidth={2} dot={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
+                    <div dir="ltr" className="w-full overflow-visible text-muted-foreground">
+                      <ResponsiveContainer width="100%" height={200}>
+                        <LineChart data={trend} margin={{ left: 4, right: 12, bottom: 4, top: 12 }}>
+                          <defs>
+                            <linearGradient id="dash-created" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#818CF8" stopOpacity={0.28} />
+                              <stop offset="100%" stopColor="#818CF8" stopOpacity={0} />
+                            </linearGradient>
+                            <linearGradient id="dash-closed" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#34D399" stopOpacity={0.22} />
+                              <stop offset="100%" stopColor="#34D399" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.12} vertical={false} />
+                          <XAxis
+                            dataKey="month"
+                            tickFormatter={(value: string) => formatTrendMonth(value)}
+                            tick={{ fontSize: 11, fill: "currentColor" }}
+                            axisLine={{ stroke: "currentColor", strokeOpacity: 0.35 }}
+                            tickLine={false}
+                            interval={0}
+                            height={28}
+                          />
+                          <YAxis
+                            orientation="left"
+                            width={44}
+                            domain={[0, trendYMax]}
+                            ticks={trendYTicks}
+                            tick={TrendYTick}
+                            axisLine={{ stroke: "currentColor", strokeOpacity: 0.35 }}
+                            tickLine={false}
+                            allowDecimals={false}
+                          />
+                          <Tooltip content={<TrendTooltip />} cursor={{ stroke: "currentColor", strokeOpacity: 0.25, strokeDasharray: "4 4" }} />
+                          <Area type="monotone" dataKey="created" name={TREND_SERIES_LABELS.created} stroke="none" fill="url(#dash-created)" tooltipType="none" />
+                          <Area type="monotone" dataKey="closed" name={TREND_SERIES_LABELS.closed} stroke="none" fill="url(#dash-closed)" tooltipType="none" />
+                          <Line type="monotone" dataKey="created" stroke="#818CF8" name={TREND_SERIES_LABELS.created} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                          <Line type="monotone" dataKey="closed"  stroke="#34D399" name={TREND_SERIES_LABELS.closed} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="mt-1 flex justify-center gap-4 text-[11px] text-muted-foreground">
+                      <span className="flex items-center gap-1.5">
+                        <span className="inline-block size-2 rounded-full bg-[#818CF8]" />
+                        {TREND_SERIES_LABELS.created}
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="inline-block size-2 rounded-full bg-[#34D399]" />
+                        {TREND_SERIES_LABELS.closed}
+                      </span>
+                    </div>
                   </CardContent>
                 </Card>
               )}
 
-              {devStats && devStats.length > 0 && (
-                <Card>
-                  <CardHeader><CardTitle className="text-base">أداء المطورين</CardTitle></CardHeader>
+              {rankedDevs.length > 0 && (
+                <Card size="sm">
+                  <CardHeader className="pb-0">
+                    <CardTitle className="text-base">أداء المطورين ({rankedDevs.length})</CardTitle>
+                    <CardDescription className="text-[11px]">مكتمل من المُسند</CardDescription>
+                  </CardHeader>
                   <CardContent>
-                    <div className="space-y-3">
-                      {devStats.slice(0, 5).map((dev: any) => (
-                        <div key={dev.id} className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-indigo-600 shrink-0" style={{ background: "rgba(79,70,229,0.1)" }}>
-                            {dev.name[0]}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex justify-between text-sm mb-1">
-                              <span className="font-medium truncate">{dev.name}</span>
-                              <span className="font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>{dev.completed}/{dev.assigned}</span>
+                    <div
+                      className="brm-panel-scroll max-h-[200px]"
+                      role="region"
+                      aria-label="أداء المطورين"
+                      data-testid="developer-performance-list"
+                    >
+                      <div className="space-y-3 pt-1" dir="rtl">
+                        {rankedDevs.map((dev) => (
+                          <div key={dev.id} className="flex items-center gap-3" data-testid={`dev-row-${dev.id}`}>
+                            <div className="brm-dev-avatar">{dev.initials}</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex justify-between text-sm mb-1">
+                                <span className="font-medium truncate">{dev.name}</span>
+                                <span className="font-brm text-xs text-muted-foreground tabular-nums">{dev.completed}/{dev.assigned}</span>
+                              </div>
+                              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--muted)" }}>
+                                <div className="brm-dev-fill transition-all" style={{ width: `${dev.completionRate}%` }} />
+                              </div>
                             </div>
-                            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--muted)" }}>
-                              <div className="h-full rounded-full transition-all" style={{ width: `${dev.completionRate}%`, background: "linear-gradient(90deg, #4F46E5, #6C5CE7)" }} />
-                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -432,21 +571,22 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* Overdue tickets */}
           {overdue && overdue.length > 0 && (
-            <Card>
-              <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
+            <Card size="sm">
+              <CardHeader className="items-center pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-red-500" />
                   التذاكر المتأخرة ({overdue.length})
                 </CardTitle>
-                <Link href="/tickets" className="text-sm hover:underline" style={{ color: "#4F46E5" }}>عرض الكل</Link>
+                <CardAction className="self-center">
+                  <Link href="/tickets?overdue=true" className="text-sm whitespace-nowrap hover:underline" style={{ color: "#818CF8" }}>عرض الكل</Link>
+                </CardAction>
               </CardHeader>
               <CardContent>
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
                   {overdue.slice(0, 5).map((t: any) => (
                     <Link key={t.id} href={`/tickets/${t.id}`}
-                      className="flex items-center justify-between p-3 rounded-lg transition-colors group"
+                      className="flex items-center justify-between p-2.5 rounded-lg transition-colors"
                       style={{ background: "transparent" }}
                       onMouseEnter={e => (e.currentTarget.style.background = "var(--muted)")}
                       onMouseLeave={e => (e.currentTarget.style.background = "transparent")}

@@ -1,0 +1,42 @@
+---
+description: Prisma schema conventions for Barmijly
+globs: backend/**/*.prisma
+alwaysApply: false
+---
+
+# Prisma Schema Conventions
+
+## IDs & timestamps
+
+- String IDs: `@id @default(uuid())`
+- Every model: `createdAt DateTime @default(now())` + `updatedAt DateTime @updatedAt`
+
+## Relations
+
+- Define both sides with `@relation`
+- Name foreign keys explicitly: `companyId String` + `company Company @relation(...)`
+
+## Indexes
+
+Add `@@index` on fields used in filters:
+- `Ticket`: status, companyId, systemId, creatorId
+- `User`: email, role, companyId
+
+## Enums
+
+Keep enums in sync across:
+1. `schema.prisma`
+2. `frontend/src/lib/constants.ts` (labels)
+3. Backend DTOs
+
+Existing enums: `UserRole`, `TicketStatus`, `TicketType`, `Priority`, `CommentVisibility`, `NotificationType`.
+
+## Migrations
+
+```bash
+cd backend
+npx prisma migrate dev --name descriptive_name
+npx prisma generate
+```
+
+Never edit applied migration SQL manually unless resolving conflicts.

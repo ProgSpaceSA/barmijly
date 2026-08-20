@@ -1,35 +1,28 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { TicketStatus, Priority, UserRole } from '@prisma/client';
-
-const MANAGER_ROLES = [UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.SENIOR_MANAGEMENT];
+import { AccessService } from '../access/access.service';
+import type { Actor } from '../access/permissions';
+import { Prisma, TicketStatus, Priority, UserRole } from '@prisma/client';
 
 @Injectable()
 export class ReportsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private access: AccessService) {}
 
-  private async buildVisibilityWhere(userId: string, role: UserRole, companyId?: string) {
-    if ((MANAGER_ROLES as string[]).includes(role)) {
-      return companyId ? { companyId } : {};
-    }
-    if (role === UserRole.DEVELOPER) {
-      const assignments = await this.prisma.ticketAssignment.findMany({
-        where: { developerId: userId, isActive: true },
-        select: { ticketId: true },
-      });
-      const ticketIds = assignments.map((a) => a.ticketId);
-      return { id: { in: ticketIds } };
-    }
-    if (role === UserRole.SYSTEM_OWNER) {
-      const userCompanies = await this.prisma.userCompany.findMany({
-        where: { userId },
-        select: { companyId: true },
-      });
-      const companyIds = userCompanies.map((uc) => uc.companyId);
-      return { companyId: { in: companyIds } };
-    }
-    // TICKET_REQUESTER — only their own tickets
-    return { creatorId: userId };
+  /**
+   * Dashboard numbers must count exactly the tickets the user can open, so the
+   * scope comes from the same resolver as the ticket list rather than a second
+   * copy of the rules.
+   */
+  private async buildVisibilityWhere(
+    userId: string,
+    role: UserRole,
+    companyId?: string,
+  ): Promise<Prisma.TicketWhereInput> {
+    const scope = await this.access.ticketScope({ id: userId, role });
+    const companyFilter: Prisma.TicketWhereInput = companyId ? { companyId } : {};
+
+    if (!scope) return companyFilter;
+    return companyId ? { AND: [companyFilter, scope] } : scope;
   }
 
   async getDashboardStats(userId: string, role: UserRole, companyId?: string) {
@@ -77,9 +70,23 @@ export class ReportsService {
     };
   }
 
-  async getDeveloperStats(from?: Date, to?: Date) {
+  async getDeveloperStats(user: Actor, _from?: Date, _to?: Date) {
+    // Team load is reported for the caller's portfolio, not the whole group.
+    const companyIds = await this.access.visibleCompanyIds(user);
     const developers = await this.prisma.user.findMany({
-      where: { role: 'DEVELOPER', isActive: true },
+      where: {
+        role: 'DEVELOPER',
+        isActive: true,
+        ...(companyIds === null
+          ? {}
+          : {
+              OR: [
+                { companyId: { in: companyIds } },
+                { companies: { some: { companyId: { in: companyIds } } } },
+                { systems: { some: { system: { companyId: { in: companyIds } } } } },
+              ],
+            }),
+      },
       select: {
         id: true,
         firstName: true,
@@ -118,9 +125,10 @@ export class ReportsService {
     });
   }
 
-  async getSystemStats(companyId?: string) {
+  async getSystemStats(user: Actor, companyId?: string) {
+    const scope = await this.access.systemListWhere(user);
     const systems = await this.prisma.system.findMany({
-      where: { ...(companyId && { companyId }), isActive: true },
+      where: { ...scope, ...(companyId && { companyId }), isActive: true },
       include: {
         _count: { select: { tickets: true } },
         tickets: {
@@ -140,9 +148,10 @@ export class ReportsService {
     }));
   }
 
-  async getCompanyStats(companyId?: string) {
+  async getCompanyStats(user: Actor, companyId?: string) {
+    const scope = await this.access.companyListWhere(user);
     return this.prisma.company.findMany({
-      where: companyId ? { id: companyId } : {},
+      where: { ...scope, ...(companyId && { id: companyId }) },
       include: {
         _count: { select: { tickets: true, users: true, systems: true } },
       },
@@ -168,30 +177,40 @@ export class ReportsService {
     });
   }
 
-  async getTicketTrend(months = 6, companyId?: string) {
-    const from = new Date();
-    from.setMonth(from.getMonth() - months);
+  async getTicketTrend(user: Actor, months = 6, companyId?: string) {
+    const span = Math.min(24, Math.max(1, Number.isFinite(months) ? months : 6));
+    const now = new Date();
+    const from = new Date(now.getFullYear(), now.getMonth() - (span - 1), 1);
 
+    const scope = await this.access.ticketScope(user);
+    const filters: Prisma.TicketWhereInput = {
+      ...(companyId && { companyId }),
+      createdAt: { gte: from },
+    };
     const tickets = await this.prisma.ticket.findMany({
-      where: {
-        ...(companyId && { companyId }),
-        createdAt: { gte: from },
-      },
+      where: scope ? { AND: [filters, scope] } : filters,
       select: { createdAt: true, status: true },
     });
 
-    const byMonth: Record<string, { created: number; closed: number }> = {};
+    const keys: string[] = [];
+    for (let i = span - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
+
+    const byMonth: Record<string, { created: number; closed: number }> = Object.fromEntries(
+      keys.map((key) => [key, { created: 0, closed: 0 }]),
+    );
+
     tickets.forEach((t) => {
       const key = `${t.createdAt.getFullYear()}-${String(t.createdAt.getMonth() + 1).padStart(2, '0')}`;
-      if (!byMonth[key]) byMonth[key] = { created: 0, closed: 0 };
+      if (!byMonth[key]) return;
       byMonth[key].created++;
       if (t.status === TicketStatus.CLOSED || t.status === TicketStatus.COMPLETED) {
         byMonth[key].closed++;
       }
     });
 
-    return Object.entries(byMonth)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([month, stats]) => ({ month, ...stats }));
+    return keys.map((month) => ({ month, ...byMonth[month] }));
   }
 }

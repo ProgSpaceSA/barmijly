@@ -5,5 +5,11 @@
   "testRegex": ".e2e-spec.ts$",
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
-  }
+  },
+  "setupFiles": ["dotenv/config", "<rootDir>/e2e.env.js"],
+  "moduleNameMapper": {
+    "^uuid$": "<rootDir>/uuid-mock.js"
+  },
+  "testTimeout": 120000,
+  "maxWorkers": 1
 }

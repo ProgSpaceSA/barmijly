@@ -9,20 +9,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ar" dir="rtl" suppressHydrationWarning>
-      <head>
-        {/* Apply dark class synchronously before paint to prevent flash */}
-        <script dangerouslySetInnerHTML={{ __html: `
-          (function(){
-            try {
-              var t = localStorage.getItem('brm-theme');
-              if (!t) { t = 'dark'; localStorage.setItem('brm-theme', 'dark'); }
-              if (t === 'dark') document.documentElement.classList.add('dark');
-              else document.documentElement.classList.remove('dark');
-            } catch(e) { document.documentElement.classList.add('dark'); }
-          })();
-        `}} />
-      </head>
+    <html lang="ar" dir="rtl" className="dark" suppressHydrationWarning>
       <body>
         <Providers>{children}</Providers>
       </body>

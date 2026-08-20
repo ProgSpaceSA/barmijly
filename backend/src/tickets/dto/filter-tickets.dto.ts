@@ -1,6 +1,6 @@
 import { IsOptional, IsEnum, IsUUID, IsString, IsBoolean } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { TicketStatus, TicketType, Priority, UserRole } from '@prisma/client';
+import { TicketStatus, TicketType, Priority } from '@prisma/client';
 import { Transform } from 'class-transformer';
 
 export class FilterTicketsDto {
@@ -49,6 +49,18 @@ export class FilterTicketsDto {
   @Transform(({ value }) => value === 'true')
   @IsBoolean()
   isArchived?: boolean;
+
+  @ApiPropertyOptional({ description: 'Past estimatedDeadline and not closed, completed, or rejected' })
+  @IsOptional()
+  @Transform(({ value }) => value === 'true')
+  @IsBoolean()
+  overdue?: boolean;
+
+  @ApiPropertyOptional({ description: 'Tickets assigned to the caller, or with at least one task assigned to them' })
+  @IsOptional()
+  @Transform(({ value }) => value === 'true')
+  @IsBoolean()
+  mine?: boolean;
 
   @ApiPropertyOptional()
   @IsOptional()

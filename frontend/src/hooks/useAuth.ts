@@ -5,18 +5,20 @@ import { useRouter } from "next/navigation";
 import type { UserRole } from "@/store/auth";
 
 export function useRequireAuth(allowedRoles?: UserRole[]) {
-  const { isAuthenticated, hasRole, user } = useAuthStore();
+  const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
   const router = useRouter();
+  const roleKey = allowedRoles?.join(",");
 
   useEffect(() => {
-    if (!isAuthenticated()) {
+    if (!token) {
       router.replace("/login");
       return;
     }
-    if (allowedRoles && !hasRole(...allowedRoles)) {
+    if (roleKey && !roleKey.split(",").includes(user?.role as string)) {
       router.replace("/dashboard");
     }
-  }, [isAuthenticated, hasRole, router, allowedRoles]);
+  }, [token, user, router, roleKey]);
 
   return user;
 }

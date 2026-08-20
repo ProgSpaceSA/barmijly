@@ -1,0 +1,41 @@
+---
+description: Arabic RTL UI and branding guidelines
+globs: frontend/**/*.{tsx,css}
+alwaysApply: false
+---
+
+# Arabic RTL & Branding
+
+## RTL defaults
+
+- Root layout: `<html lang="ar" dir="rtl">`
+- Use logical properties where possible (`ms-`, `me-`, `ps-`, `pe-`)
+- Test icons that imply direction (chevrons, arrows) — they may need mirroring
+
+## Copy
+
+- User-facing text in Arabic
+- Enum keys stay English in code; labels in `constants.ts`
+- Dates: use `date-fns` with Arabic locale when formatting for display
+
+## Brand palette (from req.md)
+
+| Token | Hex |
+|-------|-----|
+| Primary | `#4F46E5` |
+| Secondary | `#6366F1` |
+| Accent | `#8B5CF6` |
+| Success | `#10B981` |
+| Warning | `#F59E0B` |
+| Danger | `#EF4444` |
+
+## Dark mode
+
+Default is dark (`brm-theme` in localStorage). Support both themes via `next-themes`.
+
+## UX patterns
+
+- Dashboard cards for stats
+- Status badges use `TICKET_STATUS_COLORS` / `PRIORITY_COLORS`
+- Empty states via `EmptyState` component
+- Toast notifications via `sonner`

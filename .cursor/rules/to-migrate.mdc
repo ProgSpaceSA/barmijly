@@ -1,0 +1,43 @@
+---
+description: Log post-deploy commands and env vars as checkboxes in to_migrate.md.
+alwaysApply: true
+---
+
+# Post-deploy checklist
+
+Maintain `to_migrate.md` at the repo root for work the deployer must do **after** the code is live.
+
+## Format
+
+Checkboxes only. One line each: the command or env var, then a short dash description.
+
+```
+# To migrate
+
+- [ ] `cd backend && npx prisma migrate deploy` — Apply pending Prisma migrations
+- [ ] Set `DIGEST_CRON` in backend `.env` — Daily digest schedule (cron)
+```
+
+No essays, file lists, or implementation notes.
+
+## When to append
+
+After a change that production will not pick up from the deploy alone:
+
+- A Prisma migration that needs `migrate deploy`
+- A new or renamed `.env` variable
+- A one-off command (seed, backfill, restart a worker)
+
+Skip if the same unchecked item is already on the list. Do not log local-only steps (`migrate dev`, `prisma generate`, `npm install`).
+
+## When to check off
+
+Only when the user confirms it was done on the deployed environment. Do not tick boxes after a local run or a git commit.
+
+If every item is checked, reset to:
+
+```
+# To migrate
+
+(none)
+```

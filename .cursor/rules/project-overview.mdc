@@ -1,0 +1,18 @@
+---
+description: Core Barmijly context. Pointers only — details live in AGENTS.md.
+alwaysApply: true
+---
+
+# Barmijly
+
+Internal ticket system (**برمجلي**). Read `AGENTS.md` first.
+
+## Non-negotiable
+
+1. No execution without `PROGRAMMING_HEAD` approval
+2. Archive tickets — never delete
+3. Hide `INTERNAL` comments from `TICKET_REQUESTER`
+4. Enforce company/system scoping on every query
+5. Status changes write history + audit + notifications
+
+Details: `req.md` §21. API: `backend/GUIDE.md`. Patterns: `.cursor/skills/barmijly-patterns/reference.md`.

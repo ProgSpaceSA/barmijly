@@ -1,0 +1,6 @@
+- Daily task cronjob emails - summary
+- Developer assignments [Assiging deberloper to a system, Assigning system to developer,Assign task to developer]
+- Scope restriction & permissions 
+- Husky & Github actions 
+- Commenting  
+- 

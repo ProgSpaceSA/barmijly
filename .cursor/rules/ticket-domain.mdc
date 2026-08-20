@@ -1,0 +1,42 @@
+---
+description: Ticket workflow and domain rules for Barmijly
+globs: "{backend/src/tickets/**,frontend/src/**/ticket*,frontend/src/hooks/useTickets.ts}"
+alwaysApply: false
+---
+
+# Ticket Domain Rules
+
+## Status transitions (enforced in TicketsService)
+
+| Action | Endpoint | Allowed from | Actor |
+|--------|----------|--------------|-------|
+| Submit | `PATCH /tickets/:id/submit` | DRAFT | Creator |
+| Approve/Reject/Info | `PATCH /tickets/:id/approve` | NEW, AWAITING_APPROVAL | PROGRAMMING_HEAD |
+| Assign | `PATCH /tickets/:id/assign` | APPROVED | MANAGER, HEAD |
+| Start | `PATCH /tickets/:id/start` | SCHEDULED, APPROVED | DEVELOPER |
+| Submit for testing | `PATCH /tickets/:id/submit-for-testing` | IN_PROGRESS | DEVELOPER |
+| Verify testing | `PATCH /tickets/:id/approve-completion` | AWAITING_TESTING | QA, MANAGER, HEAD |
+| Accept delivery | `PATCH /tickets/:id/approve-completion` | AWAITING_OWNER_APPROVAL | Creator, SYSTEM_OWNER (in scope), MANAGER, HEAD |
+| Close | `PATCH /tickets/:id/close` | COMPLETED | MANAGER, HEAD |
+
+## Approval decisions
+
+`APPROVED` · `REJECTED` · `NEEDS_INFO` · `CONVERT_TO_PROJECT`
+
+## Visibility rules
+
+- `TICKET_REQUESTER`: own tickets only
+- `DEVELOPER`: assigned + mentioned + system/company access
+- `SYSTEM_OWNER`: company tickets
+- `PROGRAMMING_HEAD` / `PROJECT_MANAGER`: all tickets
+
+## Comments
+
+- `PUBLIC` — visible to requester
+- `INTERNAL` — programming team only
+
+## Never
+
+- Skip approval before IN_PROGRESS
+- Close without closure notes
+- Expose internal comments to requesters

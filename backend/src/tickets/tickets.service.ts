@@ -3,6 +3,8 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { AccessService } from '../access/access.service';
+import { assertCan, can, LEADERSHIP } from '../access/permissions';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../email/email.service';
@@ -13,12 +15,14 @@ import { AssignTicketDto } from './dto/assign-ticket.dto';
 import { FilterTicketsDto } from './dto/filter-tickets.dto';
 import { CloseTicketDto } from './dto/close-ticket.dto';
 import { ForceStatusDto } from './dto/force-status.dto';
-import { TicketStatus, UserRole, NotificationType } from '@prisma/client';
+import { Prisma, TicketStatus, UserRole, NotificationType } from '@prisma/client';
+import { actionQueueStatuses } from './action-queues';
 
 @Injectable()
 export class TicketsService {
   constructor(
     private prisma: PrismaService,
+    private access: AccessService,
     private notifications: NotificationsService,
     private audit: AuditService,
     private email: EmailService,
@@ -30,8 +34,12 @@ export class TicketsService {
     const limit = parseInt(filters.limit || '20');
     const skip = (page - 1) * limit;
 
-    const where: any = {
-      isArchived: filters.isArchived ?? false,
+    // Only roles that own the archive may ask for it; everyone else is pinned
+    // to live tickets no matter what they send.
+    const isArchived = can(user.role, 'ticket:read-archived') ? (filters.isArchived ?? false) : false;
+
+    const where: Prisma.TicketWhereInput = {
+      isArchived,
       ...(filters.status && { status: filters.status }),
       ...(filters.type && { type: filters.type }),
       ...(filters.priority && { finalPriority: filters.priority }),
@@ -47,34 +55,37 @@ export class TicketsService {
           { description: { contains: filters.search, mode: 'insensitive' } },
         ],
       }),
+      ...(filters.overdue && {
+        estimatedDeadline: { lt: new Date() },
+        status: { notIn: [TicketStatus.CLOSED, TicketStatus.COMPLETED, TicketStatus.REJECTED] },
+      }),
     };
 
-    if (user.role === UserRole.TICKET_REQUESTER) {
-      where.creatorId = user.id;
-    } else if (user.role === UserRole.DEVELOPER) {
-      const [userSystems, userCompanies] = await Promise.all([
-        this.prisma.userSystem.findMany({ where: { userId: user.id }, select: { systemId: true } }),
-        this.prisma.userCompany.findMany({ where: { userId: user.id }, select: { companyId: true } }),
-      ]);
-      const systemIds = userSystems.map(us => us.systemId);
-      const companyIds = userCompanies.map(uc => uc.companyId);
-      where.OR = [
-        { assignments: { some: { developerId: user.id, isActive: true } } },
-        { tasks:       { some: { assignedToId: user.id } } },
-        { comments:    { some: { mentions: { hasSome: [user.id] } } } },
-        ...(systemIds.length  ? [{ systemId:  { in: systemIds  } }] : []),
-        ...(companyIds.length ? [{ companyId: { in: companyIds } }] : []),
-      ];
-      delete where.assignments;
-    } else if (user.role === UserRole.SYSTEM_OWNER) {
-      const userCompanies = await this.prisma.userCompany.findMany({ where: { userId: user.id }, select: { companyId: true } });
-      const companyIds = userCompanies.map(uc => uc.companyId);
-      where.companyId = { in: companyIds };
-    }
+    // Assigned as the ticket developer, or given at least one task on it.
+    // Uses the authenticated user — never a caller-supplied id — so "تذاكري"
+    // cannot be pointed at someone else.
+    const mineWhere: Prisma.TicketWhereInput | undefined = filters.mine
+      ? {
+          OR: [
+            { assignments: { some: { developerId: user.id, isActive: true } } },
+            { tasks: { some: { assignedToId: user.id } } },
+          ],
+        }
+      : undefined;
+
+    // AND rather than a merge: the scope must survive alongside the search OR,
+    // and a caller-supplied filter must never be able to widen it.
+    const scope = await this.access.ticketScope(user);
+    const extra = [scope, mineWhere].filter(
+      (clause): clause is Prisma.TicketWhereInput => Boolean(clause),
+    );
+    const scopedWhere: Prisma.TicketWhereInput = extra.length
+      ? { AND: [where, ...extra] }
+      : where;
 
     const [data, total] = await Promise.all([
       this.prisma.ticket.findMany({
-        where,
+        where: scopedWhere,
         include: {
           creator: { select: { id: true, firstName: true, lastName: true } },
           system: true,
@@ -88,16 +99,32 @@ export class TicketsService {
         skip,
         take: limit,
       }),
-      this.prisma.ticket.count({ where }),
+      this.prisma.ticket.count({ where: scopedWhere }),
     ]);
 
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async findMyCreated(user: any) {
+    // Personal queue for the dashboard hub. Same action buckets as the daily
+    // digest, plus tickets the user filed or owns — a project manager rarely
+    // files the ticket, but they still have to assign it.
+    const scope = await this.access.ticketScope(user);
+    const queueStatuses = actionQueueStatuses(user.role);
+    const mine: Prisma.TicketWhereInput[] = [
+      { creatorId: user.id },
+      { systemOwnerId: user.id },
+      ...(queueStatuses.length ? [{ status: { in: queueStatuses } }] : []),
+    ];
+
+    const where: Prisma.TicketWhereInput = {
+      isArchived: false,
+      AND: [...(scope ? [scope] : []), { OR: mine }],
+    };
+
     const [tickets, unreadGroups] = await Promise.all([
       this.prisma.ticket.findMany({
-        where: { creatorId: user.id, isArchived: false },
+        where,
         select: {
           id: true, title: true, ticketNumber: true, status: true,
           updatedAt: true, estimatedDeadline: true, priority: true, finalPriority: true,
@@ -133,9 +160,11 @@ export class TicketsService {
         system: true,
         company: true,
         comments: {
-          where: user.role === UserRole.TICKET_REQUESTER ? { visibility: 'PUBLIC' } : {},
+          // INTERNAL threads are for the programming team (req.md §12) — the
+          // filter is applied in the query so they never reach the client.
+          where: this.access.commentVisibilityWhere(user),
           include: {
-            author: { select: { id: true, firstName: true, lastName: true } },
+            author: { select: { id: true, firstName: true, lastName: true, role: true } },
             attachments: true,
           },
           orderBy: { createdAt: 'asc' },
@@ -147,11 +176,14 @@ export class TicketsService {
       },
     });
     if (!ticket) throw new NotFoundException('Ticket not found');
-    await this.enforceVisibility(ticket, user);
+    await this.access.assertCanViewTicket(id, user);
     return ticket;
   }
 
   async create(dto: CreateTicketDto, user: any) {
+    assertCan(user, 'ticket:create');
+    await this.access.assertCanFileAgainst(dto.systemId, dto.companyId, user);
+
     const ticket = await this.prisma.ticket.create({
       data: {
         ...dto,
@@ -167,6 +199,7 @@ export class TicketsService {
   }
 
   async submit(id: string, user: any) {
+    assertCan(user, 'ticket:submit');
     const ticket = await this.getOwnedTicket(id, user);
     const submittableStatuses: TicketStatus[] = [TicketStatus.DRAFT, TicketStatus.AWAITING_INFO];
     if (!submittableStatuses.includes(ticket.status))
@@ -189,19 +222,32 @@ export class TicketsService {
   }
 
   async update(id: string, dto: UpdateTicketDto, user: any) {
+    assertCan(user, 'ticket:update');
     const ticket = await this.getOwnedTicket(id, user);
     const editableStatuses: string[] = [TicketStatus.DRAFT, TicketStatus.AWAITING_INFO];
     if (!editableStatuses.includes(ticket.status)) {
       throw new BadRequestException('Ticket cannot be edited in current status');
     }
+
+    // Re-target only within reach: moving a ticket is the same authorisation
+    // question as filing one.
+    if (dto.systemId || dto.companyId) {
+      await this.access.assertCanFileAgainst(
+        dto.systemId ?? ticket.systemId,
+        dto.companyId ?? ticket.companyId,
+        user,
+      );
+    }
+
     const updated = await this.prisma.ticket.update({ where: { id }, data: dto });
     await this.audit.log({ action: 'UPDATE', entity: 'Ticket', entityId: id, userId: user.id, newValues: dto });
     return updated;
   }
 
   async approve(id: string, dto: ApproveTicketDto, user: any) {
-    this.requireRole(user, [UserRole.PROGRAMMING_HEAD]);
+    assertCan(user, 'ticket:approve');
     const ticket = await this.findById(id);
+    await this.access.assertCanViewTicket(id, user);
 
     const approvableStatuses: string[] = [TicketStatus.NEW, TicketStatus.AWAITING_APPROVAL];
     if (!approvableStatuses.includes(ticket.status)) {
@@ -247,9 +293,13 @@ export class TicketsService {
   }
 
   async assign(id: string, dto: AssignTicketDto, user: any) {
-    this.requireRole(user, [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD]);
+    assertCan(user, 'ticket:assign');
     const ticket = await this.findById(id);
+    await this.access.assertCanViewTicket(id, user);
     if (ticket.status !== TicketStatus.APPROVED) throw new BadRequestException('Only approved tickets can be assigned');
+    // Without this an assignment can hand execution rights to any account id,
+    // including one with no reach into this ticket's system or company.
+    await this.access.assertIsAssignableDeveloper(dto.developerId, ticket);
 
     await this.prisma.ticketAssignment.updateMany({ where: { ticketId: id, isActive: true }, data: { isActive: false } });
 
@@ -278,6 +328,22 @@ export class TicketsService {
       this.changeStatus(ticket, TicketStatus.SCHEDULED, user.id),
     ]);
 
+    // Mirror the ticket as a task for the developer, unless one already exists
+    const existingTask = await this.prisma.ticketTask.findFirst({
+      where: { ticketId: id, assignedToId: developerId, title: ticket.title },
+    });
+    if (!existingTask) {
+      await this.prisma.ticketTask.create({
+        data: {
+          ticketId: id,
+          title: ticket.title,
+          assignedToId: developerId,
+          createdById: user.id,
+          ...(estimatedDeadline ? { dueDate: new Date(estimatedDeadline) } : {}),
+        },
+      });
+    }
+
     await this.notifications.notify(developerId, {
       type: NotificationType.TICKET_ASSIGNED,
       title: 'New ticket assigned to you',
@@ -304,8 +370,9 @@ export class TicketsService {
   }
 
   async startWork(id: string, user: any) {
-    this.requireRole(user, [UserRole.DEVELOPER]);
+    assertCan(user, 'ticket:start');
     const ticket = await this.findById(id);
+    await this.access.assertCanViewTicket(id, user);
     const assignment = await this.prisma.ticketAssignment.findFirst({
       where: { ticketId: id, developerId: user.id, isActive: true },
     });
@@ -315,8 +382,9 @@ export class TicketsService {
   }
 
   async submitForTesting(id: string, user: any) {
-    this.requireRole(user, [UserRole.DEVELOPER]);
+    assertCan(user, 'ticket:submit-testing');
     const ticket = await this.findById(id);
+    await this.access.assertCanViewTicket(id, user);
     const assignment = await this.prisma.ticketAssignment.findFirst({
       where: { ticketId: id, developerId: user.id, isActive: true },
     });
@@ -333,54 +401,65 @@ export class TicketsService {
     return updated;
   }
 
+  /**
+   * Two different transitions behind one endpoint, each with its own gate:
+   * AWAITING_TESTING moves on the tester's word, AWAITING_OWNER_APPROVAL on the
+   * business side (req.md §3: الطالب أو مالك النظام). A developer holds
+   * neither, so they can never sign off on their own delivery.
+   */
   async approveCompletion(id: string, user: any) {
     const ticket = await this.findById(id);
-    const awaitingStatuses: string[] = [TicketStatus.AWAITING_TESTING, TicketStatus.AWAITING_OWNER_APPROVAL];
-    if (!awaitingStatuses.includes(ticket.status)) {
-      throw new BadRequestException('Ticket is not awaiting testing/approval');
-    }
+    await this.access.assertCanViewTicket(id, user);
 
-    const isManagerRole = user.role === UserRole.PROJECT_MANAGER || user.role === UserRole.PROGRAMMING_HEAD;
-
-    // QA or manager confirming the testing step → move to owner approval
-    if (user.role === UserRole.QA || (isManagerRole && ticket.status === TicketStatus.AWAITING_TESTING)) {
+    if (ticket.status === TicketStatus.AWAITING_TESTING) {
+      assertCan(user, 'ticket:verify-testing');
       return this.changeStatus(ticket, TicketStatus.AWAITING_OWNER_APPROVAL, user.id);
     }
 
-    // Manager can also confirm the owner approval step → COMPLETED
-    if (isManagerRole && ticket.status === TicketStatus.AWAITING_OWNER_APPROVAL) {
+    if (ticket.status === TicketStatus.AWAITING_OWNER_APPROVAL) {
+      assertCan(user, 'ticket:accept-delivery');
+      // Leadership can stand in for an absent owner. The requester and the
+      // named system owner always can. Any SYSTEM_OWNER who can already see
+      // the ticket (company / system portfolio) can too — "مالك النظام" is
+      // the role, not only the user id stored on the row.
+      const isLeadership = (LEADERSHIP as string[]).includes(user.role);
+      const isOwnerSide =
+        ticket.creatorId === user.id ||
+        ticket.systemOwnerId === user.id ||
+        user.role === UserRole.SYSTEM_OWNER;
+      if (!isLeadership && !isOwnerSide) throw new ForbiddenException('Not your ticket');
       return this.changeStatus(ticket, TicketStatus.COMPLETED, user.id);
     }
 
-    if (user.role === UserRole.TICKET_REQUESTER && ticket.creatorId !== user.id) {
-      throw new ForbiddenException('Not your ticket');
-    }
-
-    return this.changeStatus(ticket, TicketStatus.COMPLETED, user.id);
+    throw new BadRequestException('Ticket is not awaiting testing/approval');
   }
 
   async close(id: string, dto: CloseTicketDto, user: any) {
-    this.requireRole(user, [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD]);
+    assertCan(user, 'ticket:close');
     const ticket = await this.findById(id);
+    await this.access.assertCanViewTicket(id, user);
     if (ticket.status !== TicketStatus.COMPLETED) throw new BadRequestException('Ticket must be completed before closing');
     return this.prisma.ticket.update({ where: { id }, data: { status: TicketStatus.CLOSED, closureNotes: dto.closureNotes } });
   }
 
   async archive(id: string, user: any) {
-    this.requireRole(user, [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT]);
+    assertCan(user, 'ticket:archive');
     await this.findById(id);
+    await this.access.assertCanViewTicket(id, user);
     return this.prisma.ticket.update({ where: { id }, data: { isArchived: true } });
   }
 
   async unarchive(id: string, user: any) {
-    this.requireRole(user, [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT]);
+    assertCan(user, 'ticket:archive');
     await this.findById(id);
+    await this.access.assertCanViewTicket(id, user);
     return this.prisma.ticket.update({ where: { id }, data: { isArchived: false } });
   }
 
   async reopen(id: string, user: any) {
-    this.requireRole(user, [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD]);
+    assertCan(user, 'ticket:reopen');
     const ticket = await this.findById(id);
+    await this.access.assertCanViewTicket(id, user);
     const reopenableStatuses: string[] = [TicketStatus.CLOSED, TicketStatus.REJECTED];
     if (!reopenableStatuses.includes(ticket.status)) {
       throw new BadRequestException('Only closed or rejected tickets can be reopened');
@@ -389,7 +468,13 @@ export class TicketsService {
   }
 
   async duplicate(id: string, user: any) {
+    assertCan(user, 'ticket:create');
     const ticket = await this.findById(id);
+    // A copy reproduces the whole body, so it needs read rights on the source
+    // and file rights on the target system — not just a ticket id.
+    await this.access.assertCanViewTicket(id, user);
+    await this.access.assertCanFileAgainst(ticket.systemId, ticket.companyId, user);
+
     return this.prisma.ticket.create({
       data: {
         title: `[Copy] ${ticket.title}`,
@@ -411,7 +496,7 @@ export class TicketsService {
   }
 
   async forceStatus(id: string, dto: ForceStatusDto, user: any) {
-    this.requireRole(user, [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT]);
+    assertCan(user, 'ticket:force-status');
     const ticket = await this.findById(id);
     const updated = await this.changeStatus(ticket, dto.status, user.id, dto.reason || 'تغيير يدوي');
     await this.audit.log({ action: 'FORCE_STATUS', entity: 'Ticket', entityId: id, userId: user.id, newValues: { status: dto.status, reason: dto.reason } });
@@ -442,29 +527,13 @@ export class TicketsService {
     return ticket;
   }
 
+  /** The creator, or leadership acting on their behalf. */
   private async getOwnedTicket(id: string, user: any) {
     const ticket = await this.findById(id);
-    const managerRoles: string[] = [UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER];
-    if (ticket.creatorId !== user.id && !managerRoles.includes(user.role)) {
+    await this.access.assertCanViewTicket(id, user);
+    if (ticket.creatorId !== user.id && !(LEADERSHIP as string[]).includes(user.role)) {
       throw new ForbiddenException('Access denied');
     }
     return ticket;
-  }
-
-  private async enforceVisibility(ticket: any, user: any) {
-    const allowedRoles: string[] = [
-      UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER, UserRole.DEVELOPER,
-      UserRole.QA, UserRole.SENIOR_MANAGEMENT,
-    ];
-    if (allowedRoles.includes(user.role)) return;
-    const userCompanies = await this.prisma.userCompany.findMany({ where: { userId: user.id }, select: { companyId: true } });
-    const companyIds = userCompanies.map(uc => uc.companyId);
-    if (ticket.creatorId !== user.id && !companyIds.includes(ticket.companyId)) {
-      throw new ForbiddenException('Access denied');
-    }
-  }
-
-  private requireRole(user: any, roles: UserRole[]) {
-    if (!(roles as string[]).includes(user.role)) throw new ForbiddenException('Insufficient permissions');
   }
 }

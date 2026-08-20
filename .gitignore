@@ -152,3 +152,12 @@ backups/*
 
 # User uploaded files
 backend/uploads/
+
+# Local dev scratch: JWTs, seeded account reference
+data/
+
+# Claude Code skills junction → .cursor/skills (recreate: mklink /J .claude\skills .cursor\skills)
+.claude/skills
+
+# Agent session changelog (cleared after commit)
+.cursor/uncommitted.md
