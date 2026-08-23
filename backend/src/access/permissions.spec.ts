@@ -22,6 +22,7 @@ const EXPECTED: Record<Action, UserRole[]> = {
   'ticket:submit': [UserRole.TICKET_REQUESTER, UserRole.SYSTEM_OWNER, UserRole.DEVELOPER, UserRole.QA, UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
   'ticket:approve': [UserRole.PROGRAMMING_HEAD],
   'ticket:assign': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD],
+  'ticket:update-estimate': [UserRole.DEVELOPER],
   'ticket:start': [UserRole.DEVELOPER],
   'ticket:submit-testing': [UserRole.DEVELOPER],
   'ticket:verify-testing': [UserRole.QA, UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD],
@@ -29,6 +30,9 @@ const EXPECTED: Record<Action, UserRole[]> = {
   'ticket:close': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD],
   'ticket:reopen': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD],
   'ticket:archive': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
+  'ticket:block': [UserRole.DEVELOPER, UserRole.QA, UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
+  'ticket:hold': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
+  'ticket:resume': [UserRole.DEVELOPER, UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
   'ticket:force-status': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
 
   // ---- comments & attachments -------------------------------------------
@@ -39,10 +43,13 @@ const EXPECTED: Record<Action, UserRole[]> = {
 
   // ---- tasks ------------------------------------------------------------
   'task:manage': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
+  'task:create-own': [UserRole.DEVELOPER, UserRole.QA],
 
   // ---- people -----------------------------------------------------------
   'user:read': [UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
+  'user:read-directory': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD],
   'user:manage': [UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
+  'user:manage-membership': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD],
   'user:assign-role': [UserRole.PROGRAMMING_HEAD],
   'invitation:manage': [UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
   'signup:review': [UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
@@ -50,6 +57,8 @@ const EXPECTED: Record<Action, UserRole[]> = {
   // ---- structure --------------------------------------------------------
   'structure:read-all': [UserRole.DEVELOPER, UserRole.QA, UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
   'structure:manage': [UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
+  'structure:manage-roster': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
+  'structure:create-system': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
   'structure:deactivate': [UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
 
   // ---- reporting --------------------------------------------------------

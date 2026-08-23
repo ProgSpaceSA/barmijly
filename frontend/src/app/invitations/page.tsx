@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { SkeletonList } from "@/components/shared/LoadingSpinner";
+import { SkeletonList, SkeletonStat } from "@/components/shared/LoadingSpinner";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { CodeComment } from "@/components/shared/CodeComment";
 import { RelativeTime } from "@/components/shared/RelativeTime";
@@ -11,6 +11,7 @@ import { INVITATION_STATUS_LABELS, ROLE_LABELS } from "@/lib/constants";
 import { useAuthStore } from "@/store/auth";
 import { usePermissions } from "@/hooks/usePermissions";
 import api from "@/lib/api";
+import { qk } from "@/lib/query-keys";
 import { toast } from "sonner";
 import { Ban, RefreshCw, X } from "lucide-react";
 
@@ -133,7 +134,7 @@ export default function InvitationsPage() {
   const [revoking, setRevoking] = useState<Invitation | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["invitations"],
+    queryKey: qk.invitations.all,
     queryFn: () => api.get("/invitations").then(r => r.data),
   });
 
@@ -143,7 +144,7 @@ export default function InvitationsPage() {
     mutationFn: (id: string) => api.patch(`/invitations/${id}/resend`),
     onSuccess: () => {
       toast.success("تم إعادة إرسال الدعوة");
-      qc.invalidateQueries({ queryKey: ["invitations"] });
+      qc.invalidateQueries({ queryKey: qk.invitations.all });
     },
     onError: (e: unknown) => toast.error(apiError(e, "فشل إعادة الإرسال")),
   });
@@ -153,7 +154,7 @@ export default function InvitationsPage() {
     onSuccess: () => {
       toast.success("تم إلغاء الدعوة");
       setRevoking(null);
-      qc.invalidateQueries({ queryKey: ["invitations"] });
+      qc.invalidateQueries({ queryKey: qk.invitations.all });
     },
     onError: (e: unknown) => toast.error(apiError(e, "فشل إلغاء الدعوة")),
   });
@@ -187,24 +188,30 @@ export default function InvitationsPage() {
         description={`${counts.ALL} دعوة إجمالاً${counts.PENDING > 0 ? ` — ${counts.PENDING} معلقة` : ""}`}
       />
 
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      {isLoading ? (
+        <div className="grid grid-cols-2 gap-2 mb-6 sm:grid-cols-4 sm:gap-4">
+          {Array.from({ length: 4 }).map((_, i) => <SkeletonStat key={i} />)}
+        </div>
+      ) : (
+      <div className="grid grid-cols-2 gap-2 mb-6 sm:grid-cols-4 sm:gap-4">
         {stats.map(s => (
           <div
             key={s.key}
-            className="rounded-2xl p-5"
+            className="rounded-2xl p-3 sm:p-5"
             style={{ background: "var(--card)", border: "1px solid var(--border)" }}
           >
-            <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>{s.label}</p>
-            <p className="text-3xl font-bold font-brm mt-1" style={{ color: s.color }}>{s.value}</p>
+            <p className="text-xs sm:text-sm" style={{ color: "var(--muted-foreground)" }}>{s.label}</p>
+            <p className="text-2xl sm:text-3xl font-bold font-brm mt-1" style={{ color: s.color }}>{s.value}</p>
           </div>
         ))}
       </div>
+      )}
 
       <div className="mb-6">
         <p className="font-brm text-xs mb-2 uppercase tracking-widest" style={{ color: "var(--muted-foreground)" }}>
           <CodeComment>الحالة</CodeComment>
         </p>
-        <div className="flex flex-wrap gap-1.5 p-1 rounded-xl w-fit" style={{ background: "var(--muted)" }}>
+        <div className="brm-pill-rail flex flex-wrap gap-1.5 p-1 rounded-xl w-fit max-w-full" style={{ background: "var(--muted)" }}>
           {FILTERS.map(({ key, label }) => (
             <FilterPill
               key={key}
@@ -219,7 +226,7 @@ export default function InvitationsPage() {
       </div>
 
       {isLoading ? (
-        <SkeletonList count={4} />
+        <SkeletonList count={4} variant="people" />
       ) : filtered.length === 0 ? (
         <EmptyState
           title="لا توجد دعوات"
@@ -329,11 +336,11 @@ export default function InvitationsPage() {
           onClick={closeRevokeModal}
         >
           <div
-            className="palette-modal w-full max-w-md rounded-2xl overflow-hidden"
+            className="palette-modal brm-modal max-w-md rounded-2xl overflow-hidden"
             style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 24px 64px rgba(0,0,0,0.3)" }}
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: "1px solid var(--border)" }}>
+            <div className="flex shrink-0 items-center justify-between gap-3 px-5 py-4 sm:px-6 sm:py-5" style={{ borderBottom: "1px solid var(--border)" }}>
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(239,68,68,0.12)" }}>
                   <Ban className="w-5 h-5" style={{ color: "#EF4444" }} />

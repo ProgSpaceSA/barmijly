@@ -199,12 +199,13 @@ function MarkdownBody({ content, className, baseUrl, onImageClick, empty = null 
       a({ href, children, node, ...rest }) {
         const url = resolve(href ?? "");
         const external = isExternal(url);
+        const ticketLink = url.startsWith("/tickets/");
         return (
           <a
             {...rest}
             href={url}
             dir="auto"
-            className="brm-md-link"
+            className={ticketLink ? "brm-ticket-link" : "brm-md-link"}
             {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
           >
             {children}

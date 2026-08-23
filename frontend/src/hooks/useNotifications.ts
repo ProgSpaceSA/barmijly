@@ -1,16 +1,18 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
+import { qk } from "@/lib/query-keys";
 
 function invalidateNotificationQueries(qc: ReturnType<typeof useQueryClient>) {
-  qc.invalidateQueries({ queryKey: ["notifications"] });
-  qc.invalidateQueries({ queryKey: ["notifications-count"] });
-  qc.invalidateQueries({ queryKey: ["my-created-tickets"] });
+  // One prefix: the pages, the unread count, and anything added under them.
+  qc.invalidateQueries({ queryKey: qk.notifications.all });
+  // The created-tickets feed carries the per-ticket unread badge.
+  qc.invalidateQueries({ queryKey: qk.tickets.myCreated() });
 }
 
 export function useNotifications(page = 1, unreadOnly = false, enabled = true) {
   return useQuery({
-    queryKey: ["notifications", page, unreadOnly],
+    queryKey: qk.notifications.page(page, unreadOnly),
     queryFn: () => api.get(`/notifications?page=${page}&unreadOnly=${unreadOnly}`).then(r => r.data),
     refetchInterval: 30_000,
     enabled,
@@ -19,7 +21,7 @@ export function useNotifications(page = 1, unreadOnly = false, enabled = true) {
 
 export function useUnreadCount() {
   return useQuery({
-    queryKey: ["notifications-count"],
+    queryKey: qk.notifications.unreadCount(),
     queryFn: () => api.get("/notifications/unread-count").then(r => r.data),
     refetchInterval: 30_000,
   });
@@ -46,8 +48,8 @@ export function useMarkTicketRead() {
   return useMutation({
     mutationFn: (ticketId: string) => api.patch(`/notifications/ticket/${ticketId}/read`),
     onMutate: async (ticketId) => {
-      await qc.cancelQueries({ queryKey: ["my-created-tickets"] });
-      qc.setQueryData(["my-created-tickets"], (old: unknown) => {
+      await qc.cancelQueries({ queryKey: qk.tickets.myCreated() });
+      qc.setQueryData(qk.tickets.myCreated(), (old: unknown) => {
         if (!Array.isArray(old)) return old;
         return old.map((t: { id: string; unreadCount?: number; hasUpdates?: boolean }) =>
           t.id === ticketId ? { ...t, unreadCount: 0, hasUpdates: false } : t,

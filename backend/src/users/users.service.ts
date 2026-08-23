@@ -4,6 +4,11 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { AccessService } from '../access/access.service';
 import { can, rolesWith } from '../access/permissions';
+import {
+  buildSystemsByCompany,
+  mergeMembershipGrants,
+  normalizeMembershipGrants,
+} from '../access/membership.util';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { AuditService } from '../audit/audit.service';
@@ -16,6 +21,8 @@ const PRIVILEGED_ROLES: UserRole[] = [
   UserRole.PROJECT_MANAGER,
   UserRole.SENIOR_MANAGEMENT,
 ];
+
+const MEMBERSHIP_ROLES: UserRole[] = [UserRole.DEVELOPER, UserRole.QA];
 
 @Injectable()
 export class UsersService {
@@ -74,14 +81,36 @@ export class UsersService {
     });
   }
 
-  async findAll(filters: { role?: UserRole; companyId?: string; isActive?: boolean }) {
+  async findAll(
+    filters: { role?: UserRole; companyId?: string; isActive?: boolean },
+    actor?: any,
+  ) {
+    const directoryOnly = actor && can(actor.role, 'user:read-directory') && !can(actor.role, 'user:read');
+
     return this.prisma.user.findMany({
       where: {
+        ...(directoryOnly && { role: { in: MEMBERSHIP_ROLES } }),
         ...(filters.role && { role: filters.role }),
         ...(filters.companyId && { companyId: filters.companyId }),
         ...(filters.isActive !== undefined && { isActive: filters.isActive }),
       },
-      include: { company: true, department: true, companies: { include: { company: true } } },
+      include: {
+        company: true,
+        department: true,
+        companies: { include: { company: true } },
+        systems: {
+          include: {
+            system: {
+              select: {
+                id: true,
+                name: true,
+                companyId: true,
+                company: { select: { id: true, name: true } },
+              },
+            },
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -92,7 +121,8 @@ export class UsersService {
       include: {
         company: true,
         department: true,
-        systems: { include: { system: true } },
+        companies: { include: { company: true } },
+        systems: { include: { system: { include: { company: { select: { id: true, name: true } } } } } },
       },
     });
     if (!user) throw new NotFoundException('User not found');
@@ -146,6 +176,30 @@ export class UsersService {
 
   async update(id: string, dto: UpdateUserDto, actor?: any) {
     const existing = await this.findOne(id);
+    const membershipOnly =
+      actor &&
+      can(actor.role, 'user:manage-membership') &&
+      !can(actor.role, 'user:manage');
+
+    if (membershipOnly) {
+      this.access.assertCanManageUserMembership(actor, existing);
+      const { companyIds, systemIds } = dto as any;
+      if (companyIds === undefined && systemIds === undefined) {
+        throw new BadRequestException('Nothing to update');
+      }
+      if (
+        dto.firstName !== undefined ||
+        dto.lastName !== undefined ||
+        dto.role !== undefined ||
+        dto.companyId !== undefined ||
+        dto.departmentId !== undefined ||
+        dto.password !== undefined
+      ) {
+        throw new ForbiddenException('Only project membership can be changed');
+      }
+      return this.applyMembershipChange(id, existing, companyIds, systemIds, actor);
+    }
+
     const { systemIds, companyIds, ...data } = dto as any;
 
     if (data.role !== undefined && data.role !== existing.role) {
@@ -157,6 +211,26 @@ export class UsersService {
       if (actor?.id === id) {
         throw new BadRequestException('Cannot change your own role');
       }
+    }
+
+    let resolvedCompanyIds = companyIds as string[] | undefined;
+    let resolvedSystemIds = systemIds as string[] | undefined;
+
+    if (companyIds !== undefined || systemIds !== undefined) {
+      const allSystems = await this.prisma.system.findMany({
+        where: { isActive: true },
+        select: { id: true, companyId: true },
+      });
+      const systemsByCompany = buildSystemsByCompany(allSystems);
+      const nextCompanyIds = companyIds ?? existing.companies.map((c) => c.companyId);
+      const nextSystemIds = systemIds ?? existing.systems.map((s) => s.systemId);
+      const normalized = normalizeMembershipGrants(
+        nextCompanyIds,
+        nextSystemIds,
+        systemsByCompany,
+      );
+      resolvedCompanyIds = normalized.companyIds;
+      resolvedSystemIds = normalized.systemIds;
     }
 
     if (systemIds !== undefined) {
@@ -171,12 +245,53 @@ export class UsersService {
       where: { id },
       data: {
         ...data,
-        ...(data.companyId === undefined && companyIds?.length ? { companyId: companyIds[0] } : {}),
-        ...(systemIds && { systems: { create: systemIds.map((systemId: string) => ({ systemId })) } }),
-        ...(companyIds?.length && { companies: { create: companyIds.map((companyId: string) => ({ companyId })) } }),
+        ...(resolvedCompanyIds !== undefined
+          ? { companyId: resolvedCompanyIds.length ? resolvedCompanyIds[0] : null }
+          : {}),
+        ...(resolvedSystemIds && {
+          systems: { create: resolvedSystemIds.map((systemId: string) => ({ systemId })) },
+        }),
+        ...(resolvedCompanyIds && {
+          companies: {
+            create: resolvedCompanyIds.map((companyId: string) => ({ companyId })),
+          },
+        }),
       },
-      include: { company: true, department: true, systems: { include: { system: true } }, companies: { include: { company: true } } },
+      include: {
+        company: true,
+        department: true,
+        systems: {
+          include: {
+            system: {
+              select: {
+                id: true,
+                name: true,
+                companyId: true,
+                company: { select: { id: true, name: true } },
+              },
+            },
+          },
+        },
+        companies: { include: { company: true } },
+      },
     });
+
+    if (actor?.id && (companyIds !== undefined || systemIds !== undefined)) {
+      await this.audit.log({
+        action: 'MEMBERSHIP_CHANGE',
+        entity: 'User',
+        entityId: id,
+        userId: actor.id,
+        oldValues: {
+          companyIds: existing.companies.map((c) => c.companyId),
+          systemIds: existing.systems.map((s) => s.systemId),
+        },
+        newValues: {
+          companyIds: updated.companies.map((c) => c.companyId),
+          systemIds: updated.systems.map((s) => s.systemId),
+        },
+      });
+    }
 
     if (actor?.id && data.role && data.role !== existing.role) {
       await this.audit.log({
@@ -188,6 +303,92 @@ export class UsersService {
         newValues: { role: data.role },
       });
     }
+
+    return updated;
+  }
+
+  private async applyMembershipChange(
+    id: string,
+    existing: Awaited<ReturnType<UsersService['findOne']>>,
+    companyIds: string[] | undefined,
+    systemIds: string[] | undefined,
+    actor: any,
+  ) {
+    const allSystems = await this.prisma.system.findMany({
+      where: { isActive: true },
+      select: { id: true, companyId: true },
+    });
+    const systemsByCompany = buildSystemsByCompany(allSystems);
+    const scope = await this.access.editableMembershipScope(actor);
+
+    const existingGrants = {
+      companyIds: existing.companies.map((c) => c.companyId),
+      systemIds: existing.systems.map((s) => s.systemId),
+    };
+
+    const patch = {
+      companyIds: companyIds ?? existingGrants.companyIds.filter((cid) =>
+        scope.companyIds?.includes(cid),
+      ),
+      systemIds: systemIds ?? existingGrants.systemIds.filter((sid) =>
+        scope.systemIds?.includes(sid),
+      ),
+    };
+
+    const merged = mergeMembershipGrants(
+      existingGrants,
+      patch,
+      scope.companyIds,
+      scope.systemIds,
+      systemsByCompany,
+    );
+
+    await this.prisma.userSystem.deleteMany({ where: { userId: id } });
+    await this.prisma.userCompany.deleteMany({ where: { userId: id } });
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: {
+        // Always rewrite the legacy single-company FK so the list column and
+        // reopen-edit tree match UserCompany after a clear or company switch.
+        companyId: merged.companyIds.length ? merged.companyIds[0] : null,
+        ...(merged.systemIds.length
+          ? { systems: { create: merged.systemIds.map((systemId) => ({ systemId })) } }
+          : {}),
+        ...(merged.companyIds.length
+          ? { companies: { create: merged.companyIds.map((companyId) => ({ companyId })) } }
+          : {}),
+      },
+      include: {
+        company: true,
+        department: true,
+        systems: {
+          include: {
+            system: {
+              select: {
+                id: true,
+                name: true,
+                companyId: true,
+                company: { select: { id: true, name: true } },
+              },
+            },
+          },
+        },
+        companies: { include: { company: true } },
+      },
+    });
+
+    await this.audit.log({
+      action: 'MEMBERSHIP_CHANGE',
+      entity: 'User',
+      entityId: id,
+      userId: actor.id,
+      oldValues: existingGrants,
+      newValues: {
+        companyIds: updated.companies.map((c) => c.companyId),
+        systemIds: updated.systems.map((s) => s.systemId),
+      },
+    });
 
     return updated;
   }
@@ -205,10 +406,18 @@ export class UsersService {
   }
 
   /**
-   * The assign picker. With a `ticketId` it lists only developers who can reach
-   * that ticket, matching what `PATCH /tickets/:id/assign` will accept.
+   * Developers the caller may filter or assign by.
+   *
+   * - With `ticketId`: people assignable to that ticket.
+   * - With `pool=roster`: every active developer (PM/head staffing a system).
+   * - Default: caller's company/portfolio reach — tickets assignment chips and
+   *   reports use this so a PM only sees developers in their portfolio.
    */
-  async getDevelopers(user: any, ticketId?: string) {
+  async getDevelopers(
+    user: any,
+    ticketId?: string,
+    opts?: { pool?: 'roster' },
+  ) {
     if (ticketId) {
       const ticket = await this.prisma.ticket.findUnique({
         where: { id: ticketId },
@@ -219,7 +428,17 @@ export class UsersService {
       return this.access.assignableDevelopers(ticket);
     }
 
-    // No ticket in hand: fall back to the caller's own company reach.
+    if (
+      opts?.pool === 'roster' &&
+      (can(user?.role, 'structure:manage-roster') || can(user?.role, 'user:read-directory'))
+    ) {
+      return this.prisma.user.findMany({
+        where: { role: UserRole.DEVELOPER, isActive: true },
+        select: { id: true, firstName: true, lastName: true, email: true },
+        orderBy: { firstName: 'asc' },
+      });
+    }
+
     const companyIds = await this.access.visibleCompanyIds(user);
     return this.prisma.user.findMany({
       where: {
@@ -236,6 +455,7 @@ export class UsersService {
             }),
       },
       select: { id: true, firstName: true, lastName: true, email: true },
+      orderBy: { firstName: 'asc' },
     });
   }
 }

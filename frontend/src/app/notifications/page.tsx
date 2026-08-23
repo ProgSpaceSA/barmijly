@@ -8,12 +8,14 @@ import { CodeComment } from "@/components/shared/CodeComment";
 import { RelativeTime } from "@/components/shared/RelativeTime";
 import { useNotifications, useUnreadCount, useMarkRead, useMarkAllRead } from "@/hooks/useNotifications";
 import { Button } from "@/components/ui/button";
-import { NOTIFICATION_TYPE_LABELS } from "@/lib/constants";
+import { NOTIFICATION_TYPE_LABELS, notificationTitle } from "@/lib/constants";
 import { TicketCodeBadge } from "@/components/shared/TicketCodeBadge";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import { toast } from "sonner";
 import Link from "next/link";
 import { format, isToday, isYesterday, isThisWeek } from "date-fns";
+import { parseTimestamp } from "@/lib/dates";
+import { isPastDue } from "@/lib/due-remaining";
 import { ar } from "date-fns/locale";
 import {
   Bell,
@@ -59,7 +61,7 @@ const DONE_STATUSES = new Set(["CLOSED", "COMPLETED", "REJECTED"]);
 
 function isOverdue(ticket: NotificationTicket) {
   if (!ticket.estimatedDeadline || DONE_STATUSES.has(ticket.status)) return false;
-  return new Date(ticket.estimatedDeadline) < new Date();
+  return isPastDue(ticket.estimatedDeadline);
 }
 
 function ticketLabel(ticket?: NotificationTicket | null) {
@@ -199,7 +201,7 @@ export default function NotificationsPage() {
         <p className="font-brm text-xs mb-2 uppercase tracking-widest" style={{ color: "var(--muted-foreground)" }}>
           <CodeComment>الحالة</CodeComment>
         </p>
-        <div className="flex flex-wrap gap-1.5 p-1 rounded-xl w-fit" style={{ background: "var(--muted)" }}>
+        <div className="brm-pill-rail flex flex-wrap gap-1.5 p-1 rounded-xl w-fit max-w-full" style={{ background: "var(--muted)" }}>
           <FilterPill
             label="الكل"
             count={allTotal}
@@ -216,7 +218,7 @@ export default function NotificationsPage() {
       </div>
 
       {isLoading ? (
-        <SkeletonList count={6} />
+        <SkeletonList count={6} variant="rows" />
       ) : notifications.length === 0 ? (
         <EmptyState
           title={unreadOnly ? "لا توجد إشعارات غير مقروءة" : "لا توجد إشعارات"}
@@ -256,12 +258,12 @@ export default function NotificationsPage() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p
-                          className="text-sm truncate"
+                          className="brm-row-title text-sm"
                           style={{ fontWeight: n.isRead ? 500 : 600, color: "var(--foreground)" }}
                         >
-                          {n.title}
+                          {notificationTitle(n.type, n.title)}
                         </p>
-                        <p className="text-xs truncate mt-0.5" style={{ color: "var(--muted-foreground)" }}>
+                        <p className="brm-row-title text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
                           <span style={{ color: meta.color }}>{typeLabel}</span>
                           <span> · {ticketLabel(n.ticket) ? `«${ticketLabel(n.ticket)}»` : n.body}</span>
                         </p>
@@ -285,7 +287,7 @@ export default function NotificationsPage() {
                                 style={{ color: isOverdue(n.ticket) ? undefined : "var(--muted-foreground)" }}
                               >
                                 <Clock className="w-3 h-3" aria-hidden />
-                                التسليم: {format(new Date(n.ticket.estimatedDeadline), "d MMM yyyy", { locale: ar })}
+                                التسليم: {format(parseTimestamp(n.ticket.estimatedDeadline), "d MMM yyyy", { locale: ar })}
                               </span>
                             )}
                           </div>
@@ -297,13 +299,13 @@ export default function NotificationsPage() {
                   return (
                     <div
                       key={n.id}
-                      className="flex items-center gap-2 hover:bg-muted/50 transition-colors ps-0 pe-3"
+                      className="flex flex-wrap items-center gap-2 hover:bg-muted/50 transition-colors ps-0 pe-3"
                       style={{ borderTop: i === 0 ? undefined : "1px solid var(--border)" }}
                     >
                       {n.ticketId ? (
                         <Link
                           href={`/tickets/${n.ticketId}`}
-                          className="flex flex-1 min-w-0"
+                          className="flex flex-1 basis-64 min-w-0"
                           onClick={() => { if (!n.isRead) handleMarkOne(n.id); }}
                         >
                           {row}
@@ -312,7 +314,7 @@ export default function NotificationsPage() {
                         row
                       )}
 
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-2 shrink-0 ms-auto pb-2 ps-3 sm:pb-0 sm:ps-0">
                           <RelativeTime date={n.createdAt} label="تاريخ الإنشاء" />
                         {!n.isRead && (
                           <Button

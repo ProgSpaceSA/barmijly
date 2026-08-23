@@ -1,11 +1,27 @@
-import { IsUUID, IsOptional, IsInt, IsDateString, IsBoolean, IsEnum, IsString } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsUUID, IsOptional, IsInt, IsDateString, IsBoolean, IsEnum, IsString,
+  IsArray, ArrayMinSize, Min, Max,
+} from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Priority } from '@prisma/client';
 
 export class AssignTicketDto {
-  @ApiProperty()
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Optional explicit roster. When omitted, the active working team is used.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsUUID('4', { each: true })
+  developerIds?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Which developer owns the ticket-level transitions. Defaults to the first entry.',
+  })
+  @IsOptional()
   @IsUUID()
-  developerId: string;
+  leadDeveloperId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -22,9 +38,11 @@ export class AssignTicketDto {
   @IsDateString()
   estimatedDeadline?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Difficulty 1–5.' })
   @IsOptional()
   @IsInt()
+  @Min(1)
+  @Max(5)
   difficultyLevel?: number;
 
   @ApiPropertyOptional({ enum: Priority })

@@ -102,17 +102,17 @@ export function CommandPalette() {
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-start justify-center pt-[15vh]"
+      className="fixed inset-0 z-[9999] flex items-start justify-center p-4 pt-[12vh] sm:pt-[15vh]"
       style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}
       onClick={() => setOpen(false)}
     >
       <div
-        className="palette-modal w-full max-w-lg rounded-2xl overflow-hidden"
+        className="palette-modal brm-modal max-w-lg rounded-2xl overflow-hidden"
         style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 24px 64px rgba(0,0,0,0.3)" }}
         onClick={e => e.stopPropagation()}
       >
         {/* Search input */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b" style={{ borderColor: "var(--border)" }}>
+        <div className="flex shrink-0 items-center gap-3 px-4 py-3 border-b" style={{ borderColor: "var(--border)" }}>
           <Search className="w-4 h-4 shrink-0" style={{ color: "var(--muted-foreground)" }} />
           <input
             ref={inputRef}
@@ -129,7 +129,7 @@ export function CommandPalette() {
         </div>
 
         {/* Results */}
-        <div className="max-h-72 overflow-y-auto py-1">
+        <div className="max-h-72 flex-1 overflow-y-auto py-1">
           {results.map((r, i) => (
             <button
               key={r.id}
@@ -149,7 +149,7 @@ export function CommandPalette() {
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-2 border-t flex gap-4" style={{ borderColor: "var(--border)" }}>
+        <div className="hidden shrink-0 gap-4 border-t px-4 py-2 sm:flex" style={{ borderColor: "var(--border)" }}>
           {[["↑↓", "تنقل"], ["↵", "فتح"], ["ESC", "إغلاق"]].map(([k, l]) => (
             <span key={k} className="flex items-center gap-1 font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>
               <kbd className="px-1 py-0.5 rounded text-[10px]" style={{ background: "var(--muted)" }}>{k}</kbd> {l}

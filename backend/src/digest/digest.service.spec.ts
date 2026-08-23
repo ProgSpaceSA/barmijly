@@ -76,23 +76,31 @@ const ROLE_ACTION_QUEUES: Array<{
     queriedStatuses: [
       TicketStatus.NEW, TicketStatus.AWAITING_APPROVAL, TicketStatus.APPROVED,
       TicketStatus.AWAITING_TESTING, TicketStatus.AWAITING_OWNER_APPROVAL,
+      TicketStatus.BLOCKED, TicketStatus.ON_HOLD,
     ],
     groups: [
       { label: 'بانتظار اعتمادك', statuses: [TicketStatus.NEW, TicketStatus.AWAITING_APPROVAL] },
       { label: 'معتمدة بانتظار الإسناد', statuses: [TicketStatus.APPROVED] },
       { label: 'بانتظار الاختبار', statuses: [TicketStatus.AWAITING_TESTING] },
       { label: 'بانتظار اعتماد الإغلاق', statuses: [TicketStatus.AWAITING_OWNER_APPROVAL] },
+      // A stopped ticket used to fall out of every queue and every digest, so
+      // ON_HOLD was somewhere tickets went to be forgotten.
+      { label: 'متوقفة بانتظار رفع العائق', statuses: [TicketStatus.BLOCKED] },
+      { label: 'معلقة', statuses: [TicketStatus.ON_HOLD] },
     ],
   },
   {
     recipient: PM,
     queriedStatuses: [
       TicketStatus.APPROVED, TicketStatus.AWAITING_TESTING, TicketStatus.AWAITING_OWNER_APPROVAL,
+      TicketStatus.BLOCKED, TicketStatus.ON_HOLD,
     ],
     groups: [
       { label: 'معتمدة بانتظار الإسناد', statuses: [TicketStatus.APPROVED] },
       { label: 'بانتظار الاختبار', statuses: [TicketStatus.AWAITING_TESTING] },
       { label: 'بانتظار اعتماد الإغلاق', statuses: [TicketStatus.AWAITING_OWNER_APPROVAL] },
+      { label: 'متوقفة بانتظار رفع العائق', statuses: [TicketStatus.BLOCKED] },
+      { label: 'معلقة', statuses: [TicketStatus.ON_HOLD] },
     ],
   },
   {
@@ -111,10 +119,11 @@ const ROLE_ACTION_QUEUES: Array<{
   },
   {
     recipient: DEVELOPER,
-    queriedStatuses: [TicketStatus.SCHEDULED, TicketStatus.IN_PROGRESS],
+    queriedStatuses: [TicketStatus.SCHEDULED, TicketStatus.IN_PROGRESS, TicketStatus.BLOCKED],
     groups: [
       { label: 'مجدولة للبدء', statuses: [TicketStatus.SCHEDULED] },
       { label: 'قيد التنفيذ لديك', statuses: [TicketStatus.IN_PROGRESS] },
+      { label: 'متوقفة لديك', statuses: [TicketStatus.BLOCKED] },
     ],
   },
   {
@@ -143,6 +152,8 @@ const ticketRow = (over: Partial<Record<string, unknown>> = {}) => ({
   priority: null,
   finalPriority: null,
   estimatedDeadline: null,
+  company: { name: 'شركة سنم' },
+  system: { name: 'نظام الفواتير' },
   ...over,
 });
 
@@ -264,6 +275,14 @@ describe('DigestService', () => {
 
     it('registers nothing when DAILY_DIGEST_ENABLED=false', () => {
       env.DAILY_DIGEST_ENABLED = 'false';
+
+      service.onModuleInit();
+
+      expect(scheduler.addCronJob).not.toHaveBeenCalled();
+    });
+
+    it('registers nothing when DAILY_DIGEST_ENABLED=False (case-insensitive)', () => {
+      env.DAILY_DIGEST_ENABLED = 'False';
 
       service.onModuleInit();
 
@@ -420,7 +439,7 @@ describe('DigestService', () => {
       )[0].where.status.in;
 
       expect(qaStatuses).toEqual([TicketStatus.AWAITING_TESTING]);
-      expect(devStatuses).toEqual([TicketStatus.SCHEDULED, TicketStatus.IN_PROGRESS]);
+      expect(devStatuses).toEqual([TicketStatus.SCHEDULED, TicketStatus.IN_PROGRESS, TicketStatus.BLOCKED]);
     });
   });
 

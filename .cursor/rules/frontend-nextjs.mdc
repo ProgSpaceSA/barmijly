@@ -43,6 +43,49 @@ Hide actions the user's role cannot perform. Backend still enforces — UI hidin
 - Layout: `src/components/layout/` (Sidebar, etc.)
 - Pages: thin — delegate to hooks and shared components
 
+## Loading
+
+- Page and list data: matching skeleton from `LoadingSpinner.tsx` (`SkeletonList`, `SkeletonTable`, `SkeletonTicketDetail`, …)
+- `FullPageLoading` is only the AppShell auth gate on first hydrate — not tab switches
+- Do not show a spinner and then a skeleton on the same navigation
+
+## Responsive
+
+Every screen must work from ~360px up. Read `.cursor/rules/responsive-ui.mdc` before adding or restyling UI.
+
+## Dropdowns
+
+Never use native `<select>`. Pick the control by list length:
+
+- **≤ ~8 options, all visible at once:** `BrmOptionList` inside `BrmPanel`
+- **Compact picker (relation kind, difficulty, …):** `ThemeSelect`
+
+Placeholders live in `SELECT_PLACEHOLDERS` (`constants.ts`). Enum labels stay in their own maps (`DIFFICULTY_LABELS`, `PRIORITY_LABELS`, …).
+
+## Modals & picker panels
+
+### Overlay dialogs (confirm, forms)
+
+Every blocking dialog uses the same shell — do not invent a one-off layout.
+
+- **Backdrop:** `fixed inset-0 z-50 flex items-center justify-center p-4`, `background: rgba(0,0,0,0.6)`, `backdropFilter: blur(4px)`; click backdrop to dismiss when safe
+- **Card:** `palette-modal brm-modal rounded-2xl overflow-hidden`, `max-w-md` or `max-w-lg`, `background: var(--card)`, `border: 1px solid var(--border)`, shadow `0 24px 64px rgba(0,0,0,0.3)`
+- **Header:** icon tile (`w-9 h-9 rounded-xl`, brand or warning tint) + bold title; dismiss with X or `إلغاء`
+- **Body:** last child scrolls — `.brm-modal` caps height at `min(90dvh, 100% - 2rem)`
+
+References: `ConfirmModal` in `tickets/[id]/page.tsx`, `Modal` in `users/page.tsx`, revoke/reject flows in `invitations/page.tsx`.
+
+### Inline picker panels (expand-in-place)
+
+Short lists and add flows that open inside a card (relations, filters) use shared building blocks:
+
+- **`BrmPanel`** — muted panel; full header (icon + title + cancel) when standalone, or `embedded` when the parent card already has the section title
+- **`ThemeSelect`** — relation kind, difficulty, and other compact enum pickers
+- **`BrmOptionList`** — only when every option should stay visible in the panel
+- Search result rows inside a panel reuse **`brm-list-choice`** hover styling
+
+Never use native `<select>` in these panels. Reference: `TicketDependencies.tsx`.
+
 ## Styling
 
 - Tailwind CSS 4 with brand colors from `req.md` §17

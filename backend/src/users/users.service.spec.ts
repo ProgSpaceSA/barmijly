@@ -16,14 +16,17 @@ const existingUser = {
   email: 'user@company.com',
   role: UserRole.TICKET_REQUESTER,
   companyId: 'company-1',
+  companies: [],
+  systems: [],
 };
 
 describe('UsersService', () => {
   let service: UsersService;
   let prisma: {
-    user: { findUnique: jest.Mock; update: jest.Mock };
-    userSystem: { deleteMany: jest.Mock };
-    userCompany: { deleteMany: jest.Mock };
+    user: { findUnique: jest.Mock; update: jest.Mock; findMany: jest.Mock };
+    userSystem: { deleteMany: jest.Mock; findMany: jest.Mock };
+    userCompany: { deleteMany: jest.Mock; findMany: jest.Mock };
+    system: { findMany: jest.Mock };
   };
   let audit: { log: jest.Mock };
 
@@ -31,10 +34,19 @@ describe('UsersService', () => {
     prisma = {
       user: {
         findUnique: jest.fn().mockResolvedValue(existingUser),
-        update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ ...existingUser, ...data })),
+        findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn().mockImplementation(({ data }) =>
+          Promise.resolve({
+            ...existingUser,
+            ...data,
+            companies: data.companies?.create?.map((c: { companyId: string }) => ({ companyId: c.companyId })) ?? [],
+            systems: data.systems?.create?.map((s: { systemId: string }) => ({ systemId: s.systemId })) ?? [],
+          }),
+        ),
       },
-      userSystem: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-      userCompany: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      system: { findMany: jest.fn().mockResolvedValue([]) },
+      userCompany: { findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      userSystem: { findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
     };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
 
@@ -48,6 +60,63 @@ describe('UsersService', () => {
     }).compile();
 
     service = module.get<UsersService>(UsersService);
+  });
+
+  describe('update — PM membership', () => {
+    const pm = { id: 'pm-1', role: UserRole.PROJECT_MANAGER, companyId: null };
+    const dev = {
+      ...existingUser,
+      role: UserRole.DEVELOPER,
+      companies: [{ companyId: 'company-1' }],
+      systems: [{ systemId: 'system-1' }],
+    };
+
+    beforeEach(() => {
+      prisma.user.findUnique.mockResolvedValue(dev);
+      prisma.system.findMany.mockResolvedValue([
+        { id: 'system-1', companyId: 'company-1' },
+        { id: 'system-2', companyId: 'company-1' },
+      ]);
+      prisma.userCompany.findMany.mockResolvedValue([{ companyId: 'company-1' }]);
+      prisma.userSystem.findMany.mockResolvedValue([{ systemId: 'system-1' }]);
+    });
+
+    it('allows a PM to patch dev/QA membership only', async () => {
+      await service.update(
+        USER_ID,
+        { companyIds: ['company-1'], systemIds: ['system-2'] },
+        pm,
+      );
+
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            companyId: 'company-1',
+          }),
+        }),
+      );
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'MEMBERSHIP_CHANGE', userId: pm.id }),
+      );
+    });
+
+    it('clears companyId when membership is emptied', async () => {
+      await service.update(USER_ID, { companyIds: [], systemIds: [] }, pm);
+
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ companyId: null }),
+        }),
+      );
+    });
+
+    it('refuses membership edits on non dev/QA users', async () => {
+      prisma.user.findUnique.mockResolvedValue(existingUser);
+
+      await expect(
+        service.update(USER_ID, { companyIds: ['company-1'] }, pm),
+      ).rejects.toThrow(ForbiddenException);
+    });
   });
 
   describe('update — role auditing', () => {
@@ -152,6 +221,76 @@ describe('UsersService', () => {
 
       expect(prisma.userCompany.deleteMany).not.toHaveBeenCalled();
       expect(prisma.userSystem.deleteMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findAll — directory', () => {
+    it('lists only DEV and QA for a project manager', async () => {
+      const pm = { id: 'pm-1', role: UserRole.PROJECT_MANAGER };
+      prisma.user.findMany.mockResolvedValue([{ id: 'd1', role: UserRole.DEVELOPER }]);
+
+      await service.findAll({}, pm);
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            role: { in: [UserRole.DEVELOPER, UserRole.QA] },
+          }),
+        }),
+      );
+    });
+
+    it('does not role-narrow the list for programming head', async () => {
+      await service.findAll({}, ACTOR);
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.not.objectContaining({
+            role: { in: [UserRole.DEVELOPER, UserRole.QA] },
+          }),
+        }),
+      );
+    });
+  });
+
+  describe('getDevelopers — portfolio vs roster', () => {
+    it('scopes the default list to a PM portfolio', async () => {
+      const pm = { id: 'pm-1', role: UserRole.PROJECT_MANAGER };
+      prisma.user.findMany.mockResolvedValue([]);
+      // AccessService reads portfolio through these mocks when visibleCompanyIds runs.
+      (prisma as any).userCompany = {
+        findMany: jest.fn().mockResolvedValue([{ companyId: 'company-1' }]),
+      };
+      (prisma as any).userSystem = { findMany: jest.fn().mockResolvedValue([]) };
+      (prisma as any).system = {
+        ...(prisma as any).system,
+        findMany: jest.fn().mockResolvedValue([{ id: 'system-1', companyId: 'company-1' }]),
+      };
+
+      await service.getDevelopers(pm);
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            role: UserRole.DEVELOPER,
+            isActive: true,
+            OR: expect.any(Array),
+          }),
+        }),
+      );
+    });
+
+    it('returns the full pool when pool=roster for a PM', async () => {
+      const pm = { id: 'pm-1', role: UserRole.PROJECT_MANAGER };
+      prisma.user.findMany.mockResolvedValue([]);
+
+      await service.getDevelopers(pm, undefined, { pool: 'roster' });
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { role: UserRole.DEVELOPER, isActive: true },
+        }),
+      );
     });
   });
 });

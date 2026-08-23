@@ -1,14 +1,15 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, type Control, type FieldError } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { AppShell } from "@/components/layout/AppShell";
 import { useCreateTicket } from "@/hooks/useTickets";
 import api from "@/lib/api";
 import { Switch } from "@/components/ui/switch";
-import { SELECT_PLACEHOLDERS, TICKET_TYPE_LABELS } from "@/lib/constants";
+import { ThemeSelect } from "@/components/shared/ThemeSelect";
+import { PRIORITY_LABELS, SELECT_PLACEHOLDERS, TICKET_TYPE_LABELS } from "@/lib/constants";
 import { ArrowLeft, ImagePlus, Paperclip, X, FileText } from "lucide-react";
 import { usePermissions } from "@/hooks/usePermissions";
 import { MarkdownEditor } from "@/components/shared/MarkdownEditor";
@@ -27,6 +28,9 @@ const schema = z.object({
   priority: z.string().optional(),
 });
 
+type FormValues = z.infer<typeof schema>;
+type SelectOption = { value: string; label: string };
+
 function formatBytes(b: number) {
   if (b < 1024) return `${b} B`;
   if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`;
@@ -34,7 +38,7 @@ function formatBytes(b: number) {
 }
 
 const fieldStyle: React.CSSProperties = {
-  background: "var(--muted)",
+  backgroundColor: "var(--muted)",
   border: "1px solid var(--border)",
   color: "var(--foreground)",
 };
@@ -72,19 +76,37 @@ function FormTextarea({ register, name, error, rows = 3, placeholder }: any) {
   );
 }
 
-function FormSelect({ register, name, error, children, disabled }: any) {
+function FormSelect({
+  control,
+  name,
+  error,
+  placeholder,
+  items,
+  disabled,
+}: {
+  control: Control<FormValues>;
+  name: "type" | "systemId" | "companyId" | "priority";
+  error?: FieldError;
+  placeholder: string;
+  items: SelectOption[];
+  disabled?: boolean;
+}) {
   return (
     <div>
-      <select
-        {...register(name)}
-        disabled={disabled}
-        className="w-full rounded-xl px-4 py-2.5 text-sm outline-none cursor-pointer appearance-none disabled:opacity-40"
-        style={fieldStyle}
-        onFocus={(e: any) => (e.target.style.borderColor = "#4F46E5")}
-        onBlur={(e: any) => (e.target.style.borderColor = "var(--border)")}
-      >
-        {children}
-      </select>
+      <Controller
+        name={name}
+        control={control}
+        render={({ field }) => (
+          <ThemeSelect
+            value={field.value ?? ""}
+            onChange={field.onChange}
+            onBlur={field.onBlur}
+            placeholder={placeholder}
+            items={items}
+            disabled={disabled}
+          />
+        )}
+      />
       {error && <p className="text-red-500 text-xs mt-1">{error.message}</p>}
     </div>
   );
@@ -93,10 +115,10 @@ function FormSelect({ register, name, error, children, disabled }: any) {
 function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-2xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-      <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--border)" }}>
+      <div className="px-4 py-3.5 sm:px-6 sm:py-4" style={{ borderBottom: "1px solid var(--border)" }}>
         <h2 className="font-bold text-sm" style={{ color: "var(--foreground)" }}>{title}</h2>
       </div>
-      <div className="p-6 space-y-5">{children}</div>
+      <div className="p-4 space-y-5 sm:p-6">{children}</div>
     </div>
   );
 }
@@ -142,7 +164,7 @@ export default function NewTicketPage() {
   // role holding structure:read-all gets the full pickers.
   const isRestricted = !allowed("structure:read-all");
 
-  const { register, handleSubmit, watch, setValue, reset, control, formState: { errors, isSubmitting } } = useForm({
+  const { register, handleSubmit, watch, setValue, reset, control, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { hasFinancialLoss: false, type: "", companyId: "", systemId: "", priority: "MEDIUM" },
   });
@@ -278,63 +300,54 @@ export default function NewTicketPage() {
               <Label>عنوان الطلب *</Label>
               <FormInput register={register} name="title" placeholder="وصف موجز للطلب" error={errors.title} />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <Label>الشركة *</Label>
                 {isRestricted && companies.length === 1 ? (
                   <input value={companies[0]?.name ?? ""} disabled
                     className="w-full rounded-xl px-4 py-2.5 text-sm opacity-40" style={fieldStyle} />
                 ) : (
-                  <FormSelect register={register} name="companyId" error={errors.companyId}>
-                    <option value="">{SELECT_PLACEHOLDERS.company}</option>
-                    {companies.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </FormSelect>
+                  <FormSelect
+                    control={control}
+                    name="companyId"
+                    error={errors.companyId}
+                    placeholder={SELECT_PLACEHOLDERS.company}
+                    items={companies.map((c: { id: string; name: string }) => ({ value: c.id, label: c.name }))}
+                  />
                 )}
               </div>
               <div>
                 <Label>النظام *</Label>
-                <Controller
-                  name="systemId"
+                <FormSelect
                   control={control}
-                  render={({ field, fieldState }) => (
-                    <div>
-                      <select
-                        value={field.value}
-                        onChange={(e) => field.onChange(e.target.value)}
-                        onBlur={(e: any) => { field.onBlur(); e.target.style.borderColor = "var(--border)"; }}
-                        disabled={!companyId || systems.length === 1}
-                        className="w-full rounded-xl px-4 py-2.5 text-sm outline-none cursor-pointer appearance-none disabled:opacity-40"
-                        style={fieldStyle}
-                        onFocus={(e: any) => (e.target.style.borderColor = "#4F46E5")}
-                      >
-                        <option value="">{SELECT_PLACEHOLDERS.system}</option>
-                        {systems.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                      </select>
-                      {companyId && systemsLoaded && systems.length === 0
-                        ? <p className="text-amber-500 text-xs mt-1">لا توجد أنظمة لهذه الشركة — يرجى إضافة نظام أولاً</p>
-                        : fieldState.error && <p className="text-red-500 text-xs mt-1">{fieldState.error.message}</p>
-                      }
-                    </div>
-                  )}
+                  name="systemId"
+                  error={companyId && systemsLoaded && systems.length === 0 ? undefined : errors.systemId}
+                  placeholder={SELECT_PLACEHOLDERS.system}
+                  items={systems.map((s: { id: string; name: string }) => ({ value: s.id, label: s.name }))}
+                  disabled={!companyId || systems.length === 1}
                 />
+                {companyId && systemsLoaded && systems.length === 0 && (
+                  <p className="text-amber-500 text-xs mt-1">لا توجد أنظمة لهذه الشركة — يرجى إضافة نظام أولاً</p>
+                )}
               </div>
               <div>
                 <Label>نوع الطلب *</Label>
-                <FormSelect register={register} name="type" error={errors.type}>
-                  <option value="">{SELECT_PLACEHOLDERS.ticketType}</option>
-                  {Object.entries(TICKET_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </FormSelect>
+                <FormSelect
+                  control={control}
+                  name="type"
+                  error={errors.type}
+                  placeholder={SELECT_PLACEHOLDERS.ticketType}
+                  items={Object.entries(TICKET_TYPE_LABELS).map(([value, label]) => ({ value, label }))}
+                />
               </div>
               <div>
                 <Label>الأولوية المقترحة</Label>
-                <FormSelect register={register} name="priority">
-                  <option value="">{SELECT_PLACEHOLDERS.priority}</option>
-                  <option value="CRITICAL">حرجة</option>
-                  <option value="HIGH">عالية</option>
-                  <option value="MEDIUM">متوسطة</option>
-                  <option value="LOW">منخفضة</option>
-                  <option value="DEFERRED">مؤجلة</option>
-                </FormSelect>
+                <FormSelect
+                  control={control}
+                  name="priority"
+                  placeholder={SELECT_PLACEHOLDERS.priority}
+                  items={Object.entries(PRIORITY_LABELS).map(([value, label]) => ({ value, label }))}
+                />
               </div>
             </div>
           </FormSection>
@@ -377,8 +390,8 @@ export default function NewTicketPage() {
             </div>
 
             {/* Financial loss toggle */}
-            <div className="flex items-center justify-between p-4 rounded-xl" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
-              <div>
+            <div className="flex items-center justify-between gap-3 p-4 rounded-xl" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+              <div className="min-w-0">
                 <p className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>هل يوجد ضرر مالي؟</p>
                 <p className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>توقف النظام أو خسائر مالية مباشرة</p>
               </div>
@@ -398,7 +411,7 @@ export default function NewTicketPage() {
             <input ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={handleCoverChange} />
             {coverPreview ? (
               <div className="relative rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
-                <img src={coverPreview} alt="cover" className="w-full h-48 object-cover" />
+                <img src={coverPreview} alt="cover" className="w-full h-36 object-cover sm:h-48" />
                 <button type="button" onClick={() => { setCoverFile(null); setCoverPreview(null); }}
                   className="absolute top-2 left-2 p-1 rounded-full text-white transition-colors"
                   style={{ background: "rgba(0,0,0,0.6)" }}>
@@ -448,14 +461,14 @@ export default function NewTicketPage() {
           </FormSection>
 
           {/* Submit */}
-          <div className="flex gap-3 pb-8">
+          <div className="flex flex-col-reverse gap-3 pb-8 sm:flex-row">
             <button type="submit" disabled={isSubmitting}
               className="flex-1 py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-60 transition-all"
               style={{ background: "linear-gradient(135deg, #4F46E5, #6C5CE7)", boxShadow: "0 4px 12px rgba(79,70,229,0.3)" }}>
               {isSubmitting ? "جارٍ الإنشاء..." : "إنشاء كمسودة"}
             </button>
             <button type="button" onClick={() => router.back()}
-              className="px-6 py-3 rounded-xl text-sm font-semibold transition-all"
+              className="px-6 py-3 rounded-xl text-sm font-semibold transition-all sm:shrink-0"
               style={{ border: "1px solid var(--border)", color: "var(--muted-foreground)" }}
               onMouseEnter={e => (e.currentTarget.style.background = "var(--muted)")}
               onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>

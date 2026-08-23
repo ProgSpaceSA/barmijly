@@ -9,9 +9,9 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
-// Derived from the action matrix rather than restated here, so a change to
-// `ROLE_ACTIONS` moves these endpoints with it.
-const MANAGERS = rolesWith('structure:manage');
+const STRUCTURE_ADMINS = rolesWith('structure:manage');
+const SYSTEM_CREATORS = [...new Set([...STRUCTURE_ADMINS, ...rolesWith('structure:create-system')])];
+const ROSTER_MANAGERS = [...new Set([...STRUCTURE_ADMINS, ...rolesWith('structure:manage-roster')])];
 const DEACTIVATORS = rolesWith('structure:deactivate');
 
 @ApiTags('Systems')
@@ -32,40 +32,40 @@ export class SystemsController {
   }
 
   @Post()
-  @Roles(...MANAGERS)
-  create(@Body() dto: CreateSystemDto) {
-    return this.systemsService.create(dto);
+  @Roles(...SYSTEM_CREATORS)
+  create(@Body() dto: CreateSystemDto, @CurrentUser() user: any) {
+    return this.systemsService.create(dto, user);
   }
 
   @Patch(':id')
-  @Roles(...MANAGERS)
-  update(@Param('id') id: string, @Body() dto: UpdateSystemDto) {
-    return this.systemsService.update(id, dto);
+  @Roles(...STRUCTURE_ADMINS)
+  update(@Param('id') id: string, @Body() dto: UpdateSystemDto, @CurrentUser() user: any) {
+    return this.systemsService.update(id, dto, user);
   }
 
   @Patch(':id/deactivate')
   @Roles(...DEACTIVATORS)
   @ApiOperation({ summary: 'Deactivate a system (soft). Same roles as activate.' })
-  deactivate(@Param('id') id: string) {
-    return this.systemsService.deactivate(id);
+  deactivate(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.systemsService.deactivate(id, user);
   }
 
   @Patch(':id/activate')
   @Roles(...DEACTIVATORS)
   @ApiOperation({ summary: 'Re-activate a previously deactivated system' })
-  activate(@Param('id') id: string) {
-    return this.systemsService.activate(id);
+  activate(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.systemsService.activate(id, user);
   }
 
   @Post(':id/users')
-  @Roles(...MANAGERS)
-  addUser(@Param('id') id: string, @Body('userId') userId: string) {
-    return this.systemsService.addUser(id, userId);
+  @Roles(...ROSTER_MANAGERS)
+  addUser(@Param('id') id: string, @Body('userId') userId: string, @CurrentUser() user: any) {
+    return this.systemsService.addUser(id, userId, user);
   }
 
   @Delete(':id/users/:userId')
-  @Roles(...MANAGERS)
-  removeUser(@Param('id') id: string, @Param('userId') userId: string) {
-    return this.systemsService.removeUser(id, userId);
+  @Roles(...ROSTER_MANAGERS)
+  removeUser(@Param('id') id: string, @Param('userId') userId: string, @CurrentUser() user: any) {
+    return this.systemsService.removeUser(id, userId, user);
   }
 }

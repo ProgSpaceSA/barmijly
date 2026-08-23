@@ -29,7 +29,7 @@ export class FilterTicketsDto {
   @IsUUID()
   systemId?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Tickets with an active assignment to this developer' })
   @IsOptional()
   @IsUUID()
   developerId?: string;
@@ -39,7 +39,7 @@ export class FilterTicketsDto {
   @IsUUID()
   creatorId?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Title, description, or ticket code (BRM-0124, #124, 124)' })
   @IsOptional()
   @IsString()
   search?: string;

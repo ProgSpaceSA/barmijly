@@ -32,5 +32,5 @@ alwaysApply: true
 ## Testing changes
 
 - Backend: verify affected endpoint in Swagger (`/api/docs`)
-- Frontend: check RTL layout and role-based visibility
+- Frontend: check RTL layout, responsiveness, and role-based visibility
 - Ticket changes: walk through status flow in `backend/GUIDE.md`

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { SkeletonStat, SkeletonList } from "@/components/shared/LoadingSpinner";
+import { SkeletonList, SkeletonDashboard } from "@/components/shared/LoadingSpinner";
 import { StatusBadge, PriorityBadge } from "@/components/shared/StatusBadge";
 import { useDashboardStats, useOverdueTickets, useDeveloperStats, useTicketTrend } from "@/hooks/useReports";
 import { useMyTasks, useUpdateTaskStatus } from "@/hooks/useTasks";
@@ -11,16 +11,16 @@ import { useMarkTicketRead } from "@/hooks/useNotifications";
 import { useAuthStore } from "@/store/auth";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { personalGreetingFor, ROLE_LABELS, TREND_SERIES_LABELS } from "@/lib/constants";
+import { personalGreetingFor, ROLE_LABELS, TASK_STATUS_COLORS, TASK_STATUS_LABELS, TREND_SERIES_LABELS } from "@/lib/constants";
 import { formatTrendMonth, niceYAxisMax, rankDevelopers, trendTooltipRows, yAxisTicks } from "@/lib/report-charts";
 import { Area, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Activity, AlertTriangle, Check, Clock, TrendingUp, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import { TicketCodeBadge } from "@/components/shared/TicketCodeBadge";
+import { DueRemaining } from "@/components/shared/DueRemaining";
+import { RelativeTime } from "@/components/shared/RelativeTime";
 import { CodeComment } from "@/components/shared/CodeComment";
-import { addDays, format, formatDistanceToNow, isBefore } from "date-fns";
-import { ar } from "date-fns/locale";
 
 function TrendYTick({
   x = 0,
@@ -186,11 +186,16 @@ const GREETINGS: Record<string, string> = {
   SENIOR_MANAGEMENT: "الصورة الكاملة هنا.",
 };
 
-const STATUS_CFG = {
-  NEW:         { label: "جديدة",       color: "#3B82F6", bg: "rgba(59,130,246,0.12)" },
-  IN_PROGRESS: { label: "قيد التنفيذ", color: "#F59E0B", bg: "rgba(245,158,11,0.12)" },
-  COMPLETED:   { label: "مكتملة",      color: "#10B981", bg: "rgba(16,185,129,0.12)" },
-};
+/** Task status. Label and colour come from constants so the ticket page,
+    this hub and the force-status grid can never drift apart. */
+const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> =
+  Object.fromEntries(
+    Object.keys(TASK_STATUS_LABELS).map((key) => [key, {
+      label: TASK_STATUS_LABELS[key],
+      color: TASK_STATUS_COLORS[key],
+      bg: `${TASK_STATUS_COLORS[key]}1F`,
+    }]),
+  );
 const NEXT_STATUS: Record<string, string> = { NEW: "IN_PROGRESS", IN_PROGRESS: "COMPLETED", COMPLETED: "NEW" };
 
 const TICKET_STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
@@ -206,6 +211,7 @@ const TICKET_STATUS_CFG: Record<string, { label: string; color: string; bg: stri
   AWAITING_OWNER_APPROVAL: { label: "انتظار اعتماد المالك", color: "#14B8A6", bg: "rgba(20,184,166,0.12)" },
   COMPLETED:               { label: "مكتملة",             color: "#10B981", bg: "rgba(16,185,129,0.12)"  },
   CLOSED:                  { label: "مغلقة",              color: "#6B7280", bg: "rgba(107,114,128,0.12)" },
+  BLOCKED:                 { label: "متوقفة",             color: "#FB7185", bg: "rgba(251,113,133,0.12)" },
   ON_HOLD:                 { label: "معلقة",              color: "#94A3B8", bg: "rgba(148,163,184,0.12)" },
 };
 
@@ -237,24 +243,11 @@ function TaskStatusDot({ status, onClick, pending }: { status: string; onClick: 
 }
 
 function DueDateLabel({ date }: { date: string | null }) {
-  if (!date) return null;
-  const d = new Date(date);
-  const now = new Date();
-  const isOverdue = isBefore(d, now);
-  const isSoon = !isOverdue && isBefore(d, addDays(now, 3));
-  return (
-    <span className={`font-brm ${isOverdue ? "brm-overdue" : isSoon ? "brm-soon" : ""}`} style={{ fontSize: 11, color: isOverdue || isSoon ? undefined : "var(--muted-foreground)", whiteSpace: "nowrap" }}>
-      {isOverdue ? "⚠ " : ""}{format(d, "dd MMM", { locale: ar })}
-    </span>
-  );
+  return <DueRemaining date={date} className="font-brm" style={{ fontSize: 11 }} />;
 }
 
 function TimeAgo({ date }: { date: string }) {
-  return (
-    <span className="font-brm" style={{ fontSize: 10, color: "var(--muted-foreground)", whiteSpace: "nowrap" }}>
-      {formatDistanceToNow(new Date(date), { addSuffix: true, locale: ar })}
-    </span>
-  );
+  return <RelativeTime date={date} className="whitespace-nowrap" />;
 }
 
 function DevTaskHub() {
@@ -349,14 +342,14 @@ function DevTaskHub() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
                       <span className="brm-kind brm-kind-task">TASK</span>
-                      <Link href={`/tickets/${item.ticket?.id}`} style={{ fontWeight: 600, fontSize: 14, color: "var(--foreground)" }} className="truncate hover:underline">
+                      <Link href={`/tickets/${item.ticket?.id}`} style={{ fontWeight: 600, fontSize: 14, color: "var(--foreground)" }} className="brm-row-title hover:underline">
                         {item.title}
                       </Link>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                       <TicketCodeBadge ticketNumber={item.ticket?.ticketNumber} />
                       {item.ticket?.ticketNumber != null && <span style={{ color: "var(--border)", fontSize: 10 }}>·</span>}
-                      <Link href={`/tickets/${item.ticket?.id}`} className="truncate">
+                      <Link href={`/tickets/${item.ticket?.id}`} className="brm-row-title min-w-0">
                         <span style={{ fontSize: 11, color: "var(--muted-foreground)" }}>{item.ticket?.title}</span>
                       </Link>
                     </div>
@@ -392,7 +385,7 @@ function DevTaskHub() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
                     <span className="brm-kind brm-kind-ticket">TICKET</span>
-                    <span style={{ fontWeight: 600, fontSize: 14, color: "var(--foreground)" }} className="truncate">{item.title}</span>
+                    <span style={{ fontWeight: 600, fontSize: 14, color: "var(--foreground)" }} className="brm-row-title">{item.title}</span>
                     {item.hasUpdates && (
                       <span className="font-brm brm-soon" style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)", whiteSpace: "nowrap", flexShrink: 0 }}>
                         {item.unreadCount} جديد
@@ -451,19 +444,16 @@ export default function DashboardPage() {
         description={greeting || ROLE_LABELS[user?.role || ""]}
       />
 
-      {isLoading ? (
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {[0,1,2,3].map(i => <SkeletonStat key={i} />)}
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-5">
+      <div className="space-y-5">
+      {showTaskHub && <DevTaskHub />}
 
-          {showTaskHub && <DevTaskHub />}
+      {isLoading ? (
+        <SkeletonDashboard showStats={!isDeveloper} showCharts={isManager} />
+      ) : (
+        <>
 
           {!isDeveloper && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
               <StatCard title="إجمالي التذاكر" value={stats?.totalTickets}      icon={Activity}      tone="indigo" sparkData={trendCreated} />
               <StatCard title="تذاكر مفتوحة"  value={stats?.openTickets}       icon={Clock}         tone="blue"   sparkData={trendCreated} />
               <StatCard title="قيد التنفيذ"    value={stats?.inProgressTickets} icon={TrendingUp}    tone="violet" />
@@ -586,13 +576,13 @@ export default function DashboardPage() {
                 <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
                   {overdue.slice(0, 5).map((t: any) => (
                     <Link key={t.id} href={`/tickets/${t.id}`}
-                      className="flex items-center justify-between p-2.5 rounded-lg transition-colors"
+                      className="flex flex-wrap items-center justify-between gap-y-1.5 p-2.5 rounded-lg transition-colors"
                       style={{ background: "transparent" }}
                       onMouseEnter={e => (e.currentTarget.style.background = "var(--muted)")}
                       onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                     >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">{t.title}</p>
+                      <div className="min-w-0 flex-1 basis-56">
+                        <p className="brm-row-title text-sm font-medium">{t.title}</p>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <span className="font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>{t.system?.name}</span>
                           {t.company && (
@@ -602,7 +592,7 @@ export default function DashboardPage() {
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0 mr-3">
+                      <div className="flex flex-wrap items-center gap-2 shrink-0 sm:mr-3">
                         <StatusBadge status={t.status} overdue />
                         <PriorityBadge priority={t.finalPriority} />
                       </div>
@@ -612,8 +602,9 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           )}
-        </div>
+        </>
       )}
+      </div>
     </AppShell>
   );
 }

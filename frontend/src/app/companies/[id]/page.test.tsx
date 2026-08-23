@@ -149,7 +149,7 @@ describe('CompanyDetailPage — updating for permitted roles', () => {
     mockGet.mockImplementation((url: string) => {
       if (url === '/companies/company-1') return Promise.resolve({ data: company });
       if (url.startsWith('/tickets')) return Promise.resolve({ data: { data: [] } });
-      if (url === '/users') {
+      if (typeof url === 'string' && url.startsWith('/users/developers')) {
         return Promise.resolve({
           data: [{ id: devId, firstName: 'ديمة', lastName: 'الحربي', role: 'DEVELOPER' }],
         });

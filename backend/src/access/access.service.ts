@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { Action, Actor, assertCan, can, rolesWith } from './permissions';
+import { Action, Actor, assertCan, can, canManageStructure, rolesWith } from './permissions';
 
 /** What a user is attached to. Empty arrays mean "attached to nothing". */
 export interface Membership {
@@ -268,6 +268,48 @@ export class AccessService {
   async assertCanViewSystem(systemId: string, user: Actor & { companyId?: string | null }) {
     const ids = await this.visibleSystemIds(user);
     if (ids !== null && !ids.includes(systemId)) throw new ForbiddenException('Access denied');
+  }
+
+  /**
+   * Companies where the caller may create a system. Mirrors visible companies
+   * for portfolio roles; org-wide when no portfolio is assigned.
+   */
+  async managedCompanyIds(user: Actor & { companyId?: string | null }): Promise<string[] | null> {
+    return this.visibleCompanyIds(user);
+  }
+
+  async assertCanCreateSystem(user: Actor & { companyId?: string | null }, companyId: string) {
+    if (canManageStructure(user?.role)) return;
+    this.assertCan(user, 'structure:create-system');
+    const managed = await this.managedCompanyIds(user);
+    if (managed !== null && !managed.includes(companyId)) {
+      throw new ForbiddenException('Access denied');
+    }
+  }
+
+  async assertCanManageRoster(user: Actor & { companyId?: string | null }, systemId: string) {
+    if (canManageStructure(user?.role)) return;
+    this.assertCan(user, 'structure:manage-roster');
+    await this.assertCanViewSystem(systemId, user);
+  }
+
+  /** Portfolio slice a PM may rewrite when patching dev/QA membership. */
+  async editableMembershipScope(user: Actor & { companyId?: string | null }) {
+    return {
+      companyIds: await this.visibleCompanyIds(user),
+      systemIds: await this.visibleSystemIds(user),
+    };
+  }
+
+  assertCanManageUserMembership(
+    actor: Actor & { companyId?: string | null },
+    target: { id: string; role: UserRole },
+  ) {
+    if (can(actor?.role, 'user:manage')) return;
+    this.assertCan(actor, 'user:manage-membership');
+    if (target.role !== UserRole.DEVELOPER && target.role !== UserRole.QA) {
+      throw new ForbiddenException('Membership can only be changed for developers and QA');
+    }
   }
 
   /**

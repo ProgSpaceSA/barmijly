@@ -16,11 +16,15 @@ export const ACTION_BUCKETS: Record<UserRole, ActionBucket[]> = {
     { label: 'معتمدة بانتظار الإسناد', statuses: [TicketStatus.APPROVED] },
     { label: 'بانتظار الاختبار', statuses: [TicketStatus.AWAITING_TESTING] },
     { label: 'بانتظار اعتماد الإغلاق', statuses: [TicketStatus.AWAITING_OWNER_APPROVAL] },
+    { label: 'متوقفة بانتظار رفع العائق', statuses: [TicketStatus.BLOCKED] },
+    { label: 'معلقة', statuses: [TicketStatus.ON_HOLD] },
   ],
   [UserRole.PROJECT_MANAGER]: [
     { label: 'معتمدة بانتظار الإسناد', statuses: [TicketStatus.APPROVED] },
     { label: 'بانتظار الاختبار', statuses: [TicketStatus.AWAITING_TESTING] },
     { label: 'بانتظار اعتماد الإغلاق', statuses: [TicketStatus.AWAITING_OWNER_APPROVAL] },
+    { label: 'متوقفة بانتظار رفع العائق', statuses: [TicketStatus.BLOCKED] },
+    { label: 'معلقة', statuses: [TicketStatus.ON_HOLD] },
   ],
   [UserRole.QA]: [
     { label: 'بانتظار اختبارك', statuses: [TicketStatus.AWAITING_TESTING] },
@@ -31,6 +35,7 @@ export const ACTION_BUCKETS: Record<UserRole, ActionBucket[]> = {
   [UserRole.DEVELOPER]: [
     { label: 'مجدولة للبدء', statuses: [TicketStatus.SCHEDULED] },
     { label: 'قيد التنفيذ لديك', statuses: [TicketStatus.IN_PROGRESS] },
+    { label: 'متوقفة لديك', statuses: [TicketStatus.BLOCKED] },
   ],
   [UserRole.TICKET_REQUESTER]: [
     { label: 'بانتظار معلومات منك', statuses: [TicketStatus.AWAITING_INFO] },

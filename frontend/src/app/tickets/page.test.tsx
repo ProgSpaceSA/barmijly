@@ -61,6 +61,7 @@ beforeEach(() => {
   currentRole = 'PROGRAMMING_HEAD';
   mockSearchParams.delete('overdue');
   mockSearchParams.delete('mine');
+  mockSearchParams.delete('developerId');
   mockGet.mockImplementation((url: unknown) => {
     const path = String(url);
     if (path.startsWith('/tickets')) {
@@ -288,5 +289,82 @@ describe('TicketsPage — mine filter', () => {
         .filter((url) => url.startsWith('/tickets'));
       expect(ticketCalls.at(-1)).toBe('/tickets?');
     });
+  });
+});
+
+const teamDevelopers = [
+  { id: 'dev-1', firstName: 'ديمة', lastName: 'الحربي' },
+  { id: 'dev-2', firstName: 'سعد', lastName: 'القحطاني' },
+];
+
+describe('TicketsPage — developer assignment filter', () => {
+  beforeEach(() => {
+    mockGet.mockImplementation((url: unknown) => {
+      const path = String(url);
+      if (path.startsWith('/tickets')) {
+        return Promise.resolve({ data: { data: [], total: 0, page: 1, limit: 20, totalPages: 0 } });
+      }
+      if (path === '/companies') return Promise.resolve({ data: [] });
+      if (path === '/users/developers') return Promise.resolve({ data: teamDevelopers });
+      return Promise.resolve({ data: [] });
+    });
+  });
+
+  it('requests the developer\'s assigned tickets when opened with developerId', async () => {
+    mockSearchParams.set('developerId', 'dev-1');
+    renderPage();
+
+    await waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith('/tickets?developerId=dev-1');
+    });
+  });
+
+  it('lists developers beside الإسناد and requests developerId when one is selected', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'التذاكر المُسندة إلى ديمة الحربي' }));
+
+    await waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith('/tickets?developerId=dev-1');
+    });
+  });
+
+  it('keeps the developer filter alongside a status pill', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'التذاكر المُسندة إلى سعد القحطاني' }));
+    await waitFor(() => expect(mockGet).toHaveBeenCalledWith('/tickets?developerId=dev-2'));
+
+    await user.click(screen.getByRole('button', { name: 'معتمدة' }));
+
+    await waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith('/tickets?developerId=dev-2&status=APPROVED');
+    });
+  });
+
+  it('clears the developer when switching to تذاكري', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'التذاكر المُسندة إلى ديمة الحربي' }));
+    await waitFor(() => expect(mockGet).toHaveBeenCalledWith('/tickets?developerId=dev-1'));
+
+    await user.click(screen.getByRole('button', { name: 'تذاكري' }));
+
+    await waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith('/tickets?mine=true');
+    });
+    expect(mockGet.mock.calls.some(([url]) => String(url).includes('mine=true') && String(url).includes('developerId='))).toBe(false);
+  });
+
+  it('does not list developers or request the roster for a developer', async () => {
+    currentRole = 'DEVELOPER';
+    renderPage();
+
+    expect(await screen.findByRole('button', { name: 'تذاكري' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'التذاكر المُسندة إلى ديمة الحربي' })).not.toBeInTheDocument();
+    expect(mockGet.mock.calls.some(([url]) => String(url) === '/users/developers')).toBe(false);
   });
 });

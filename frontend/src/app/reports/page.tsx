@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { usePermissions } from "@/hooks/usePermissions";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import { SkeletonReports } from "@/components/shared/LoadingSpinner";
 import { useDashboardStats, useDeveloperStats, useTicketTrend, useOverdueTickets } from "@/hooks/useReports";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge, PriorityBadge } from "@/components/shared/StatusBadge";
@@ -21,6 +21,7 @@ import {
   type StatusCount,
 } from "@/lib/report-charts";
 import { TREND_SERIES_LABELS } from "@/lib/constants";
+import { parseTimestamp } from "@/lib/dates";
 import { avatarTint, cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -156,7 +157,7 @@ function DeveloperPerformance({ developers }: { developers: DeveloperStat[] }) {
             لا يوجد مطورون بتذاكر مُسندة حالياً
           </p>
         ) : (
-          <div className="max-h-[28rem] overflow-auto">
+          <div className="brm-table-scroll max-h-[28rem] overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10 bg-card">
                 <tr className="border-b text-right text-muted-foreground">
@@ -330,8 +331,6 @@ export default function ReportsPage() {
   const { data: trend } = useTicketTrend();
   const { data: overdue } = useOverdueTickets();
 
-  if (isLoading) return <AppShell requires="report:read-team"><LoadingSpinner /></AppShell>;
-
   const { rows: statusRows, max: maxStatusValue } = buildStatusDistribution(
     (stats?.ticketsByStatus ?? []) as StatusCount[],
   );
@@ -343,9 +342,12 @@ export default function ReportsPage() {
     <AppShell requires="report:read-team">
       <PageHeader title="التقارير والإحصائيات" />
 
+      {isLoading ? (
+        <SkeletonReports />
+      ) : (
       <div className="space-y-6">
         {/* KPI Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
           {[
             { label: "إجمالي", value: stats?.totalTickets, color: "text-primary" },
             { label: "مفتوحة", value: stats?.openTickets, color: "text-blue-600 dark:text-blue-400" },
@@ -354,8 +356,8 @@ export default function ReportsPage() {
             { label: "حرجة", value: stats?.criticalTickets, color: "text-orange-600 dark:text-orange-400" },
           ].map(({ label, value, color }) => (
             <Card key={label}>
-              <CardContent className="p-4 text-center">
-                <p className={`text-3xl font-bold ${color}`}>{value ?? 0}</p>
+              <CardContent className="p-3 text-center sm:p-4">
+                <p className={`text-2xl font-bold sm:text-3xl ${color}`}>{value ?? 0}</p>
                 <p className="text-xs text-muted-foreground mt-1">{label}</p>
               </CardContent>
             </Card>
@@ -505,28 +507,35 @@ export default function ReportsPage() {
           <Card>
             <CardHeader><CardTitle className="text-base text-red-600">تذاكر متأخرة ({overdue.length})</CardTitle></CardHeader>
             <CardContent>
-              <div className="space-y-2">
-                {overdue.map((t: any) => (
-                  <Link key={t.id} href={`/tickets/${t.id}`}
-                    className="flex items-center justify-between p-3 rounded-lg hover:bg-muted transition-colors">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{t.title}</p>
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
-                        {t.company && <><CompanyLogo company={t.company} size="xs" />{t.company.name} —</>}
-                        <span>{t.system?.name} — {format(new Date(t.estimatedDeadline), "d MMM yyyy", { locale: ar })}</span>
+              <div
+                className="brm-panel-scroll max-h-[28rem]"
+                role="region"
+                aria-label="تذاكر متأخرة"
+              >
+                <div className="space-y-2" dir="rtl">
+                  {overdue.map((t: any) => (
+                    <Link key={t.id} href={`/tickets/${t.id}`}
+                      className="flex flex-wrap items-center justify-between gap-y-1.5 p-3 rounded-lg hover:bg-muted transition-colors">
+                      <div className="min-w-0 flex-1 basis-56">
+                        <p className="brm-row-title text-sm font-medium">{t.title}</p>
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
+                          {t.company && <><CompanyLogo company={t.company} size="xs" />{t.company.name} —</>}
+                          <span>{t.system?.name} — {format(parseTimestamp(t.estimatedDeadline), "d MMM yyyy", { locale: ar })}</span>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex gap-2 shrink-0 mr-3">
-                      <StatusBadge status={t.status} />
-                      <PriorityBadge priority={t.finalPriority} />
-                    </div>
-                  </Link>
-                ))}
+                      <div className="flex flex-wrap gap-2 shrink-0 sm:mr-3">
+                        <StatusBadge status={t.status} />
+                        <PriorityBadge priority={t.finalPriority} />
+                      </div>
+                    </Link>
+                  ))}
+                </div>
               </div>
             </CardContent>
           </Card>
         )}
       </div>
+      )}
     </AppShell>
   );
 }

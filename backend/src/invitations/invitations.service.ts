@@ -71,7 +71,13 @@ export class InvitationsService {
     });
 
     const frontendUrl = this.config.get<string>('FRONTEND_URL', 'http://localhost:3000');
-    await this.email.sendInvitation(email, token, role, frontendUrl);
+    await this.email.sendInvitation(
+      email,
+      token,
+      role,
+      frontendUrl,
+      await this.invitationScope(companyIds, systemIds),
+    );
 
     return invitation;
   }
@@ -92,8 +98,28 @@ export class InvitationsService {
       data: { token, expiresAt, status: 'PENDING' },
     });
 
+    const receiver = invitation.receiverId
+      ? await this.prisma.user.findUnique({
+          where: { id: invitation.receiverId },
+          select: {
+            companyId: true,
+            systems: { select: { systemId: true } },
+            companies: { select: { companyId: true } },
+          },
+        })
+      : null;
+    const companyIds = receiver?.companies.map((c) => c.companyId)
+      ?? (receiver?.companyId ? [receiver.companyId] : invitation.companyId ? [invitation.companyId] : []);
+    const systemIds = receiver?.systems.map((s) => s.systemId) ?? [];
+
     const frontendUrl = this.config.get<string>('FRONTEND_URL', 'http://localhost:3000');
-    await this.email.sendInvitation(invitation.email, token, invitation.role, frontendUrl);
+    await this.email.sendInvitation(
+      invitation.email,
+      token,
+      invitation.role,
+      frontendUrl,
+      await this.invitationScope(companyIds, systemIds),
+    );
 
     return { message: 'Invitation resent' };
   }
@@ -112,5 +138,29 @@ export class InvitationsService {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  private async invitationScope(companyIds?: string[], systemIds?: string[]) {
+    const [companies, systems] = await Promise.all([
+      companyIds?.length
+        ? this.prisma.company.findMany({
+            where: { id: { in: companyIds } },
+            select: { name: true },
+            orderBy: { name: 'asc' },
+          })
+        : Promise.resolve([]),
+      systemIds?.length
+        ? this.prisma.system.findMany({
+            where: { id: { in: systemIds } },
+            select: { name: true },
+            orderBy: { name: 'asc' },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    return {
+      companyName: companies.map((c) => c.name).join(' · ') || null,
+      systemName: systems.map((s) => s.name).join(' · ') || null,
+    };
   }
 }

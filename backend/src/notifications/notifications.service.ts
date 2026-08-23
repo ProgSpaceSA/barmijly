@@ -16,14 +16,15 @@ interface NotifyPayload {
 export class NotificationsService {
   constructor(private prisma: PrismaService, private access: AccessService) {}
 
-  async notify(userId: string, payload: NotifyPayload) {
+  async notify(userId: string, payload: NotifyPayload, actorId: string) {
+    if (userId === actorId) return;
     return this.prisma.notification.create({
       data: { userId, ...payload },
     });
   }
 
-  async notifyMany(userIds: string[], payload: NotifyPayload) {
-    const unique = [...new Set(userIds)].filter(Boolean);
+  async notifyMany(userIds: string[], payload: NotifyPayload, actorId: string) {
+    const unique = [...new Set(userIds)].filter((id) => id && id !== actorId);
     if (!unique.length) return { count: 0 };
     return this.prisma.notification.createMany({
       data: unique.map((userId) => ({ userId, ...payload })),

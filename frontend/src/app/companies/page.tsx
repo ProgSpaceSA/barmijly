@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { qk, invalidateStructure } from '@/lib/query-keys';
 import { AppShell } from '@/components/layout/AppShell';
 import { usePermissions } from '@/hooks/usePermissions';
 import { CompanyLogo } from '@/components/shared/CompanyLogo';
@@ -10,6 +11,7 @@ import { CodeComment } from '@/components/shared/CodeComment';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { Building2, Camera, ChevronDown, ChevronUp, Pencil, Plus, X, Monitor, FolderOpen, ExternalLink } from 'lucide-react';
+import { SkeletonList } from '@/components/shared/LoadingSpinner';
 
 interface System { id: string; name: string; description?: string; isActive?: boolean; }
 interface Department { id: string; name: string; }
@@ -39,6 +41,7 @@ export default function CompaniesPage() {
 
   // Capabilities, not role names — the same matrix the API gates on.
   const canManage = allowed('structure:manage');
+  const canCreateSystem = allowed('structure:create-system') || canManage;
   const canDeactivate = allowed('structure:deactivate');
   /** A cleared optional field goes back as null so the API drops the stored value. */
   const orNull = (v: string) => (v.trim() ? v.trim() : null);
@@ -52,62 +55,62 @@ export default function CompaniesPage() {
       fd.append('file', file);
       await api.post(`/companies/${companyId}/logo`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       toast.success('تم تحديث الشعار');
-      queryClient.invalidateQueries({ queryKey: ['companies'] });
+      invalidateStructure(queryClient);
     } catch { toast.error('فشل رفع الشعار'); }
     finally { setUploadingLogoId(null); }
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['companies'],
+    queryKey: qk.companies.all,
     queryFn: () => api.get('/companies').then(r => r.data),
   });
 
   const addCompany = useMutation({
     mutationFn: (d: { name: string; domain?: string }) => api.post('/companies', d),
-    onSuccess: () => { toast.success('تم إضافة الشركة'); setShowAddCompany(false); setNewCompanyName(''); setNewCompanyDomain(''); queryClient.invalidateQueries({ queryKey: ['companies'] }); },
+    onSuccess: () => { toast.success('تم إضافة الشركة'); setShowAddCompany(false); setNewCompanyName(''); setNewCompanyDomain(''); invalidateStructure(queryClient); },
     onError: () => toast.error('فشل إضافة الشركة'),
   });
 
   const updateCompany = useMutation({
     mutationFn: ({ id, ...dto }: { id: string; name: string; nameAr: string | null; domain: string | null }) => api.patch(`/companies/${id}`, dto),
-    onSuccess: () => { toast.success('تم تحديث بيانات الشركة'); setEditingCompany(null); queryClient.invalidateQueries({ queryKey: ['companies'] }); },
+    onSuccess: () => { toast.success('تم تحديث بيانات الشركة'); setEditingCompany(null); invalidateStructure(queryClient); },
     onError: () => toast.error('فشل تحديث بيانات الشركة'),
   });
 
   const editDept = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => api.patch(`/departments/${id}`, { name }),
-    onSuccess: () => { toast.success('تم تحديث اسم القسم'); setEditingDept(null); queryClient.invalidateQueries({ queryKey: ['companies'] }); },
+    onSuccess: () => { toast.success('تم تحديث اسم القسم'); setEditingDept(null); invalidateStructure(queryClient); },
     onError: () => toast.error('فشل تحديث القسم'),
   });
 
   const addDept = useMutation({
     mutationFn: ({ companyId, name }: { companyId: string; name: string }) => api.post('/departments', { companyId, name }),
-    onSuccess: () => { toast.success('تم إضافة القسم'); setAddingDept(null); setNewDeptName(''); queryClient.invalidateQueries({ queryKey: ['companies'] }); },
+    onSuccess: () => { toast.success('تم إضافة القسم'); setAddingDept(null); setNewDeptName(''); invalidateStructure(queryClient); },
     onError: () => toast.error('فشل إضافة القسم'),
   });
 
   const addSystem = useMutation({
     mutationFn: ({ companyId, name, description }: { companyId: string; name: string; description?: string }) => api.post('/systems', { companyId, name, description }),
-    onSuccess: () => { toast.success('تم إضافة النظام'); setAddingSystem(null); setNewSystemName(''); setNewSystemDesc(''); queryClient.invalidateQueries({ queryKey: ['companies'] }); },
+    onSuccess: () => { toast.success('تم إضافة النظام'); setAddingSystem(null); setNewSystemName(''); setNewSystemDesc(''); invalidateStructure(queryClient); },
     onError: () => toast.error('فشل إضافة النظام'),
   });
 
   // Systems are deactivated, never deleted — PATCH /activate turns them back on.
   const deactivateSystem = useMutation({
     mutationFn: (id: string) => api.patch(`/systems/${id}/deactivate`),
-    onSuccess: () => { toast.success('تم تعطيل النظام'); queryClient.invalidateQueries({ queryKey: ['companies'] }); },
+    onSuccess: () => { toast.success('تم تعطيل النظام'); invalidateStructure(queryClient); },
     onError: () => toast.error('فشل تعطيل النظام'),
   });
 
   const activateSystem = useMutation({
     mutationFn: (id: string) => api.patch(`/systems/${id}/activate`),
-    onSuccess: () => { toast.success('تم تفعيل النظام'); queryClient.invalidateQueries({ queryKey: ['companies'] }); },
+    onSuccess: () => { toast.success('تم تفعيل النظام'); invalidateStructure(queryClient); },
     onError: () => toast.error('فشل تفعيل النظام'),
   });
 
   const editSystem = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => api.patch(`/systems/${id}`, { name }),
-    onSuccess: () => { toast.success('تم تحديث اسم النظام'); setEditingSystem(null); queryClient.invalidateQueries({ queryKey: ['companies'] }); },
+    onSuccess: () => { toast.success('تم تحديث اسم النظام'); setEditingSystem(null); invalidateStructure(queryClient); },
     onError: () => toast.error('فشل تحديث النظام'),
   });
 
@@ -119,16 +122,16 @@ export default function CompaniesPage() {
   };
 
   return (
-    <AppShell requires="structure:manage">
+    <AppShell requires="structure:read-all">
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="brm-page-header">
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--foreground)' }}>الشركات والأنظمة</h1>
+            <h1 className="text-xl font-bold sm:text-2xl" style={{ color: 'var(--foreground)' }}>الشركات والأنظمة</h1>
             <p className="text-sm mt-0.5" style={{ color: 'var(--muted-foreground)' }}>{companies.length} شركة مسجلة</p>
           </div>
           {canManage && (
             <button onClick={() => setShowAddCompany(true)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white"
+              className="flex shrink-0 items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white"
               style={{ background: 'linear-gradient(135deg, #4F46E5, #6C5CE7)', boxShadow: '0 4px 12px rgba(79,70,229,0.3)' }}>
               <Plus className="w-4 h-4" /> إضافة شركة
             </button>
@@ -138,8 +141,8 @@ export default function CompaniesPage() {
         {/* Add Company Modal */}
         {showAddCompany && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
-            <div className="palette-modal w-full max-w-md rounded-2xl overflow-hidden" style={{ background: 'var(--card)', border: '1px solid var(--border)', boxShadow: '0 24px 64px rgba(0,0,0,0.3)' }}>
-              <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: '1px solid var(--border)' }}>
+            <div className="palette-modal brm-modal max-w-md rounded-2xl overflow-hidden" style={{ background: 'var(--card)', border: '1px solid var(--border)', boxShadow: '0 24px 64px rgba(0,0,0,0.3)' }}>
+              <div className="flex shrink-0 items-center justify-between gap-3 px-5 py-4 sm:px-6 sm:py-5" style={{ borderBottom: '1px solid var(--border)' }}>
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(79,70,229,0.12)' }}>
                     <Building2 className="w-5 h-5" style={{ color: '#4F46E5' }} />
@@ -180,7 +183,7 @@ export default function CompaniesPage() {
         )}
 
         {isLoading ? (
-          <div className="text-center py-12 font-brm text-sm" style={{ color: 'var(--muted-foreground)' }}>loading...</div>
+          <SkeletonList count={4} variant="people" />
         ) : companies.length === 0 ? (
           <div className="text-center py-16" style={{ color: 'var(--muted-foreground)' }}>
             <Building2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
@@ -192,10 +195,10 @@ export default function CompaniesPage() {
               <div key={company.id} className="rounded-xl overflow-hidden" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
                 {/* Company Header */}
                 <button onClick={() => setExpandedCompany(expandedCompany === company.id ? null : company.id)}
-                  className="w-full flex items-center justify-between px-6 py-4 transition-colors text-right"
+                  className="w-full flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-4 transition-colors text-right sm:px-6"
                   onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                  <div className="flex items-center gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
                     <div className="relative group/logo shrink-0">
                       <CompanyLogo company={company} size="md" />
                       {canManage && (
@@ -214,13 +217,13 @@ export default function CompaniesPage() {
                         </>
                       )}
                     </div>
-                    <div className="text-right">
-                      <div className="font-semibold" style={{ color: 'var(--foreground)' }}>{company.name}</div>
+                    <div className="min-w-0 text-right">
+                      <div className="brm-row-title font-semibold" style={{ color: 'var(--foreground)' }}>{company.name}</div>
                       {company.domain && <div className="font-brm text-xs" style={{ color: 'var(--muted-foreground)' }} dir="ltr">{company.domain}</div>}
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                    <div className="flex flex-wrap items-center gap-2 text-xs sm:gap-3" style={{ color: 'var(--muted-foreground)' }}>
                       <span className="flex items-center gap-1"><FolderOpen className="w-3 h-3" /> {company.departments?.length || 0} قسم</span>
                       <span className="flex items-center gap-1"><Monitor className="w-3 h-3" /> {company.systems?.length || 0} نظام</span>
                       {company._count && <span>{company._count.users} مستخدم</span>}
@@ -241,7 +244,7 @@ export default function CompaniesPage() {
 
                 {/* Expanded Content */}
                 {expandedCompany === company.id && (
-                  <div className="px-6 py-5 space-y-6" style={{ borderTop: '1px solid var(--border)' }}>
+                  <div className="px-4 py-5 space-y-6 sm:px-6" style={{ borderTop: '1px solid var(--border)' }}>
                     {/* Company details */}
                     <div>
                       <h3 className="font-brm text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--muted-foreground)' }}><CodeComment>بيانات الشركة</CodeComment></h3>
@@ -383,7 +386,7 @@ export default function CompaniesPage() {
                             ))
                         }
                       </div>
-                      {canManage && (
+                      {canCreateSystem && (
                         addingSystem === company.id ? (
                           <div className="flex gap-2">
                             <input value={newSystemName} onChange={e => setNewSystemName(e.target.value)} placeholder="اسم النظام"

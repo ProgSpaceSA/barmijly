@@ -39,7 +39,13 @@ export class CommentsService {
   async create(ticketId: string, dto: CreateCommentDto, user: any) {
     assertCan(user, 'comment:create');
 
-    const ticket = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: {
+        company: { select: { name: true } },
+        system: { select: { name: true } },
+      },
+    });
     if (!ticket) throw new NotFoundException('Ticket not found');
     await this.access.assertCanViewTicket(ticketId, user);
 
@@ -63,14 +69,12 @@ export class CommentsService {
       include: COMMENT_INCLUDE,
     });
 
-    if (ticket.creatorId !== user.id) {
-      await this.notifications.notify(ticket.creatorId, {
-        type: NotificationType.COMMENT_ADDED,
-        title: 'New comment on your ticket',
-        body: `${user.firstName} ${user.lastName} commented on "${ticket.title}"`,
-        ticketId,
-      });
-    }
+    await this.notifications.notify(ticket.creatorId, {
+      type: NotificationType.COMMENT_ADDED,
+      title: 'تعليق جديد على تذكرتك',
+      body: `${user.firstName} ${user.lastName} علّق على «${ticket.title}»`,
+      ticketId,
+    }, user.id);
 
     await this.announceMentions(mentions, ticket, user);
 
@@ -88,7 +92,13 @@ export class CommentsService {
     if (comment.authorId !== user.id) throw new ForbiddenException('Not your comment');
     await this.access.assertCanViewTicket(comment.ticketId, user);
 
-    const ticket = await this.prisma.ticket.findUnique({ where: { id: comment.ticketId } });
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: comment.ticketId },
+      include: {
+        company: { select: { name: true } },
+        system: { select: { name: true } },
+      },
+    });
     if (!ticket) throw new NotFoundException('Ticket not found');
 
     const mentions =
@@ -163,17 +173,23 @@ export class CommentsService {
 
   private async announceMentions(
     mentions: string[],
-    ticket: { id: string; title: string },
+    ticket: {
+      id: string;
+      title: string;
+      ticketNumber: number;
+      company?: { name: string } | null;
+      system?: { name: string } | null;
+    },
     user: any,
   ) {
     if (!mentions.length) return;
 
     await this.notifications.notifyMany(mentions, {
       type: NotificationType.COMMENT_ADDED,
-      title: 'You were mentioned in a comment',
-      body: `${user.firstName} ${user.lastName} mentioned you in "${ticket.title}"`,
+      title: 'تمت الإشارة إليك في تعليق',
+      body: `${user.firstName} ${user.lastName} أشار إليك في «${ticket.title}»`,
       ticketId: ticket.id,
-    });
+    }, user.id);
 
     const mentionedUsers = await this.prisma.user.findMany({
       where: { id: { in: mentions } },
@@ -183,9 +199,20 @@ export class CommentsService {
     const frontendUrl = this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000';
     const ticketUrl = `${frontendUrl}/tickets/${ticket.id}`;
     const mentionerName = `${user.firstName} ${user.lastName}`;
+    const scope = {
+      companyName: ticket.company?.name,
+      systemName: ticket.system?.name,
+    };
 
     for (const u of mentionedUsers) {
-      await this.email.sendMentionEmail(u.email, mentionerName, ticket.title, ticketUrl);
+      await this.email.sendMentionEmail(
+        u.email,
+        mentionerName,
+        ticket.title,
+        ticketUrl,
+        ticket.ticketNumber,
+        scope,
+      );
     }
   }
 }

@@ -12,6 +12,8 @@ import { UsersService } from '../users/users.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '../email/email.service';
+import { AssignmentSyncService } from '../tickets/assignment-sync.service';
+import { TaskRollupService } from '../tickets/task-rollup.service';
 
 /**
  * req.md §16: "the user only sees the systems authorised for them" and "each
@@ -59,6 +61,7 @@ describe('structure and directory scope', () => {
       user: { findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn() },
       userCompany: { findMany: jest.fn().mockResolvedValue([{ companyId: 'company-1' }]) },
       userSystem: { findMany: jest.fn().mockResolvedValue([{ systemId: 'system-1' }]) },
+      $transaction: jest.fn().mockImplementation((fn: any) => fn(prisma)),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -73,6 +76,8 @@ describe('structure and directory scope', () => {
         { provide: AuditService, useValue: { log: jest.fn() } },
         { provide: NotificationsService, useValue: { notify: jest.fn(), notifyMany: jest.fn() } },
         { provide: EmailService, useValue: { sendTaskAssigned: jest.fn() } },
+        { provide: AssignmentSyncService, useValue: { syncFromTasks: jest.fn() } },
+        { provide: TaskRollupService, useValue: { recompute: jest.fn() } },
         { provide: ConfigService, useValue: { get: jest.fn() } },
       ],
     }).compile();
@@ -200,6 +205,43 @@ describe('structure and directory scope', () => {
       prisma.userSystem.findMany.mockResolvedValue([]);
       await users.findMentionable(asUser(role));
       expect(lastCall(prisma.user.findMany).where).toEqual({ isActive: true });
+    });
+  });
+
+  describe('GET /users', () => {
+    it('narrows the directory to dev/QA for a project manager', async () => {
+      await users.findAll({}, asUser(UserRole.PROJECT_MANAGER));
+      expect(lastCall(prisma.user.findMany).where.role).toEqual({
+        in: [UserRole.DEVELOPER, UserRole.QA],
+      });
+    });
+
+    it('does not role-narrow the directory for programming head', async () => {
+      await users.findAll({}, asUser(UserRole.PROGRAMMING_HEAD));
+      expect(lastCall(prisma.user.findMany).where.role).toBeUndefined();
+    });
+  });
+
+  describe('GET /users/developers', () => {
+    it('scopes the default list to a PM portfolio', async () => {
+      prisma.system.findMany.mockResolvedValue([{ companyId: 'company-1' }]);
+      await users.getDevelopers(asUser(UserRole.PROJECT_MANAGER));
+      expect(lastCall(prisma.user.findMany).where.role).toBe(UserRole.DEVELOPER);
+      expect(lastCall(prisma.user.findMany).where.OR).toBeDefined();
+    });
+
+    it('returns the full active developer pool when pool=roster', async () => {
+      await users.getDevelopers(asUser(UserRole.PROJECT_MANAGER), undefined, { pool: 'roster' });
+      expect(lastCall(prisma.user.findMany).where).toEqual({
+        role: UserRole.DEVELOPER,
+        isActive: true,
+      });
+    });
+
+    it('scopes developers to portfolio companies for a developer', async () => {
+      await users.getDevelopers(asUser(UserRole.DEVELOPER));
+      expect(lastCall(prisma.user.findMany).where.role).toBe(UserRole.DEVELOPER);
+      expect(lastCall(prisma.user.findMany).where.OR).toBeDefined();
     });
   });
 });

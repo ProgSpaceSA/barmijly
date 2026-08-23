@@ -63,11 +63,6 @@ export class CreateTicketDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
-  relatedTicketId?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsUUID()
   templateId?: string;
 
   @ApiPropertyOptional()

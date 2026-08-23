@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { UserRole } from "@/store/auth";
-import { ROLE_ACTIONS, can, rolesWith, ticketStatusFilterKeys, type Action } from "./permissions";
+import { ROLE_ACTIONS, can, canBlockTicket, canResumeTicket, rolesWith, ticketStatusFilterKeys, type Action } from "./permissions";
 
 /**
  * The same table as `backend/src/access/permissions.spec.ts`.
@@ -18,6 +18,7 @@ const EXPECTED: Record<Action, UserRole[]> = {
   "ticket:submit": ["TICKET_REQUESTER", "SYSTEM_OWNER", "DEVELOPER", "QA", "PROJECT_MANAGER", "PROGRAMMING_HEAD", "SENIOR_MANAGEMENT"],
   "ticket:approve": ["PROGRAMMING_HEAD"],
   "ticket:assign": ["PROJECT_MANAGER", "PROGRAMMING_HEAD"],
+  "ticket:update-estimate": ["DEVELOPER"],
   "ticket:start": ["DEVELOPER"],
   "ticket:submit-testing": ["DEVELOPER"],
   "ticket:verify-testing": ["QA", "PROJECT_MANAGER", "PROGRAMMING_HEAD"],
@@ -25,20 +26,27 @@ const EXPECTED: Record<Action, UserRole[]> = {
   "ticket:close": ["PROJECT_MANAGER", "PROGRAMMING_HEAD"],
   "ticket:reopen": ["PROJECT_MANAGER", "PROGRAMMING_HEAD"],
   "ticket:archive": ["PROJECT_MANAGER", "PROGRAMMING_HEAD", "SENIOR_MANAGEMENT"],
+  "ticket:block": ["DEVELOPER", "QA", "PROJECT_MANAGER", "PROGRAMMING_HEAD", "SENIOR_MANAGEMENT"],
+  "ticket:hold": ["PROJECT_MANAGER", "PROGRAMMING_HEAD", "SENIOR_MANAGEMENT"],
+  "ticket:resume": ["DEVELOPER", "PROJECT_MANAGER", "PROGRAMMING_HEAD", "SENIOR_MANAGEMENT"],
   "ticket:force-status": ["PROJECT_MANAGER", "PROGRAMMING_HEAD", "SENIOR_MANAGEMENT"],
   "comment:create": ["TICKET_REQUESTER", "SYSTEM_OWNER", "DEVELOPER", "QA", "PROJECT_MANAGER", "PROGRAMMING_HEAD", "SENIOR_MANAGEMENT"],
   "comment:internal": ["DEVELOPER", "QA", "PROJECT_MANAGER", "PROGRAMMING_HEAD", "SENIOR_MANAGEMENT"],
-  "comment:moderate": ["PROJECT_MANAGER", "PROGRAMMING_HEAD"],
   "attachment:upload": ["TICKET_REQUESTER", "SYSTEM_OWNER", "DEVELOPER", "QA", "PROJECT_MANAGER", "PROGRAMMING_HEAD", "SENIOR_MANAGEMENT"],
   "attachment:moderate": ["PROJECT_MANAGER", "PROGRAMMING_HEAD"],
   "task:manage": ["PROJECT_MANAGER", "PROGRAMMING_HEAD", "SENIOR_MANAGEMENT"],
+  "task:create-own": ["DEVELOPER", "QA"],
   "user:read": ["PROGRAMMING_HEAD", "SENIOR_MANAGEMENT"],
+  "user:read-directory": ["PROJECT_MANAGER", "PROGRAMMING_HEAD"],
   "user:manage": ["PROGRAMMING_HEAD", "SENIOR_MANAGEMENT"],
+  "user:manage-membership": ["PROJECT_MANAGER", "PROGRAMMING_HEAD"],
   "user:assign-role": ["PROGRAMMING_HEAD"],
   "invitation:manage": ["PROGRAMMING_HEAD", "SENIOR_MANAGEMENT"],
   "signup:review": ["PROGRAMMING_HEAD", "SENIOR_MANAGEMENT"],
   "structure:read-all": ["DEVELOPER", "QA", "PROJECT_MANAGER", "PROGRAMMING_HEAD", "SENIOR_MANAGEMENT"],
   "structure:manage": ["PROGRAMMING_HEAD", "SENIOR_MANAGEMENT"],
+  "structure:manage-roster": ["PROJECT_MANAGER", "PROGRAMMING_HEAD", "SENIOR_MANAGEMENT"],
+  "structure:create-system": ["PROJECT_MANAGER", "PROGRAMMING_HEAD", "SENIOR_MANAGEMENT"],
   "structure:deactivate": ["PROGRAMMING_HEAD", "SENIOR_MANAGEMENT"],
   "report:read": ["TICKET_REQUESTER", "SYSTEM_OWNER", "DEVELOPER", "QA", "PROJECT_MANAGER", "PROGRAMMING_HEAD", "SENIOR_MANAGEMENT"],
   "report:read-team": ["PROJECT_MANAGER", "PROGRAMMING_HEAD", "SENIOR_MANAGEMENT"],
@@ -82,8 +90,8 @@ const EXPECTED_STATUS_FILTERS: Record<UserRole, string[] | null> = {
   SENIOR_MANAGEMENT: null,
   TICKET_REQUESTER: ["DRAFT", "AWAITING_INFO", "REJECTED", "AWAITING_OWNER_APPROVAL", "COMPLETED"],
   SYSTEM_OWNER: ["DRAFT", "AWAITING_INFO", "IN_PROGRESS", "AWAITING_OWNER_APPROVAL", "COMPLETED"],
-  DEVELOPER: ["APPROVED", "SCHEDULED", "IN_PROGRESS", "AWAITING_TESTING", "ON_HOLD"],
-  QA: ["IN_PROGRESS", "AWAITING_TESTING", "AWAITING_OWNER_APPROVAL", "COMPLETED"],
+  DEVELOPER: ["APPROVED", "SCHEDULED", "IN_PROGRESS", "AWAITING_TESTING", "BLOCKED", "ON_HOLD"],
+  QA: ["IN_PROGRESS", "AWAITING_TESTING", "BLOCKED", "AWAITING_OWNER_APPROVAL", "COMPLETED"],
 };
 
 describe("ticket status filter chips by role", () => {
@@ -94,5 +102,29 @@ describe("ticket status filter chips by role", () => {
   it("offers no status chips when signed out", () => {
     expect(ticketStatusFilterKeys(null)).toEqual([]);
     expect(ticketStatusFilterKeys(undefined)).toEqual([]);
+  });
+});
+
+describe("ticket pause gates (lead pairing)", () => {
+  it("lets leadership pause and resume freely", () => {
+    expect(canBlockTicket("PROJECT_MANAGER", false)).toBe(true);
+    expect(canResumeTicket("PROJECT_MANAGER", "ON_HOLD", false)).toBe(true);
+    expect(canResumeTicket("PROJECT_MANAGER", "BLOCKED", false)).toBe(true);
+  });
+
+  it("lets QA raise a blocker without resume rights", () => {
+    expect(canBlockTicket("QA", false)).toBe(true);
+    expect(canResumeTicket("QA", "BLOCKED", false)).toBe(false);
+  });
+
+  it("requires the lead for a developer to stop or clear a blocker", () => {
+    expect(canBlockTicket("DEVELOPER", true)).toBe(true);
+    expect(canBlockTicket("DEVELOPER", false)).toBe(false);
+    expect(canResumeTicket("DEVELOPER", "BLOCKED", true)).toBe(true);
+    expect(canResumeTicket("DEVELOPER", "BLOCKED", false)).toBe(false);
+  });
+
+  it("keeps deliberate holds with leadership", () => {
+    expect(canResumeTicket("DEVELOPER", "ON_HOLD", true)).toBe(false);
   });
 });

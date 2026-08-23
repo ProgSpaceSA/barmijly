@@ -9,6 +9,7 @@ alwaysApply: false
 - Backend unit: `cd backend && npm test`
 - Backend e2e: `cd backend && npm run test:e2e`
 - Tests never send email (SMTP is skipped under Jest; e2e overrides `EmailService`)
+- Local `start:dev` also stays silent unless `MAIL_ENABLED=true` (case-insensitive; `False` counts as off)
 - Ticket changes: walk the status flow in `backend/GUIDE.md`
 - Role checks: reproduce with accounts in `QA_TESTING.md` (`barmijly-qa-testing` skill)
 - New endpoint: hit Swagger `http://localhost:3001/api/docs`, then the matching frontend hook

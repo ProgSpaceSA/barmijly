@@ -27,6 +27,11 @@ export const ACTIONS = [
   'ticket:approve',
   /** Assign to a developer and schedule (req.md §9). */
   'ticket:assign',
+  /**
+   * Revise the ticket's planned estimate (hours / difficulty) without touching
+   * the schedule. Developers on the roster use this — dates stay with leadership.
+   */
+  'ticket:update-estimate',
   'ticket:start',
   'ticket:submit-testing',
   /** Confirm the testing step: AWAITING_TESTING to AWAITING_OWNER_APPROVAL. */
@@ -36,6 +41,15 @@ export const ACTIONS = [
   'ticket:close',
   'ticket:reopen',
   'ticket:archive',
+  /**
+   * Flag a ticket as BLOCKED. Reporting that work is stuck is not a privilege —
+   * the person who hits the wall is the one who knows.
+   */
+  'ticket:block',
+  /** Park a ticket deliberately (ON_HOLD). A prioritisation call, so leadership only. */
+  'ticket:hold',
+  /** Bring a BLOCKED or ON_HOLD ticket back to where it stopped. */
+  'ticket:resume',
   /** Manual status override, bypassing the normal flow. */
   'ticket:force-status',
 
@@ -47,11 +61,21 @@ export const ACTIONS = [
   'attachment:moderate',
 
   // ---- Tasks ------------------------------------------------------------
+  /** Create, reassign, edit and delete any task on a reachable ticket. */
   'task:manage',
+  /**
+   * Break your own work down: create a task on a ticket you are assigned to,
+   * assigned to yourself. Row-scoped, so it never reaches someone else's task.
+   */
+  'task:create-own',
 
   // ---- People -----------------------------------------------------------
   'user:read',
+  /** Read the dev/QA directory without full user admin. */
+  'user:read-directory',
   'user:manage',
+  /** Patch company/system grants on dev/QA within the caller's portfolio. */
+  'user:manage-membership',
   /** Change a user's role. Split from user:manage — it is privilege escalation. */
   'user:assign-role',
   'invitation:manage',
@@ -61,6 +85,10 @@ export const ACTIONS = [
   /** Sees every company / system / department, not only the assigned ones. */
   'structure:read-all',
   'structure:manage',
+  /** Add/remove developers on a system roster (scoped to portfolio for PM). */
+  'structure:manage-roster',
+  /** Create a system inside a managed company (scoped for PM). */
+  'structure:create-system',
   'structure:deactivate',
 
   // ---- Reporting --------------------------------------------------------
@@ -121,11 +149,16 @@ const DEVELOPER_ACTIONS: Action[] = [
   'ticket:create',
   'ticket:update',
   'ticket:submit',
+  // req.md §2 — the developer estimates the work once they hold it.
+  'ticket:update-estimate',
   'ticket:start',
   'ticket:submit-testing',
+  'ticket:block',
+  'ticket:resume',
   'comment:create',
   'comment:internal',
   'attachment:upload',
+  'task:create-own',
   'structure:read-all',
   'report:read',
 ];
@@ -137,9 +170,12 @@ const QA_ACTIONS: Action[] = [
   'ticket:update',
   'ticket:submit',
   'ticket:verify-testing',
+  'ticket:block',
   'comment:create',
   'comment:internal',
   'attachment:upload',
+  // QA writes its own test tasks rather than asking a manager to file them.
+  'task:create-own',
   'structure:read-all',
   'report:read',
 ];
@@ -157,17 +193,20 @@ const PROJECT_MANAGER_ACTIONS: Action[] = [
   'ticket:close',
   'ticket:reopen',
   'ticket:archive',
+  'ticket:block',
+  'ticket:hold',
+  'ticket:resume',
   'ticket:force-status',
   'comment:create',
   'comment:internal',
   'attachment:upload',
   'attachment:moderate',
   'task:manage',
-  // No user:read / user:manage / invitation:manage / signup:review /
-  // structure:manage — req.md §2 scopes the project manager to "ترتيب
-  // الأولويات، الإسناد، المتابعة". Administering accounts and the org chart
-  // belongs to the head of programming and senior management.
+  'user:read-directory',
+  'user:manage-membership',
   'structure:read-all',
+  'structure:manage-roster',
+  'structure:create-system',
   'report:read',
   'report:read-team',
 ];
@@ -185,6 +224,8 @@ const PROGRAMMING_HEAD_ACTIONS: Action[] = [
   'invitation:manage',
   'signup:review',
   'structure:manage',
+  'structure:manage-roster',
+  'structure:create-system',
   'structure:deactivate',
   'digest:run',
 ];
@@ -197,6 +238,9 @@ const SENIOR_MANAGEMENT_ACTIONS: Action[] = [
   'ticket:update',
   'ticket:submit',
   'ticket:archive',
+  'ticket:block',
+  'ticket:hold',
+  'ticket:resume',
   'ticket:force-status',
   'comment:create',
   'comment:internal',
@@ -208,10 +252,22 @@ const SENIOR_MANAGEMENT_ACTIONS: Action[] = [
   'signup:review',
   'structure:read-all',
   'structure:manage',
+  'structure:manage-roster',
+  'structure:create-system',
   'structure:deactivate',
   'report:read',
   'report:read-team',
 ];
+
+/** Full structure admin — implies roster and create endpoints. */
+export function canManageStructure(role: UserRole | undefined): boolean {
+  return can(role, 'structure:manage');
+}
+
+/** Roster or full structure admin. */
+export function canManageRoster(role: UserRole | undefined): boolean {
+  return canManageStructure(role) || can(role, 'structure:manage-roster');
+}
 
 /** The permission matrix. Single source of truth for every role gate. */
 export const ROLE_ACTIONS: Record<UserRole, readonly Action[]> = {

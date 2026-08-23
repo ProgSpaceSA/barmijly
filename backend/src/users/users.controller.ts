@@ -13,10 +13,11 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 // Derived from the action matrix rather than restated here, so a change to
 // `ROLE_ACTIONS` moves the endpoint with it.
 const READERS = rolesWith('user:read');
+const DIRECTORY = rolesWith('user:read-directory');
+const USER_LIST = [...new Set([...READERS, ...DIRECTORY])];
 const MANAGERS = rolesWith('user:manage');
-// The assign picker, not the staff directory: whoever may assign a ticket needs
-// the list of developers they can assign it to.
-const ASSIGNERS = rolesWith('ticket:assign');
+const MEMBERSHIP_EDITORS = rolesWith('user:manage-membership');
+const USER_UPDATERS = [...new Set([...MANAGERS, ...MEMBERSHIP_EDITORS])];
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -34,24 +35,34 @@ export class UsersController {
   }
 
   @Get()
-  @Roles(...READERS)
+  @Roles(...USER_LIST)
   findAll(
+    @CurrentUser() user: any,
     @Query('role') role?: UserRole,
     @Query('companyId') companyId?: string,
     @Query('isActive') isActive?: string,
   ) {
-    return this.usersService.findAll({
-      role,
-      companyId,
-      isActive: isActive !== undefined ? isActive === 'true' : undefined,
-    });
+    return this.usersService.findAll(
+      {
+        role,
+        companyId,
+        isActive: isActive !== undefined ? isActive === 'true' : undefined,
+      },
+      user,
+    );
   }
 
   @Get('developers')
-  @Roles(...ASSIGNERS)
-  @ApiOperation({ summary: 'Assignable developers; pass ticketId to scope to that ticket' })
-  getDevelopers(@CurrentUser() user: any, @Query('ticketId') ticketId?: string) {
-    return this.usersService.getDevelopers(user, ticketId);
+  @ApiOperation({
+    summary:
+      'Active developers for filters and pickers. Default is the caller\'s portfolio. Pass pool=roster for the full staffing pool (PM/head). Pass ticketId to match ticket assignability.',
+  })
+  getDevelopers(
+    @CurrentUser() user: any,
+    @Query('ticketId') ticketId?: string,
+    @Query('pool') pool?: 'roster',
+  ) {
+    return this.usersService.getDevelopers(user, ticketId, { pool });
   }
 
   @Get(':id/comments')
@@ -61,7 +72,7 @@ export class UsersController {
   }
 
   @Get(':id')
-  @Roles(...READERS)
+  @Roles(...USER_LIST)
   findOne(@Param('id') id: string) {
     return this.usersService.findOne(id);
   }
@@ -73,7 +84,7 @@ export class UsersController {
   }
 
   @Patch(':id')
-  @Roles(...MANAGERS)
+  @Roles(...USER_UPDATERS)
   update(@Param('id') id: string, @Body() dto: UpdateUserDto, @CurrentUser() user: any) {
     return this.usersService.update(id, dto, user);
   }

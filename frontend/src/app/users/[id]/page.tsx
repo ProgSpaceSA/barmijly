@@ -9,9 +9,10 @@ import { AttachmentImage } from "@/components/shared/AttachmentImage";
 import { RelativeTime } from "@/components/shared/RelativeTime";
 import { TicketCodeBadge } from "@/components/shared/TicketCodeBadge";
 import { CodeComment } from "@/components/shared/CodeComment";
-import { SkeletonList, SkeletonStat } from "@/components/shared/LoadingSpinner";
+import { SkeletonList, SkeletonProfile } from "@/components/shared/LoadingSpinner";
 import { ROLE_LABELS, TICKET_TYPE_LABELS } from "@/lib/constants";
 import api from "@/lib/api";
+import { qk } from "@/lib/query-keys";
 import { ArrowLeft, Mail, Building2, User, Layers, FileText, Download, AtSign } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
@@ -56,19 +57,19 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
   const [activeTab, setActiveTab] = useState<"tickets" | "chats">("tickets");
 
   const { data: user, isLoading: userLoading } = useQuery({
-    queryKey: ["user", id],
+    queryKey: qk.users.detail(id),
     queryFn: () => api.get(`/users/${id}`).then(r => r.data),
   });
 
   const isDev = user?.role === "DEVELOPER";
   const { data: ticketsData, isLoading: ticketsLoading } = useQuery({
-    queryKey: ["user-tickets", id, isDev],
+    queryKey: qk.tickets.byUser(id, isDev),
     queryFn: () => api.get(`/tickets?${isDev ? `developerId=${id}` : `creatorId=${id}`}&limit=50`).then(r => r.data),
     enabled: !!user && activeTab === "tickets",
   });
 
   const { data: commentsData, isLoading: commentsLoading } = useQuery({
-    queryKey: ["user-comments", id],
+    queryKey: qk.users.comments(id),
     queryFn: () => api.get(`/users/${id}/comments`).then(r => r.data),
     enabled: activeTab === "chats",
   });
@@ -79,7 +80,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
   const roleColor = ROLE_COLOR[user?.role] ?? "#6B7280";
 
   return (
-    <AppShell requires="user:read">
+    <AppShell requires={['user:read', 'user:read-directory']}>
       <div className="max-w-4xl space-y-6">
         {/* Back */}
         <button onClick={() => router.back()}
@@ -91,19 +92,19 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
         </button>
 
         {userLoading ? (
-          <div className="grid grid-cols-4 gap-4"><SkeletonStat /><SkeletonStat /><SkeletonStat /><SkeletonStat /></div>
+          <SkeletonProfile />
         ) : user && (
           <>
             {/* Profile card */}
-            <div className="rounded-2xl p-6" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-              <div className="flex items-start gap-5">
+            <div className="rounded-2xl p-4 sm:p-6" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+              <div className="flex flex-wrap items-start gap-x-4 gap-y-2 sm:gap-x-5">
                 <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-xl font-bold shrink-0"
                   style={{ background: `${roleColor}18`, color: roleColor }}>
                   {initials}
                 </div>
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 basis-48 min-w-0">
                   <div className="flex items-center gap-3 flex-wrap mb-1">
-                    <h1 className="text-xl font-bold" style={{ color: "var(--foreground)" }}>
+                    <h1 className="min-w-0 text-lg font-bold break-words sm:text-xl" style={{ color: "var(--foreground)" }}>
                       {user.firstName} {user.lastName}
                     </h1>
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold"
@@ -117,9 +118,10 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                       </span>
                     )}
                   </div>
-                  <div className="flex flex-wrap gap-4 text-sm" style={{ color: "var(--muted-foreground)" }}>
-                    <span className="flex items-center gap-1.5 font-brm" dir="ltr">
-                      <Mail className="w-3.5 h-3.5" /> {user.email}
+                  <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm" style={{ color: "var(--muted-foreground)" }}>
+                    <span className="flex min-w-0 items-center gap-1.5 font-brm" dir="ltr">
+                      <Mail className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">{user.email}</span>
                     </span>
                     {user.company && (
                       <span className="flex items-center gap-1.5">
@@ -143,12 +145,12 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                     </div>
                   )}
                 </div>
-                <RelativeTime date={user.createdAt} />
+                <RelativeTime className="shrink-0 ms-auto" date={user.createdAt} label="تاريخ الإنشاء" />
               </div>
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
               <StatBox label="إجمالي التذاكر"  value={tickets.length} />
               <StatBox label="قيد التنفيذ"      value={tickets.filter((t: any) => t.status === "IN_PROGRESS").length} />
               <StatBox label="مكتملة"           value={tickets.filter((t: any) => t.status === "COMPLETED").length} />
@@ -202,7 +204,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                                   {TICKET_TYPE_LABELS[ticket.type]}
                                 </span>
                               </div>
-                              <h3 className="font-semibold truncate" style={{ color: "var(--foreground)" }}>{ticket.title}</h3>
+                              <h3 className="brm-row-title font-semibold" style={{ color: "var(--foreground)" }}>{ticket.title}</h3>
                               <div className="flex gap-4 mt-1.5 text-xs flex-wrap" style={{ color: "var(--muted-foreground)" }}>
                                 <span>{ticket.system?.name}</span>
                                 <span>{ticket.company?.name}</span>

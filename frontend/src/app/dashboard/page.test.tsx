@@ -247,4 +247,38 @@ describe("Dashboard activity", () => {
     expect(screen.getByText("معتمدة")).toBeInTheDocument();
     expect(screen.queryByText("no active items")).not.toBeInTheDocument();
   });
+
+  it("shows remaining days beside each open task", async () => {
+    const due = new Date();
+    due.setHours(12, 0, 0, 0);
+    due.setDate(due.getDate() + 5);
+    authState.user = { id: "dev-1", role: "DEVELOPER", firstName: "أحمد" };
+    mockGet.mockImplementation((url: unknown) => {
+      const path = String(url);
+      if (path === "/reports/dashboard") {
+        return Promise.resolve({
+          data: { totalTickets: 1, openTickets: 1, inProgressTickets: 1, overdueTickets: 0 },
+        });
+      }
+      if (path.includes("/tickets/my-created")) return Promise.resolve({ data: [] });
+      if (path.includes("/tasks/my")) {
+        return Promise.resolve({
+          data: [{
+            id: "task-1",
+            title: "ضبط قالب الفاتورة",
+            status: "IN_PROGRESS",
+            dueDate: due.toISOString(),
+            updatedAt: "2026-08-20T00:00:00.000Z",
+            ticket: { id: "t1", title: "تعديل قالب الفاتورة", ticketNumber: 22 },
+          }],
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+
+    renderPage();
+
+    expect(await screen.findByText("ضبط قالب الفاتورة")).toBeInTheDocument();
+    expect(screen.getByLabelText("المتبقي")).toHaveTextContent("متبقي 5 أيام");
+  });
 });

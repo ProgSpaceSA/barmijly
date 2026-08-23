@@ -88,6 +88,7 @@ async function reset() {
   }
   await prisma.notification.deleteMany();
   await prisma.auditLog.deleteMany();
+  await prisma.ticketDependency.deleteMany();
   await prisma.ticketApproval.deleteMany();
   await prisma.ticketAssignment.deleteMany();
   await prisma.ticketStatusHistory.deleteMany();
@@ -553,9 +554,21 @@ async function main() {
   const p1Completed = byProjectKey['1:completed'];
   const p1Closed = byProjectKey['1:closed'];
   if (p1Completed && p1Closed) {
-    await prisma.ticket.update({
-      where: { id: p1Completed.id },
-      data: { relatedTicketId: p1Closed.id },
+    // A real prerequisite rather than the old untyped "related" pointer: the
+    // completed ticket could not start until the closed one was done.
+    await prisma.ticketDependency.upsert({
+      where: {
+        blockingTicketId_blockedTicketId: {
+          blockingTicketId: p1Closed.id,
+          blockedTicketId: p1Completed.id,
+        },
+      },
+      create: {
+        blockingTicketId: p1Closed.id,
+        blockedTicketId: p1Completed.id,
+        createdById: p1Completed.creator.id,
+      },
+      update: {},
     });
   }
 

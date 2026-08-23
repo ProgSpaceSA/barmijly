@@ -25,6 +25,7 @@ The rest are scoped by glob — **read the matching rule before editing files it
 | `.cursor/rules/frontend-nextjs.mdc` | `frontend/**/*.{ts,tsx}` |
 | `.cursor/rules/prisma-schema.mdc` | `backend/**/*.prisma` |
 | `.cursor/rules/rtl-arabic-ui.mdc` | `frontend/**/*.{tsx,css}` |
+| `.cursor/rules/responsive-ui.mdc` | `frontend/**/*.{tsx,css}` |
 | `.cursor/rules/ticket-domain.mdc` | `backend/src/tickets/**`, `frontend/src/**/ticket*`, `useTickets.ts` |
 | `.cursor/rules/api-sync.mdc` | `*.controller.ts`, `frontend/src/hooks/**`, `frontend/src/lib/**` |
 | `.cursor/rules/testing.mdc` | `backend/**/*.spec.ts`, `backend/test/**`, `QA_TESTING.md` |

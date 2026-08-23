@@ -4,6 +4,7 @@ import { AtSign, Check, FileText, Lock, Pencil, Trash2 } from "lucide-react";
 import { RelativeTime } from "@/components/shared/RelativeTime";
 import { MentionText } from "@/components/shared/MentionText";
 import { CommentComposer, type CommentSubmit } from "@/components/tickets/CommentComposer";
+import { UserNameWithYou } from "@/components/shared/UserNameWithYou";
 import { COMMENT_LABELS, ROLE_COLORS, ROLE_LABELS } from "@/lib/constants";
 import { avatarTint, cn, formatBytes } from "@/lib/utils";
 import { downloadAttachment, fetchAttachmentObjectUrl } from "@/lib/attachments";
@@ -89,14 +90,61 @@ export function CommentItem({
         </div>
       )}
 
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 relative">
+        {isMine && !editing && (
+          confirming ? (
+            <div className="brm-comment-confirm" role="group" aria-label={COMMENT_LABELS.deleteConfirm}>
+              <p>{COMMENT_LABELS.deleteConfirm}</p>
+              <div className="brm-comment-confirm-actions">
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="brm-comment-confirm-btn brm-comment-confirm-btn-danger"
+                >
+                  <Check className="w-3 h-3" /> {COMMENT_LABELS.delete}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirming(false)}
+                  disabled={deleting}
+                  className="brm-comment-confirm-btn"
+                >
+                  {COMMENT_LABELS.cancel}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="brm-comment-actions flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={onStartEdit}
+                title={COMMENT_LABELS.edit}
+                aria-label={COMMENT_LABELS.edit}
+                className="brm-icon-btn"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirming(true)}
+                title={COMMENT_LABELS.delete}
+                aria-label={COMMENT_LABELS.delete}
+                className="brm-icon-btn brm-icon-btn-danger"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )
+        )}
+
         {!grouped && (
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
-              {isMine
-                ? COMMENT_LABELS.you
-                : `${author.firstName ?? ""} ${author.lastName ?? ""}`.trim()}
-            </span>
+          <div className="flex items-center gap-2 mb-1 flex-wrap" style={{ color: "var(--foreground)" }}>
+            <UserNameWithYou
+              person={author}
+              currentUserId={currentUserId}
+              className="inline-flex items-center gap-2 flex-wrap text-sm font-semibold"
+            />
 
             {author.role && (
               <span
@@ -216,57 +264,6 @@ export function CommentItem({
           </div>
         )}
       </div>
-
-      {/* A comment belongs to whoever wrote it — nobody else is offered the
-          controls, because nobody else may rewrite what was said. */}
-      {isMine && !editing && (
-        confirming ? (
-          <div className="brm-comment-confirm" role="group" aria-label={COMMENT_LABELS.deleteConfirm}>
-            <p>{COMMENT_LABELS.deleteConfirm}</p>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={deleting}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg font-semibold text-white text-xs disabled:opacity-50"
-                style={{ background: "#EF4444" }}
-              >
-                <Check className="w-3 h-3" /> {COMMENT_LABELS.delete}
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirming(false)}
-                disabled={deleting}
-                className="px-2 py-1 rounded-lg text-xs"
-                style={{ border: "1px solid var(--border)", color: "var(--muted-foreground)" }}
-              >
-                {COMMENT_LABELS.cancel}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="brm-comment-actions flex items-start gap-0.5 shrink-0">
-            <button
-              type="button"
-              onClick={onStartEdit}
-              title={COMMENT_LABELS.edit}
-              aria-label={COMMENT_LABELS.edit}
-              className="brm-icon-btn"
-            >
-              <Pencil className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirming(true)}
-              title={COMMENT_LABELS.delete}
-              aria-label={COMMENT_LABELS.delete}
-              className="brm-icon-btn brm-icon-btn-danger"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )
-      )}
     </div>
   );
 }

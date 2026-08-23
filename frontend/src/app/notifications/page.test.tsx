@@ -87,6 +87,30 @@ beforeEach(() => {
 });
 
 describe('NotificationsPage', () => {
+  it('shows stored English titles in Arabic', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.startsWith('/notifications?')) {
+        return Promise.resolve({
+          data: {
+            data: [{
+              ...unread,
+              type: 'COMMENT_ADDED',
+              title: 'You were mentioned in a comment',
+            }],
+            total: 1, page: 1, limit: 20, totalPages: 1,
+          },
+        });
+      }
+      if (url === '/notifications/unread-count') return Promise.resolve({ data: 1 });
+      return Promise.resolve({ data: [] });
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('تمت الإشارة إليك في تعليق')).toBeInTheDocument();
+    expect(screen.queryByText('You were mentioned in a comment')).not.toBeInTheDocument();
+  });
+
   it('renders compact rows and a ticket link, without a view-ticket button', async () => {
     renderPage();
 

@@ -1,18 +1,22 @@
 "use client";
-import { formatDistanceToNow, format } from "date-fns";
-import { ar } from "date-fns/locale";
+import { formatAbsoluteTime, formatRelativeTime, parseTimestamp } from "@/lib/dates";
 
 export function RelativeTime({ date, className, label }: { date: string | Date; className?: string; label?: string }) {
-  const d = typeof date === "string" ? new Date(date) : date;
-  const relative = formatDistanceToNow(d, { addSuffix: true, locale: ar });
-  const absolute = format(d, "yyyy/MM/dd HH:mm");
+  const d = parseTimestamp(date);
+  if (Number.isNaN(d.getTime())) return null;
+
+  const relative = formatRelativeTime(d);
+  const absolute = formatAbsoluteTime(d);
 
   return (
     <time
       dateTime={d.toISOString()}
       title={label ? `${label} — ${absolute}` : absolute}
       className={`font-brm cursor-help ${className ?? ""}`}
-      style={{ fontSize: "0.7rem", color: "var(--muted-foreground)" }}
+      style={{
+        color: "var(--muted-foreground)",
+        ...(className?.match(/\btext-(xs|sm|base|lg)\b/) ? {} : { fontSize: "0.7rem" }),
+      }}
     >
       {relative}
     </time>

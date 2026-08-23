@@ -24,6 +24,8 @@ export interface DigestTicketRef {
   priority: Priority | null;
   estimatedDeadline: Date | null;
   url: string;
+  companyName?: string | null;
+  systemName?: string | null;
 }
 
 export interface DigestMention {

@@ -3,6 +3,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TicketStatus, UserRole } from '@prisma/client';
 import { TicketsService } from './tickets.service';
+import { AssignmentSyncService } from './assignment-sync.service';
 import { AccessService } from '../access/access.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -33,6 +34,8 @@ const asUser = (role: UserRole, id = 'actor-1') => ({
 });
 
 const ticketAt = (status: TicketStatus, overrides: Record<string, any> = {}) => ({
+  // findOne asks for a filtered open-task count, so the row always carries one.
+  _count: { tasks: 0 },
   id: TICKET_ID,
   title: 'تعديل شاشة الفواتير',
   description: 'وصف',
@@ -46,6 +49,7 @@ const ticketAt = (status: TicketStatus, overrides: Record<string, any> = {}) => 
   companyId: 'company-1',
   type: 'MODIFICATION',
   priority: null,
+  estimatedDeadline: new Date('2026-12-01'),
   hasFinancialLoss: false,
   financialLossDetails: null,
   ...overrides,
@@ -94,7 +98,7 @@ const CASES: Case[] = [
     action: 'assign',
     status: TicketStatus.APPROVED,
     allowed: [UserRole.PROGRAMMING_HEAD, UserRole.PROJECT_MANAGER],
-    run: (s, u) => s.assign(TICKET_ID, { developerId: 'dev-1', estimatedDeadline: '2026-12-01' } as any, u),
+    run: (s, u) => s.assign(TICKET_ID, { developerIds: ['dev-1'], estimatedDeadline: '2026-12-01' } as any, u),
   },
   {
     action: 'startWork',
@@ -174,6 +178,7 @@ describe('ticket action matrix', () => {
 
   beforeEach(async () => {
     prisma = {
+      $transaction: jest.fn().mockImplementation((fn: any) => fn(prisma)),
       ticket: {
         findUnique: jest.fn(),
         findMany: jest.fn().mockResolvedValue([]),
@@ -183,14 +188,33 @@ describe('ticket action matrix', () => {
         create: jest.fn().mockResolvedValue({ id: 'ticket-new' }),
       },
       ticketStatusHistory: { create: jest.fn().mockResolvedValue({}) },
+      ticketDependency: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'dep-1' }),
+        count: jest.fn().mockResolvedValue(0),
+      },
       ticketApproval: { create: jest.fn().mockResolvedValue({}) },
       ticketComment: { create: jest.fn().mockResolvedValue({}) },
       ticketAssignment: {
         create: jest.fn().mockResolvedValue({}),
+        upsert: jest.fn().mockResolvedValue({}),
+        update: jest.fn().mockResolvedValue({}),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
-        findFirst: jest.fn().mockResolvedValue({ id: 'assignment-1' }),
+        count: jest.fn().mockResolvedValue(1),
+        findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn().mockResolvedValue({ id: 'assignment-1', isActive: true, isLead: false }),
+        // Truthy = the caller leads this ticket. Tests that need the opposite
+        // point it at null.
+        findFirst: jest.fn().mockResolvedValue({ id: 'assignment-1', isLead: true }),
       },
-      ticketTask: { create: jest.fn().mockResolvedValue({}), findFirst: jest.fn().mockResolvedValue(null) },
+      // 0 open tasks: the submit-for-testing gate is exercised in
+      // tickets.service.spec.ts; this file is about the role matrix.
+      ticketTask: {
+        create: jest.fn().mockResolvedValue({}),
+        findFirst: jest.fn().mockResolvedValue(null),
+        count: jest.fn().mockResolvedValue(0),
+      },
       user: {
         findUnique: jest.fn().mockResolvedValue({
           email: 'dev@company.com',
@@ -212,8 +236,14 @@ describe('ticket action matrix', () => {
       },
       userCompany: { findMany: jest.fn().mockResolvedValue([{ companyId: 'company-1' }]) },
       userSystem: { findMany: jest.fn().mockResolvedValue([{ systemId: 'system-1' }]) },
+      company: { findUnique: jest.fn().mockResolvedValue({ id: 'company-1', name: 'شركة الاختبار' }) },
       system: {
-        findUnique: jest.fn().mockResolvedValue({ id: 'system-1', companyId: 'company-1', isActive: true }),
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'system-1',
+          companyId: 'company-1',
+          isActive: true,
+          name: 'نظام الاختبار',
+        }),
         findMany: jest.fn().mockResolvedValue([{ id: 'system-1' }]),
       },
       notification: { groupBy: jest.fn().mockResolvedValue([]) },
@@ -222,6 +252,7 @@ describe('ticket action matrix', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TicketsService,
+        AssignmentSyncService,
         { provide: PrismaService, useValue: prisma },
         AccessService,
         { provide: NotificationsService, useValue: { notify: jest.fn(), notifyMany: jest.fn() } },
@@ -257,6 +288,7 @@ describe('ticket scope restrictions', () => {
 
   const setup = async (overrides: Record<string, any> = {}) => {
     prisma = {
+      $transaction: jest.fn().mockImplementation((fn: any) => fn(prisma)),
       ticket: {
         findUnique: jest.fn().mockResolvedValue(ticketAt(TicketStatus.NEW)),
         findMany: jest.fn().mockResolvedValue([]),
@@ -265,11 +297,21 @@ describe('ticket scope restrictions', () => {
         create: jest.fn(),
       },
       ticketStatusHistory: { create: jest.fn() },
+      ticketDependency: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'dep-1' }),
+        count: jest.fn().mockResolvedValue(0),
+      },
       ticketAssignment: { findFirst: jest.fn() },
       user: { findUnique: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
       userCompany: { findMany: jest.fn().mockResolvedValue([]) },
       userSystem: { findMany: jest.fn().mockResolvedValue([]) },
-      system: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+      company: { findUnique: jest.fn().mockResolvedValue({ id: 'company-1', name: 'شركة الاختبار' }) },
+      system: { findUnique: jest.fn().mockResolvedValue({ id: 'system-1', name: 'نظام الاختبار' }), findMany: jest.fn().mockResolvedValue([]) },
+      ticketTask: {
+        aggregate: jest.fn().mockResolvedValue({ _avg: { difficultyLevel: null }, _count: { difficultyLevel: 0 } }),
+      },
       notification: { groupBy: jest.fn().mockResolvedValue([]) },
       ...overrides,
     };
@@ -277,6 +319,7 @@ describe('ticket scope restrictions', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TicketsService,
+        AssignmentSyncService,
         { provide: PrismaService, useValue: prisma },
         AccessService,
         { provide: NotificationsService, useValue: { notify: jest.fn(), notifyMany: jest.fn() } },

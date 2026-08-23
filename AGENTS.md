@@ -113,6 +113,7 @@ Requires `DATABASE_URL` in `backend/.env`. Enable **barmijly-postgres** in Curso
 ## UI & localization
 
 - Arabic RTL is the default (`lang="ar" dir="rtl"`).
+- Layouts are mobile-first (phone → tablet → desktop).
 - User-facing labels live in `frontend/src/lib/constants.ts`.
 - Brand colors: Primary `#4F46E5`, Secondary `#6366F1`, Accent `#8B5CF6`.
 - Dark mode is supported; default theme is dark.

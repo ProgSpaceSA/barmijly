@@ -1,24 +1,37 @@
 "use client";
-import { use, useRef, useState, useEffect, useCallback, useReducer } from "react";
+import { use, useRef, useState, useEffect, useCallback, useReducer, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
-import { SkeletonList } from "@/components/shared/LoadingSpinner";
+import { SkeletonTicketDetail } from "@/components/shared/LoadingSpinner";
 import { StatusBadge, PriorityBadge } from "@/components/shared/StatusBadge";
 import { RelativeTime } from "@/components/shared/RelativeTime";
+import { DueRemaining } from "@/components/shared/DueRemaining";
+import { TicketTimeline } from "@/components/tickets/TicketTimeline";
+import { useTaskActions, useTicketTasks } from "@/hooks/useTasks";
+import { TicketAssignees } from "@/components/tickets/TicketAssignees";
+import { TicketPlanPanel } from "@/components/tickets/TicketPlanPanel";
+import { PauseReasonField, TicketBlockBanner, TicketBlockPanel } from "@/components/tickets/TicketBlockPanel";
+import { TicketDependencies } from "@/components/tickets/TicketDependencies";
+import { EstimateChip } from "@/components/tickets/EstimateChip";
+import { ThemeSelect } from "@/components/shared/ThemeSelect";
+import { TicketEstimateSummary } from "@/components/tickets/TicketEstimateSummary";
 import { TicketCodeBadge } from "@/components/shared/TicketCodeBadge";
-import { useTicket, useTicketAction } from "@/hooks/useTickets";
+import { useTicket, useTicketAction, useTicketAssignees, useTicketDependencies } from "@/hooks/useTickets";
 import { useMarkTicketRead } from "@/hooks/useNotifications";
 import { useAuthStore } from "@/store/auth";
 import { usePermissions } from "@/hooks/usePermissions";
 import { downloadAttachment, fetchAttachmentObjectUrl } from "@/lib/attachments";
 import { AttachmentImage } from "@/components/shared/AttachmentImage";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { COMMENT_LABELS, SELECT_PLACEHOLDERS, TICKET_TYPE_LABELS } from "@/lib/constants";
+import { UserNameWithYou, personFullName } from "@/components/shared/UserNameWithYou";
+import { BLOCK_LABELS, COMMENT_LABELS, DEPENDENCY_LABELS, DIFFICULTY_LABELS, ESTIMATE_LABELS, TASK_STATUS_COLORS, TASK_STATUS_LABELS, FORCE_STATUS_LABELS, SELECT_PLACEHOLDERS, TASK_LABELS, TICKET_ACTION_CONFIRM, TICKET_STATUS_LABELS, TICKET_TYPE_LABELS, ASSIGNEE_LABELS } from "@/lib/constants";
+import { canBlockTicket, canResumeTicket } from "@/lib/permissions";
+import { formatAbsoluteTime, parseTimestamp } from "@/lib/dates";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import {
-  ArrowRight, Clock, User, Building2, Monitor, Lock,
-  Paperclip, FileText, Trash2, Download, Check, AlertTriangle, X, Plus, Eye, Loader2,
+  ArrowRight, Clock, CalendarClock, User, Building2, Monitor, Lock,
+  Paperclip, FileText, Trash2, Download, Check, AlertTriangle, X, Plus, Pencil, Eye, Loader2,
   ChevronDown, ChevronLeft,
 } from "lucide-react";
 import api from "@/lib/api";
@@ -28,19 +41,117 @@ import { Markdown } from "@/components/shared/Markdown";
 import { CommentThread } from "@/components/tickets/CommentThread";
 import { formatBytes } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { qk } from "@/lib/query-keys";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
 const FILE_BASE = API_BASE.replace("/api", "");
 
 const isImg = (t: string) => t.startsWith("image/");
 
+/**
+ * A task's actual hours — plain wall clock between its two timestamps.
+ *
+ * Tasks have no status history, so unlike a ticket this cannot subtract time
+ * spent blocked. It is an upper bound, and only shown once the task is done.
+ */
+function taskPersonName(
+  person: { id?: string; firstName?: string; lastName?: string } | null | undefined,
+) {
+  return personFullName(person);
+}
+
+function taskActualHours(task: { startedAt?: string | null; completedAt?: string | null }): number | null {
+  if (!task.startedAt || !task.completedAt) return null;
+  const ms = Date.parse(task.completedAt) - Date.parse(task.startedAt);
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  return Math.round((ms / 3_600_000) * 10) / 10;
+}
+
+const PREREQUISITE_SATISFIED = ["COMPLETED", "CLOSED"];
+
+function countUnmetBlockers(
+  blockedBy: { type: string; blockingTicket?: { status: string } | null }[] | undefined,
+): number {
+  return (blockedBy ?? []).filter(
+    (d) => d.type === "BLOCKS" && d.blockingTicket && !PREREQUISITE_SATISFIED.includes(d.blockingTicket.status),
+  ).length;
+}
+
+function joinTaskMeta(parts: React.ReactNode[]) {
+  const visible = parts.filter(Boolean);
+  if (!visible.length) return null;
+  return (
+    <span className="inline-flex flex-wrap items-center text-xs leading-none">
+      {visible.map((part, i) => (
+        <Fragment key={i}>
+          {i > 0 && (
+            <span className="px-1 opacity-50 select-none" aria-hidden>
+              ·
+            </span>
+          )}
+          <span className="inline-flex items-center">{part}</span>
+        </Fragment>
+      ))}
+    </span>
+  );
+}
+
+function todayDateInput() {
+  const now = new Date();
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function dateInputValue(value?: string | null) {
+  if (!value) return "";
+  return value.slice(0, 10);
+}
+
+function emptyTaskDraft() {
+  return { title: "", description: "", assignedToId: "", dueDate: todayDateInput(), estimatedHours: "", difficultyLevel: "" };
+}
+
+function taskToDraft(task: {
+  title?: string;
+  description?: string | null;
+  assignedTo?: { id?: string } | null;
+  dueDate?: string | null;
+  estimatedHours?: number | null;
+  difficultyLevel?: number | null;
+}) {
+  return {
+    title: task.title ?? "",
+    description: task.description ?? "",
+    assignedToId: task.assignedTo?.id ?? "",
+    dueDate: dateInputValue(task.dueDate) || todayDateInput(),
+    estimatedHours: task.estimatedHours != null ? String(task.estimatedHours) : "",
+    difficultyLevel: task.difficultyLevel != null ? String(task.difficultyLevel) : "",
+  };
+}
+
+/** When the ticket was handed to QA — first move into AWAITING_TESTING. */
+function ticketDevHandoff(ticket: {
+  statusHistory?: Array<{
+    toStatus?: string;
+    createdAt?: string;
+    changedBy?: { id?: string; firstName?: string; lastName?: string } | null;
+  }>;
+}) {
+  const hit = ticket.statusHistory?.find((h) => h.toStatus === "AWAITING_TESTING");
+  if (!hit?.createdAt) return null;
+  return { at: hit.createdAt, changedBy: hit.changedBy ?? null };
+}
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-xl overflow-visible" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-      <div className="px-5 py-3.5" style={{ borderBottom: "1px solid var(--border)" }}>
+      <div className="px-4 py-3 sm:px-5 sm:py-3.5" style={{ borderBottom: "1px solid var(--border)" }}>
         <h3 className="font-semibold text-sm" style={{ color: "var(--foreground)" }}>{title}</h3>
       </div>
-      <div className="p-5">{children}</div>
+      <div className="p-4 sm:p-5">{children}</div>
     </div>
   );
 }
@@ -56,6 +167,38 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function MetaChip({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <span
+      className="inline-flex h-6 items-center gap-1.5 text-xs px-2.5 rounded-full font-medium leading-4"
+      title={label}
+      aria-label={label}
+      style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function SidebarMeta({
+  field,
+  icon,
+  children,
+}: {
+  field: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-2 text-sm" style={{ color: "var(--muted-foreground)" }}>
+      <span title={field} aria-label={field} className="shrink-0 cursor-help">
+        {icon}
+      </span>
+      <span>{children}</span>
+    </div>
+  );
+}
+
 function ActionBtn({ onClick, variant = "primary", disabled, children }: {
   onClick?: () => void; variant?: "primary" | "outline" | "danger" | "ghost"; disabled?: boolean; children: React.ReactNode;
 }) {
@@ -66,8 +209,8 @@ function ActionBtn({ onClick, variant = "primary", disabled, children }: {
     ghost:   { color: "var(--muted-foreground)", background: "transparent" },
   };
   return (
-    <button onClick={onClick} disabled={disabled}
-      className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
+    <button type="button" onClick={onClick} disabled={disabled}
+      className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
       style={styles[variant]}>
       {children}
     </button>
@@ -76,6 +219,104 @@ function ActionBtn({ onClick, variant = "primary", disabled, children }: {
 
 function Spinner() {
   return <Loader2 className="w-3.5 h-3.5 animate-spin inline-block ml-1" />;
+}
+
+type ConfirmKind = "submit" | "resubmit" | "approve" | "needsInfo" | "reject" | "assign" | "start" | "submitForTesting" | "approveCompletion" | "closeTicket" | "reopen" | "archive" | "unarchive" | "block" | "hold" | "resume";
+
+function ConfirmModal({
+  title,
+  subtitle,
+  confirm,
+  hint,
+  actionLabel,
+  pendingLabel,
+  pending,
+  danger,
+  confirmDisabled,
+  children,
+  onConfirm,
+  onClose,
+}: {
+  title: string;
+  subtitle?: string;
+  confirm: string;
+  hint?: string;
+  actionLabel: string;
+  pendingLabel?: string;
+  pending: boolean;
+  danger?: boolean;
+  confirmDisabled?: boolean;
+  children?: React.ReactNode;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+      onClick={() => { if (!pending) onClose(); }}
+    >
+      <div
+        className="palette-modal brm-modal max-w-md rounded-2xl overflow-hidden"
+        style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 24px 64px rgba(0,0,0,0.3)" }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex shrink-0 items-center justify-between gap-3 px-5 py-4 sm:px-6 sm:py-5" style={{ borderBottom: "1px solid var(--border)" }}>
+          <div className="flex items-center gap-3">
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center"
+              style={{ background: danger ? "rgba(239,68,68,0.12)" : "rgba(245,158,11,0.12)" }}
+            >
+              <AlertTriangle className="w-5 h-5" style={{ color: danger ? "#EF4444" : "#F59E0B" }} />
+            </div>
+            <div>
+              <h2 className="text-base font-bold" style={{ color: "var(--foreground)" }}>{title}</h2>
+              {subtitle && (
+                <p className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>{subtitle}</p>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={pending}
+            className="cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ color: "var(--muted-foreground)" }}
+            aria-label={TICKET_ACTION_CONFIRM.close}
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-6 space-y-4">
+          <p className="text-sm" style={{ color: "var(--foreground)" }}>{confirm}</p>
+          {children}
+          {hint && <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>{hint}</p>}
+          <div className="flex gap-3 pt-1">
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={pending || confirmDisabled}
+              className="flex-1 cursor-pointer py-2.5 rounded-xl text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+              style={danger
+                ? { background: "rgba(239,68,68,0.1)", color: "#EF4444", border: "1px solid rgba(239,68,68,0.3)" }
+                : { background: "rgba(79,70,229,0.12)", color: "#818CF8", border: "1px solid rgba(79,70,229,0.35)" }}
+            >
+              {pending ? (pendingLabel ?? TICKET_ACTION_CONFIRM.pending) : actionLabel}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={pending}
+              className="flex-1 cursor-pointer py-2.5 rounded-xl text-sm font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-60"
+              style={{ border: "1px solid var(--border)", color: "var(--muted-foreground)" }}
+            >
+              {TICKET_ACTION_CONFIRM.cancel}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ── Lightbox ──────────────────────────────────────────────────────────────
@@ -185,18 +426,29 @@ function LightboxViewer({ url, alt, onClose }: { url: string; alt?: string; onCl
           display: "flex", alignItems: "center", justifyContent: "center",
           cursor: s.dragging ? "grabbing" : s.zoom > 1 ? "grab" : "default",
           userSelect: "none",
+          touchAction: "none",
         }}
         onMouseDown={(e) => { e.preventDefault(); dispatch({ type: "DOWN", x: e.clientX, y: e.clientY }); }}
         onMouseMove={(e) => dispatch({ type: "MOVE", x: e.clientX, y: e.clientY })}
         onMouseUp={() => dispatch({ type: "UP" })}
         onMouseLeave={() => dispatch({ type: "UP" })}
+        onTouchStart={(e) => {
+          const t = e.touches[0];
+          if (t) dispatch({ type: "DOWN", x: t.clientX, y: t.clientY });
+        }}
+        onTouchMove={(e) => {
+          const t = e.touches[0];
+          if (t) dispatch({ type: "MOVE", x: t.clientX, y: t.clientY });
+        }}
+        onTouchEnd={() => dispatch({ type: "UP" })}
+        onTouchCancel={() => dispatch({ type: "UP" })}
         onDoubleClick={() => dispatch({ type: s.zoom > 1 ? "RESET" : "ZOOM", factor: 2 })}>
 
         <img
           src={url} alt={alt ?? ""}
           draggable={false}
           style={{
-            maxWidth: "90vw", maxHeight: "85vh",
+            maxWidth: "94vw", maxHeight: "78vh",
             objectFit: "contain", display: "block", borderRadius: 6,
             transform: `translate(${s.offset.x}px, ${s.offset.y}px) scale(${s.zoom})`,
             transformOrigin: "center center",
@@ -209,7 +461,9 @@ function LightboxViewer({ url, alt, onClose }: { url: string; alt?: string; onCl
       {/* Controls */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-        padding: "12px 20px",
+        flexWrap: "wrap",
+        padding: "12px 16px",
+        paddingBottom: "max(12px, env(safe-area-inset-bottom))",
         background: "rgba(0,0,0,0.55)", backdropFilter: "blur(12px)",
         borderTop: "1px solid rgba(255,255,255,0.07)",
       }}>
@@ -223,8 +477,8 @@ function LightboxViewer({ url, alt, onClose }: { url: string; alt?: string; onCl
         <LbControlBtn onClick={() => dispatch({ type: "ZOOM", factor: 1.3 })}>+</LbControlBtn>
         <div style={{ width: 1, height: 18, background: "rgba(255,255,255,0.12)", margin: "0 4px" }} />
         <LbControlBtn onClick={() => dispatch({ type: "RESET" })} wide>↺ إعادة الضبط</LbControlBtn>
-        <div style={{ width: 1, height: 18, background: "rgba(255,255,255,0.12)", margin: "0 4px" }} />
-        <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 11 }}>
+        <div className="hidden sm:block" style={{ width: 1, height: 18, background: "rgba(255,255,255,0.12)", margin: "0 4px" }} />
+        <span className="hidden sm:inline" style={{ color: "rgba(255,255,255,0.35)", fontSize: 11 }}>
           دبل كليك للتكبير · اسحب للتحريك
         </span>
       </div>
@@ -250,38 +504,39 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [approvalNotes, setApprovalNotes] = useState("");
   const [closureNotes, setClosureNotes] = useState("");
+  const [pauseReason, setPauseReason] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [confirmArchive, setConfirmArchive] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmDeleteTask, setConfirmDeleteTask] = useState<{ id: string; title: string } | null>(null);
+  const [deletingTask, setDeletingTask] = useState(false);
   const attachInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!ticket?.id) return;
     markTicketRead(ticket.id);
-    // Opened the ticket — mark that thread read once per id, not on mutate identity changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticket?.id]);
 
   // Scoped by ticket: the API returns exactly the people it will accept a
   // mention for, so the picker cannot offer a name that is dropped on save.
   const { data: allUsers } = useQuery({
-    queryKey: ["users-mentionable", id],
+    queryKey: qk.ticket.mentionable(id),
     queryFn: () => api.get("/users/mentionable", { params: { ticketId: id } }).then(r => r.data),
     enabled: !!id,
     staleTime: 60_000,
   });
   const mentionableUsers: any[] = allUsers ?? [];
 
-  const { data: tasksData, refetch: refetchTasks } = useQuery({
-    queryKey: ["ticket-tasks", id],
-    queryFn: () => api.get(`/tickets/${id}/tasks`).then(r => r.data),
-    enabled: !!ticket,
-  });
+  const { data: tasksData } = useTicketTasks(id);
+  const { data: ticketAssignees } = useTicketAssignees(id);
+  const { data: dependencyData } = useTicketDependencies(id);
+  const taskActions = useTaskActions(id);
   const tasks: any[] = tasksData ?? [];
   const myTasks = tasks.filter(t => t.assignedTo?.id === user?.id);
+  const unmetBlockerCount = countUnmetBlockers(dependencyData?.blockedBy);
 
   const { data: systemData } = useQuery({
-    queryKey: ["system", ticket?.systemId],
+    queryKey: qk.systems.detail(ticket?.systemId ?? ""),
     queryFn: () => api.get(`/systems/${ticket!.systemId}`).then(r => r.data),
     enabled: !!ticket?.systemId,
   });
@@ -292,47 +547,106 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const [desktopSidebarClosed, setDesktopSidebarClosed] = useState(false);
   const [forceStatusOpen, setForceStatusOpen] = useState(false);
   const [forceStatusReason, setForceStatusReason] = useState("");
+  const [confirmForceStatus, setConfirmForceStatus] = useState<string | null>(null);
+  const [confirmKind, setConfirmKind] = useState<ConfirmKind | null>(null);
   const [taskForm, setTaskForm] = useState(false);
-  const [newTask, setNewTask] = useState({ title: "", description: "", assignedToId: "", dueDate: "" });
+  const [taskFormSeed, setTaskFormSeed] = useState(0);
+  const [newTask, setNewTask] = useState(() => emptyTaskDraft());
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editTask, setEditTask] = useState(() => emptyTaskDraft());
   const [savingTask, setSavingTask] = useState(false);
-  const [assignForm, setAssignForm] = useState(false);
-  const [assignDevId, setAssignDevId] = useState("");
-  const [assignDeadline, setAssignDeadline] = useState("");
-  const [assignStartDate, setAssignStartDate] = useState("");
-  const [assignHours, setAssignHours] = useState("");
   const [tasksExpanded, setTasksExpanded] = useState(false);
   const [taskFiles, setTaskFiles] = useState<File[]>([]);
   const taskFileRef = useRef<HTMLInputElement>(null);
 
   const createTask = async () => {
-    if (!newTask.title.trim() || !newTask.assignedToId) return;
+    // A developer may only file a task for themselves, so the picker is hidden
+    // for them and the assignee is filled in here instead.
+    const assignedToId = canManageTasks ? newTask.assignedToId : user?.id ?? "";
+    if (!newTask.title.trim() || !assignedToId) return;
     setSavingTask(true);
     try {
-      const taskPayload = Object.fromEntries(Object.entries(newTask).filter(([, v]) => v !== ""));
-      const created = await api.post(`/tickets/${id}/tasks`, taskPayload);
-      const taskId = created.data?.id;
+      const taskPayload: Record<string, unknown> = {
+        ...Object.fromEntries(
+          Object.entries({ ...newTask, assignedToId }).filter(([, v]) => v !== ""),
+        ),
+        dueDate: newTask.dueDate || todayDateInput(),
+      };
+      if (newTask.estimatedHours) taskPayload.estimatedHours = parseInt(newTask.estimatedHours, 10);
+      if (newTask.difficultyLevel) taskPayload.difficultyLevel = parseInt(newTask.difficultyLevel, 10);
+      const created = await taskActions.create.mutateAsync(taskPayload);
+      const taskId = created?.id;
       if (taskId && taskFiles.length) {
         for (const file of taskFiles) {
           const fd = new FormData();
           fd.append("file", file);
           await api.post(`/attachments/upload?taskId=${taskId}`, fd, { headers: { "Content-Type": "multipart/form-data" } });
         }
+        // The task row was refreshed when it was created, before these landed.
+        qc.invalidateQueries({ queryKey: qk.ticket.tasks(id) });
       }
-      setNewTask({ title: "", description: "", assignedToId: "", dueDate: "" });
+      setNewTask(emptyTaskDraft());
+      setTaskFormSeed((s) => s + 1);
       setTaskFiles([]);
       setTaskForm(false);
-      refetchTasks();
+    } catch {
+      // useTaskActions already reports the API's reason.
     } finally { setSavingTask(false); }
   };
 
-  const updateTaskStatus = async (taskId: string, status: string) => {
-    await api.patch(`/tasks/${taskId}`, { status });
-    refetchTasks();
+  const beginEditTask = (task: any, estimateOnly: boolean) => {
+    setTaskForm(false);
+    setEditingTaskId(task.id);
+    setEditTask(estimateOnly
+      ? {
+          ...emptyTaskDraft(),
+          estimatedHours: task.estimatedHours != null ? String(task.estimatedHours) : "",
+          difficultyLevel: task.difficultyLevel != null ? String(task.difficultyLevel) : "",
+        }
+      : taskToDraft(task));
+  };
+
+  const saveEditedTask = async (estimateOnly: boolean) => {
+    if (!editingTaskId) return;
+    if (!estimateOnly && !editTask.title.trim()) return;
+    setSavingTask(true);
+    try {
+      const payload: { id: string } & Record<string, unknown> = { id: editingTaskId };
+      if (estimateOnly) {
+        payload.estimatedHours = editTask.estimatedHours ? parseInt(editTask.estimatedHours, 10) : null;
+        payload.difficultyLevel = editTask.difficultyLevel ? parseInt(editTask.difficultyLevel, 10) : null;
+      } else {
+        payload.title = editTask.title.trim();
+        payload.description = editTask.description || null;
+        payload.assignedToId = editTask.assignedToId;
+        payload.dueDate = editTask.dueDate || null;
+        payload.estimatedHours = editTask.estimatedHours ? parseInt(editTask.estimatedHours, 10) : null;
+        payload.difficultyLevel = editTask.difficultyLevel ? parseInt(editTask.difficultyLevel, 10) : null;
+      }
+      await taskActions.update.mutateAsync(payload);
+      setEditingTaskId(null);
+      setEditTask(emptyTaskDraft());
+    } catch {
+      // useTaskActions already reports the API's reason.
+    } finally {
+      setSavingTask(false);
+    }
+  };
+
+  const updateTaskStatus = (taskId: string, status: string) => {
+    taskActions.update.mutate({ id: taskId, status });
   };
 
   const deleteTask = async (taskId: string) => {
-    await api.delete(`/tasks/${taskId}`);
-    refetchTasks();
+    setDeletingTask(true);
+    try {
+      await taskActions.remove.mutateAsync(taskId);
+      setConfirmDeleteTask(null);
+    } catch {
+      // useTaskActions already reports the API's reason.
+    } finally {
+      setDeletingTask(false);
+    }
   };
 
   const assignedDev = ticket?.assignments?.[0]?.developer;
@@ -348,15 +662,33 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const isDeveloper = user?.role === "DEVELOPER";
   const canApprove       = allowed("ticket:approve");
   const canAssign        = allowed("ticket:assign");
+  const planLocked = ["DRAFT", "NEW", "AWAITING_APPROVAL", "AWAITING_INFO", "REJECTED", "COMPLETED", "CLOSED"].includes(ticket?.status ?? "");
+  const canPlanEdit      = canAssign && !planLocked;
+  // Developers on the roster may revise hours/difficulty — not the schedule.
+  const canEstimateEdit =
+    !canPlanEdit &&
+    allowed("ticket:update-estimate") &&
+    !planLocked &&
+    (Array.isArray(ticketAssignees) ? ticketAssignees : []).some(
+      (a: { developerId: string }) => a.developerId === user?.id,
+    );
   const canVerifyTesting = allowed("ticket:verify-testing");
   const canClose         = allowed("ticket:close");
   const canReopen        = allowed("ticket:reopen");
   const canArchive       = allowed("ticket:archive");
   const canForceStatus   = allowed("ticket:force-status");
   const canManageTasks   = allowed("task:manage");
+  const canCreateOwnTask = allowed("task:create-own");
+  const openTaskCount = tasks.filter((t: any) => t.status !== "COMPLETED").length;
+  const needsPauseReason = confirmKind === "block" || confirmKind === "hold";
+  // A decision the requester will read: the note is posted as a public comment,
+  // so it is asked for at the moment of deciding rather than parked in the rail.
+  const needsApprovalNotes =
+    confirmKind === "approve" || confirmKind === "needsInfo" || confirmKind === "reject";
+  const canHold          = allowed("ticket:hold");
   const canPostInternal  = allowed("comment:internal");
 
-  if (isLoading) return <AppShell><SkeletonList count={4} /></AppShell>;
+  if (isLoading) return <AppShell><SkeletonTicketDetail /></AppShell>;
   if (!ticket)   return <AppShell><p className="text-sm" style={{ color: "var(--muted-foreground)" }}>التذكرة غير موجودة</p></AppShell>;
 
   // Owner sign-off is the requester's or a system owner's call (req.md §3);
@@ -367,6 +699,12 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     ticket.systemOwnerId === user?.id ||
     user?.role === "SYSTEM_OWNER";
   const canAcceptDelivery = allowed("ticket:accept-delivery") && (isOwnerSide || canClose);
+  const assigneeList = Array.isArray(ticketAssignees) ? ticketAssignees : [];
+  const isTicketLead = assigneeList.some(
+    (a: { developerId: string; isLead: boolean }) => a.developerId === user?.id && a.isLead,
+  );
+  const canBlock = canBlockTicket(user?.role, isTicketLead);
+  const canResume = canResumeTicket(user?.role, ticket.status, isTicketLead);
 
   const handleAttachUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -378,14 +716,16 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         form.append("file", file);
         await api.post(`/attachments/upload?ticketId=${id}`, form, { headers: { "Content-Type": "multipart/form-data" } });
       }
-      qc.invalidateQueries({ queryKey: ["ticket", id] });
+      // Prefix: the detail carries the attachment list, the activity log records
+      // the upload.
+      qc.invalidateQueries({ queryKey: qk.ticket.detail(id) });
     } finally { setUploading(false); e.target.value = ""; }
   };
 
   const handleDeleteAttachment = async (aid: string) => {
     try {
       await api.delete(`/attachments/${aid}`);
-      qc.invalidateQueries({ queryKey: ["ticket", id] });
+      qc.invalidateQueries({ queryKey: qk.ticket.detail(id) });
     } catch (e: any) {
       const { toast } = await import("sonner");
       toast.error(e.response?.data?.message || "تعذّر حذف المرفق");
@@ -393,6 +733,79 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
       setConfirmDeleteId(null);
     }
   };
+
+  const closeConfirm = { onSuccess: () => setConfirmKind(null) };
+  const runConfirmedAction = () => {
+    if (!confirmKind) return;
+    switch (confirmKind) {
+      case "submit":
+      case "resubmit":
+        actions.submit.mutate(undefined, closeConfirm);
+        break;
+      case "approve":
+      case "needsInfo":
+      case "reject": {
+        const decision =
+          confirmKind === "approve" ? "APPROVED" : confirmKind === "needsInfo" ? "NEEDS_INFO" : "REJECTED";
+        actions.approve.mutate({ decision, notes: approvalNotes }, {
+          onSuccess: () => { setConfirmKind(null); setApprovalNotes(""); },
+        });
+        break;
+      }
+      case "assign":
+        if (!(ticketAssignees?.length ?? 0) || !ticket.estimatedDeadline) return;
+        actions.assign.mutate({}, { onSuccess: () => setConfirmKind(null) });
+        break;
+      case "start":
+        actions.startWork.mutate(undefined, closeConfirm);
+        break;
+      case "submitForTesting":
+        actions.submitForTesting.mutate(undefined, closeConfirm);
+        break;
+      case "approveCompletion":
+        actions.approveCompletion.mutate(undefined, closeConfirm);
+        break;
+      case "closeTicket":
+        actions.close.mutate({ closureNotes }, closeConfirm);
+        break;
+      case "reopen":
+        actions.reopen.mutate(undefined, closeConfirm);
+        break;
+      case "archive":
+        actions.archive.mutate(undefined, closeConfirm);
+        break;
+      case "unarchive":
+        actions.unarchive.mutate(undefined, closeConfirm);
+        break;
+      case "block":
+        actions.block.mutate({ reason: pauseReason.trim() }, {
+          onSuccess: () => { setConfirmKind(null); setPauseReason(""); },
+        });
+        break;
+      case "hold":
+        actions.hold.mutate({ reason: pauseReason.trim() }, {
+          onSuccess: () => { setConfirmKind(null); setPauseReason(""); },
+        });
+        break;
+      case "resume":
+        actions.resume.mutate(undefined, closeConfirm);
+        break;
+    }
+  };
+  const confirmPending = confirmKind === "submit" || confirmKind === "resubmit" ? actions.submit.isPending
+    : confirmKind === "approve" || confirmKind === "needsInfo" || confirmKind === "reject" ? actions.approve.isPending
+    : confirmKind === "assign" ? actions.assign.isPending
+    : confirmKind === "start" ? actions.startWork.isPending
+    : confirmKind === "submitForTesting" ? actions.submitForTesting.isPending
+    : confirmKind === "approveCompletion" ? actions.approveCompletion.isPending
+    : confirmKind === "block" ? actions.block.isPending
+    : confirmKind === "hold" ? actions.hold.isPending
+    : confirmKind === "resume" ? actions.resume.isPending
+    : confirmKind === "closeTicket" ? actions.close.isPending
+    : confirmKind === "reopen" ? actions.reopen.isPending
+    : confirmKind === "archive" ? actions.archive.isPending
+    : confirmKind === "unarchive" ? actions.unarchive.isPending
+    : false;
 
   const ticketAttachments = (ticket.attachments || []).filter((a: any) => !a.commentId);
   const imageAttachments  = ticketAttachments.filter((a: any) => isImg(a.mimeType));
@@ -415,13 +828,25 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         {ticket.coverImageUrl && (
           <div className="mb-5 rounded-2xl overflow-hidden" style={{ border: "1px solid var(--border)", cursor: "pointer" }}
             onClick={() => setLightboxUrl(`${FILE_BASE}${ticket.coverImageUrl}`)}>
-            <img src={`${FILE_BASE}${ticket.coverImageUrl}`} alt="cover" className="w-full max-h-56 object-cover hover:opacity-95 transition-opacity" />
+            <img src={`${FILE_BASE}${ticket.coverImageUrl}`} alt="cover" className="w-full max-h-40 object-cover transition-opacity hover:opacity-95 sm:max-h-56" />
           </div>
         )}
 
         {/* Hero */}
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-3 flex-wrap">
+            {ticket.company && (
+              <MetaChip label="الشركة">
+                <CompanyLogo company={ticket.company} size="xs" />
+                {ticket.company.name}
+              </MetaChip>
+            )}
+            {ticket.system?.name && (
+              <MetaChip label="النظام">
+                <Monitor className="w-3 h-3" aria-hidden />
+                {ticket.system.name}
+              </MetaChip>
+            )}
             <TicketCodeBadge ticketNumber={ticket.ticketNumber} />
             <StatusBadge status={ticket.status} />
             <PriorityBadge priority={ticket.finalPriority || ticket.priority} />
@@ -431,22 +856,20 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
             </span>
             <RelativeTime date={ticket.createdAt} />
           </div>
-          <h1 className="text-xl font-bold leading-snug" style={{ color: "var(--foreground)" }}>{ticket.title}</h1>
+          <h1 className="text-lg font-bold leading-snug sm:text-xl" style={{ color: "var(--foreground)" }}>{ticket.title}</h1>
         </div>
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,56rem)_18rem] lg:justify-start lg:gap-5">
 
           {/* ── Main column ── */}
-          <div className={`space-y-4 ${desktopSidebarClosed ? "lg:col-span-3" : "lg:col-span-2"}`}>
-            {desktopSidebarClosed && (
-              <div className="hidden lg:flex justify-end -mb-1">
-                <button onClick={() => setDesktopSidebarClosed(false)}
-                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
-                  style={{ color: "#4F46E5", background: "rgba(79,70,229,0.08)", border: "1px solid rgba(79,70,229,0.15)" }}>
-                  <ChevronLeft className="w-3.5 h-3.5" /> عرض التفاصيل
-                </button>
-              </div>
-            )}
+          <div className="space-y-4 max-w-4xl">
+
+            <TicketBlockBanner
+              status={ticket.status}
+              pauseReason={ticket.pauseReason}
+              blockedByTicket={ticket.blockedByTicket}
+            />
 
             {/* Details */}
             <Section title="تفاصيل الطلب">
@@ -479,6 +902,47 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
               </div>
             </Section>
 
+            {(() => {
+              const devHandoff = ticketDevHandoff(ticket);
+              if (!ticket.startedAt && !devHandoff && !ticket.completedAt) return null;
+              return (
+              <Section title={ESTIMATE_LABELS.workTimingSection}>
+                <div className="space-y-4">
+                  {ticket.startedAt && (
+                    <Field label={ESTIMATE_LABELS.workStarted}>
+                      {formatAbsoluteTime(ticket.startedAt)}
+                    </Field>
+                  )}
+                  {devHandoff && (
+                    <>
+                      {ticket.startedAt && <div className="h-px" style={{ background: "var(--border)" }} />}
+                      <Field label={ESTIMATE_LABELS.devFinishedTicket}>
+                        <span className="inline-flex flex-wrap items-center gap-1.5">
+                          {devHandoff.changedBy && (
+                            <UserNameWithYou person={devHandoff.changedBy} currentUserId={user?.id} />
+                          )}
+                          <time dateTime={devHandoff.at}>{formatAbsoluteTime(devHandoff.at)}</time>
+                        </span>
+                      </Field>
+                    </>
+                  )}
+                  {ticket.completedAt && (
+                    <>
+                      {(ticket.startedAt || devHandoff) && (
+                        <div className="h-px" style={{ background: "var(--border)" }} />
+                      )}
+                      <Field label={ESTIMATE_LABELS.completedAt}>
+                        {formatAbsoluteTime(ticket.completedAt)}
+                      </Field>
+                    </>
+                  )}
+                </div>
+              </Section>
+              );
+            })()}
+
+            <TicketDependencies ticketId={id} systemId={ticket.systemId} canManage={canAssign} />
+
             {/* Attachments */}
             <Section title="المرفقات">
               <input ref={attachInputRef} type="file" multiple className="hidden" onChange={handleAttachUpload} />
@@ -489,7 +953,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
               ) : (
                 <div className="space-y-4">
                   {imageAttachments.length > 0 && (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                       {imageAttachments.map((att: any) => (
                         <div key={att.id} className="group relative rounded-lg overflow-hidden aspect-video"
                           style={{ border: "1px solid var(--border)", background: "var(--muted)", cursor: "pointer" }}
@@ -547,40 +1011,8 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
               </button>
             </Section>
 
-            {/* Status Timeline */}
-            {ticket.statusHistory?.length > 0 && (
-              <Section title="سجل الحالات">
-                <div className="space-y-1">
-                  {ticket.statusHistory.map((h: any, i: number) => (
-                    <div key={h.id} className="flex gap-3">
-                      <div className="flex flex-col items-center pt-1.5">
-                        <div className="w-2 h-2 rounded-full shrink-0" style={{ background: "#4F46E5" }} />
-                        {i < ticket.statusHistory.length - 1 && (
-                          <div className="w-px flex-1 mt-1" style={{ background: "var(--border)", minHeight: "20px" }} />
-                        )}
-                      </div>
-                      <div className="pb-4 min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                          {h.fromStatus && <StatusBadge status={h.fromStatus} />}
-                          {h.fromStatus && <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>←</span>}
-                          <StatusBadge status={h.toStatus} />
-                        </div>
-                        {h.changedBy && (
-                          <p className="text-xs mb-0.5 font-medium" style={{ color: "var(--foreground)" }}>
-                            {h.changedBy.firstName} {h.changedBy.lastName}
-                          </p>
-                        )}
-                        {h.reason && <p className="text-xs mb-0.5" style={{ color: "var(--muted-foreground)" }}>{h.reason}</p>}
-                        <RelativeTime date={h.createdAt} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Section>
-            )}
-
             {/* Tasks */}
-            {(isManager || tasks.length > 0) && (
+            {(isManager || canCreateOwnTask || tasks.length > 0) && (
               <Section title={`المهام${tasks.length > 0 ? ` (${tasks.length})` : ""}`}>
                 {/* My tasks banner for developers */}
                 {myTasks.length > 0 && !isManager && (
@@ -597,11 +1029,136 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                   ) : (
                     (tasksExpanded ? tasks : tasks.slice(0, 4)).map((t: any) => {
                       const isAssignee = t.assignedTo?.id === user?.id;
-                      const statusColor = t.status === "COMPLETED" ? "#059669" : t.status === "IN_PROGRESS" ? "#D97706" : "#6B7280";
-                      const statusLabel = t.status === "COMPLETED" ? "مكتملة" : t.status === "IN_PROGRESS" ? "جارٍ" : "جديدة";
+                      const isCompleted = t.status === "COMPLETED";
+                      const statusColor = TASK_STATUS_COLORS[t.status] ?? TASK_STATUS_COLORS.NEW;
+                      const statusLabel = TASK_STATUS_LABELS[t.status] ?? t.status;
+                      const canEditFull = canManageTasks;
+                      const canEditEstimate = isAssignee && !canManageTasks;
+                      const canEditThis = canEditFull || canEditEstimate;
+                      const isEditing = editingTaskId === t.id;
+                      const estimateOnlyEdit = isEditing && canEditEstimate && !canEditFull;
+
+                      if (isEditing) {
+                        return (
+                          <div key={t.id} className="space-y-2 px-3 py-2.5 rounded-xl"
+                            style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+                            <p className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>
+                              {estimateOnlyEdit ? TASK_LABELS.editEstimate : TASK_LABELS.edit}
+                            </p>
+                            {!estimateOnlyEdit && (
+                              <>
+                                {canManageTasks && (
+                                  <>
+                                    <Select
+                                      value={editTask.assignedToId || null}
+                                      onValueChange={(v: string | null) => setEditTask(p => ({ ...p, assignedToId: v ?? "" }))}
+                                      items={[
+                                        { value: null, label: SELECT_PLACEHOLDERS.developer },
+                                        ...developerList.map((u: any) => ({ value: u.id, label: `${u.firstName} ${u.lastName}` })),
+                                      ]}
+                                    >
+                                      <SelectTrigger className="w-full h-9 text-sm" aria-label={SELECT_PLACEHOLDERS.developer}>
+                                        <SelectValue placeholder={SELECT_PLACEHOLDERS.developer} />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value={null}>{SELECT_PLACEHOLDERS.developer}</SelectItem>
+                                        {developerList.map((u: any) => (
+                                          <SelectItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <p className="text-xs px-1" style={{ color: "var(--muted-foreground)" }}>
+                                      {TASK_LABELS.assigneeSync}
+                                    </p>
+                                  </>
+                                )}
+                                <input
+                                  value={editTask.title}
+                                  onChange={e => setEditTask(p => ({ ...p, title: e.target.value }))}
+                                  placeholder="عنوان المهمة"
+                                  className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+                                  style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--foreground)" }}
+                                />
+                                <textarea
+                                  value={editTask.description}
+                                  onChange={e => setEditTask(p => ({ ...p, description: e.target.value }))}
+                                  placeholder="وصف المهمة (اختياري)"
+                                  rows={2}
+                                  className="w-full rounded-xl px-3 py-2 text-sm outline-none resize-none"
+                                  style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--foreground)" }}
+                                />
+                                <div>
+                                  <p className="font-brm text-xs mb-1" style={{ color: "var(--muted-foreground)" }}>
+                                    {TASK_LABELS.dueDate}
+                                  </p>
+                                  <input
+                                    type="date"
+                                    aria-label={TASK_LABELS.dueDate}
+                                    value={editTask.dueDate}
+                                    onChange={e => setEditTask(p => ({ ...p, dueDate: e.target.value }))}
+                                    className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+                                    style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--foreground)" }}
+                                  />
+                                </div>
+                              </>
+                            )}
+                            <div className="flex gap-2">
+                              <input
+                                type="number"
+                                min={0}
+                                value={editTask.estimatedHours}
+                                onChange={e => setEditTask(p => ({ ...p, estimatedHours: e.target.value }))}
+                                placeholder={ESTIMATE_LABELS.hours}
+                                aria-label={ESTIMATE_LABELS.hours}
+                                className="flex-1 rounded-xl px-3 py-2 text-sm outline-none"
+                                style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--foreground)" }}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <ThemeSelect
+                                  value={editTask.difficultyLevel}
+                                  onChange={(value) => setEditTask(p => ({ ...p, difficultyLevel: value }))}
+                                  placeholder={SELECT_PLACEHOLDERS.difficulty}
+                                  items={Object.entries(DIFFICULTY_LABELS).map(([value, label]) => ({ value, label }))}
+                                  aria-label={SELECT_PLACEHOLDERS.difficulty}
+                                  triggerClassName="h-9 min-h-9 text-sm"
+                                />
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => saveEditedTask(estimateOnlyEdit)}
+                                disabled={savingTask || (!estimateOnlyEdit && (!editTask.title.trim() || (canManageTasks && !editTask.assignedToId)))}
+                                className="flex-1 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+                                style={{ background: "linear-gradient(135deg, #4F46E5, #6C5CE7)" }}>
+                                {savingTask ? TASK_LABELS.saving : TASK_LABELS.save}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => { setEditingTaskId(null); setEditTask(emptyTaskDraft()); }}
+                                className="px-4 py-2 rounded-xl text-sm font-medium transition-colors"
+                                style={{ color: "var(--muted-foreground)", background: "var(--card)" }}>
+                                {TASK_LABELS.cancel}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }
+
                       return (
                         <div key={t.id} className="flex items-start gap-3 px-3 py-2.5 rounded-xl transition-colors group"
-                          style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+                          style={{
+                            background: isCompleted
+                              ? "rgba(5, 150, 105, 0.04)"
+                              : isAssignee
+                                ? "rgba(79,70,229,0.04)"
+                                : "var(--muted)",
+                            border: isCompleted
+                              ? "1px solid rgba(5, 150, 105, 0.35)"
+                              : isAssignee
+                                ? "1px solid rgba(79,70,229,0.35)"
+                                : "1px solid var(--border)",
+                          }}>
                           {/* Status toggle for assignee/manager */}
                           {(isAssignee || isManager) ? (
                             <button
@@ -622,28 +1179,63 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                             </div>
                           )}
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium leading-snug" style={{
-                              color: "var(--foreground)",
-                              textDecoration: t.status === "DONE" ? "line-through" : "none",
-                              opacity: t.status === "DONE" ? 0.6 : 1,
-                            }}>{t.title}</p>
+                            <p className="text-sm font-medium leading-snug" style={{ color: "var(--foreground)" }}>{t.title}</p>
                             {t.description && (
                               <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "var(--muted-foreground)" }}>{t.description}</p>
                             )}
-                            <div className="flex items-center gap-2 mt-1 flex-wrap">
-                              <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-medium"
+                            {t.status === "COMPLETED" && t.completedAt && (
+                              <p className="text-xs mt-1 leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
+                                <span className="inline-flex flex-wrap items-center gap-1">
+                                  <span className="font-medium" style={{ color: "var(--foreground)" }}>
+                                    {TASK_LABELS.devFinishedAt}
+                                  </span>
+                                  <UserNameWithYou person={t.assignedTo} currentUserId={user?.id} />
+                                  <span aria-hidden>·</span>
+                                  <time dateTime={t.completedAt}>{formatAbsoluteTime(t.completedAt)}</time>
+                                </span>
+                              </p>
+                            )}
+                            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
+                              <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-medium shrink-0"
                                 style={{ background: `${statusColor}18`, color: statusColor }}>
                                 {statusLabel}
                               </span>
-                              <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-                                {t.assignedTo?.firstName} {t.assignedTo?.lastName}
+                              {isAssignee && (
+                                <span className="inline-flex items-center text-xs px-1.5 py-0.5 rounded font-medium shrink-0"
+                                  style={{ background: "rgba(79,70,229,0.12)", color: "#4F46E5", border: "1px solid rgba(79,70,229,0.22)" }}>
+                                  {TASK_LABELS.assignedToMe}
+                                </span>
+                              )}
+                              <span className="inline-flex min-w-0 flex-wrap items-center" style={{ color: "var(--muted-foreground)" }}>
+                                {joinTaskMeta([
+                                  !isAssignee && taskPersonName(t.assignedTo) ? (
+                                    <UserNameWithYou person={t.assignedTo} currentUserId={user?.id} />
+                                  ) : null,
+                                  t.createdBy && t.createdBy.id !== t.assignedTo?.id ? (
+                                    <span dir="auto" className="inline-flex items-center gap-1 flex-wrap">
+                                      {TASK_LABELS.createdBy}{" "}
+                                      <UserNameWithYou person={t.createdBy} currentUserId={user?.id} />
+                                    </span>
+                                  ) : null,
+                                  t.status !== "COMPLETED" && t.dueDate ? (
+                                    <DueRemaining date={t.dueDate} className="inline-flex items-center text-xs leading-none" />
+                                  ) : null,
+                                  (t.estimatedHours != null || t.difficultyLevel != null || taskActualHours(t) != null) ? (
+                                    <EstimateChip
+                                      inline
+                                      hours={t.estimatedHours}
+                                      difficulty={t.difficultyLevel}
+                                      actual={taskActualHours(t)}
+                                    />
+                                  ) : null,
+                                ])}
                               </span>
                             </div>
                             {/* Task attachments */}
                             {(t.attachments ?? []).length > 0 && (
-                              <div className="flex flex-wrap gap-1.5 mt-2">
+                              <div className="mt-2 flex w-full flex-wrap gap-1.5 overflow-visible">
                                 {(t.attachments as any[]).filter(a => isImg(a.mimeType)).map((a: any) => (
-                                  <button key={a.id} onClick={() => openAttachment(a.id)}>
+                                  <button key={a.id} onClick={() => openAttachment(a.id)} className="self-start">
                                     <AttachmentImage attachmentId={a.id} alt={a.fileName}
                                       className="w-14 h-11 object-cover rounded-lg hover:opacity-90 transition-opacity"
                                       style={{ border: "1px solid var(--border)" }} />
@@ -651,24 +1243,39 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 ))}
                                 {(t.attachments as any[]).filter(a => !isImg(a.mimeType)).map((a: any) => (
                                   <button key={a.id} onClick={() => downloadAttachment(a.id, a.fileName)}
-                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-colors"
+                                    className="inline-flex w-fit max-w-full items-start gap-1.5 px-2 py-1 rounded-lg text-xs text-start transition-colors whitespace-normal overflow-visible"
                                     style={{ background: "var(--card)", color: "var(--muted-foreground)", border: "1px solid var(--border)" }}
                                     onMouseEnter={e => (e.currentTarget.style.color = "#4F46E5")}
                                     onMouseLeave={e => (e.currentTarget.style.color = "var(--muted-foreground)")}>
-                                    <FileText className="w-3 h-3 shrink-0" />
-                                    <span className="truncate max-w-28">{a.fileName}</span>
+                                    <FileText className="w-3 h-3 shrink-0 mt-0.5" aria-hidden />
+                                    <span className="break-words text-start leading-snug">{a.fileName}</span>
                                   </button>
                                 ))}
                               </div>
                             )}
                           </div>
-                          {isManager && (
-                            <button onClick={() => deleteTask(t.id)}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-100 hover:text-red-500"
-                              style={{ color: "var(--muted-foreground)" }}>
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            {canEditThis && (
+                              <button
+                                type="button"
+                                onClick={() => beginEditTask(t, canEditEstimate && !canEditFull)}
+                                aria-label={canEditEstimate && !canEditFull ? TASK_LABELS.editEstimate : TASK_LABELS.edit}
+                                title={canEditEstimate && !canEditFull ? TASK_LABELS.editEstimate : TASK_LABELS.edit}
+                                className="opacity-0 group-hover:opacity-100 brm-icon-btn">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {(isManager || (canCreateOwnTask && t.createdBy?.id === user?.id && isAssignee && t.status === "NEW")) && (
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteTask({ id: t.id, title: t.title })}
+                                aria-label={TASK_LABELS.delete}
+                                title={TASK_LABELS.delete}
+                                className="opacity-0 group-hover:opacity-100 brm-icon-btn brm-icon-btn-danger">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       );
                     })
@@ -683,10 +1290,17 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                   </button>
                 )}
 
-                {/* Create task form — managers only */}
-                {isManager && (
+                {/* Create task form — managers, or a developer adding their own */}
+                {(isManager || canCreateOwnTask) && (
                   taskForm ? (
                     <div className="space-y-2 pt-2" style={{ borderTop: "1px solid var(--border)" }}>
+                      {!canManageTasks ? (
+                        <p className="text-xs px-3 py-2 rounded-xl"
+                          style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>
+                          المهمة ستُسند إليك · {TASK_LABELS.assigneeSync}
+                        </p>
+                      ) : (
+                      <>
                       <Select
                         value={newTask.assignedToId || null}
                         onValueChange={(v: string | null) => setNewTask(p => ({ ...p, assignedToId: v ?? "" }))}
@@ -705,6 +1319,11 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                           ))}
                         </SelectContent>
                       </Select>
+                      <p className="text-xs px-1" style={{ color: "var(--muted-foreground)" }}>
+                        {TASK_LABELS.assigneeSync}
+                      </p>
+                      </>
+                      )}
                       <input
                         value={newTask.title}
                         onChange={e => setNewTask(p => ({ ...p, title: e.target.value }))}
@@ -724,15 +1343,45 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                         onFocus={e => (e.target.style.borderColor = "#4F46E5")}
                         onBlur={e => (e.target.style.borderColor = "var(--border)")}
                       />
-                      <input
-                        type="date"
-                        value={newTask.dueDate || (ticket.estimatedDeadline ? ticket.estimatedDeadline.slice(0, 10) : "")}
-                        onChange={e => setNewTask(p => ({ ...p, dueDate: e.target.value }))}
-                        className="w-full rounded-xl px-3 py-2 text-sm outline-none"
-                        style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }}
-                        onFocus={e => (e.target.style.borderColor = "#4F46E5")}
-                        onBlur={e => (e.target.style.borderColor = "var(--border)")}
-                      />
+                      <div>
+                        <p className="font-brm text-xs mb-1" style={{ color: "var(--muted-foreground)" }}>
+                          {TASK_LABELS.dueDate}
+                        </p>
+                        <input
+                          key={taskFormSeed}
+                          type="date"
+                          aria-label={TASK_LABELS.dueDate}
+                          value={newTask.dueDate}
+                          onChange={e => setNewTask(p => ({ ...p, dueDate: e.target.value }))}
+                          className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+                          style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }}
+                          onFocus={e => (e.target.style.borderColor = "#4F46E5")}
+                          onBlur={e => (e.target.style.borderColor = "var(--border)")}
+                        />
+                      </div>
+
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          min={0}
+                          value={newTask.estimatedHours}
+                          onChange={e => setNewTask(p => ({ ...p, estimatedHours: e.target.value }))}
+                          placeholder={ESTIMATE_LABELS.hours}
+                          aria-label={ESTIMATE_LABELS.hours}
+                          className="flex-1 rounded-xl px-3 py-2 text-sm outline-none"
+                          style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <ThemeSelect
+                            value={newTask.difficultyLevel}
+                            onChange={(value) => setNewTask(p => ({ ...p, difficultyLevel: value }))}
+                            placeholder={SELECT_PLACEHOLDERS.difficulty}
+                            items={Object.entries(DIFFICULTY_LABELS).map(([value, label]) => ({ value, label }))}
+                            aria-label={SELECT_PLACEHOLDERS.difficulty}
+                            triggerClassName="h-9 min-h-9 text-sm"
+                          />
+                        </div>
+                      </div>
 
                       {/* Task file attachments */}
                       <input ref={taskFileRef} type="file" multiple className="hidden"
@@ -752,10 +1401,10 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 </button>
                               </div>
                             ) : (
-                              <div key={i} className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs"
+                              <div key={i} className="inline-flex w-fit max-w-full items-start gap-1.5 px-2 py-1 rounded-lg text-xs text-start whitespace-normal"
                                 style={{ background: "var(--muted)", color: "var(--muted-foreground)", border: "1px solid var(--border)" }}>
-                                <FileText className="w-3 h-3 shrink-0" style={{ color: "#4F46E5" }} />
-                                <span className="truncate max-w-24">{f.name}</span>
+                                <FileText className="w-3 h-3 shrink-0 mt-0.5" style={{ color: "#4F46E5" }} aria-hidden />
+                                <span className="break-words text-start leading-snug">{f.name}</span>
                                 <button onClick={() => setTaskFiles(prev => prev.filter((_, idx) => idx !== i))}
                                   className="hover:text-red-500 transition-colors"><X className="w-3 h-3" /></button>
                               </div>
@@ -772,12 +1421,12 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                           onMouseLeave={e => (e.currentTarget.style.color = "var(--muted-foreground)")}>
                           <Paperclip className="w-3.5 h-3.5" /> مرفق
                         </button>
-                        <button onClick={createTask} disabled={savingTask || !newTask.title.trim() || !newTask.assignedToId}
+                        <button onClick={createTask} disabled={savingTask || !newTask.title.trim() || (canManageTasks && !newTask.assignedToId)}
                           className="flex-1 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
                           style={{ background: "linear-gradient(135deg, #4F46E5, #6C5CE7)" }}>
                           {savingTask ? "جارٍ الرفع..." : "إنشاء"}
                         </button>
-                        <button onClick={() => { setTaskForm(false); setNewTask({ title: "", description: "", assignedToId: "", dueDate: "" }); setTaskFiles([]); }}
+                        <button onClick={() => { setTaskForm(false); setNewTask(emptyTaskDraft()); setTaskFormSeed((s) => s + 1); setTaskFiles([]); }}
                           className="px-4 py-2 rounded-xl text-sm font-medium transition-colors"
                           style={{ color: "var(--muted-foreground)", background: "var(--muted)" }}>
                           إلغاء
@@ -785,7 +1434,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                       </div>
                     </div>
                   ) : (
-                    <button onClick={() => setTaskForm(true)}
+                    <button onClick={() => { setNewTask(emptyTaskDraft()); setTaskFormSeed((s) => s + 1); setTaskForm(true); }}
                       className="mt-1 flex items-center gap-1.5 text-xs font-semibold transition-colors"
                       style={{ color: "#4F46E5" }}>
                       <Plus className="w-3.5 h-3.5" /> إضافة مهمة
@@ -794,6 +1443,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                 )}
               </Section>
             )}
+
+            {/* Activity — the whole story, not only the status column */}
+            <TicketTimeline ticketId={id} />
 
             {/* Comments */}
             <Section title={`${COMMENT_LABELS.sectionTitle}${ticket.comments?.length ? ` · ${ticket.comments.length}` : ""}`}>
@@ -810,12 +1462,12 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
           </div>
 
           {/* ── Sidebar ── */}
-          <div className={desktopSidebarClosed ? "lg:hidden" : ""}>
+          <div>
 
             {/* Mobile toggle */}
             <button
               onClick={() => setMobileSidebarOpen(o => !o)}
-              className="lg:hidden w-full flex items-center justify-between px-4 py-3 rounded-xl mb-1 transition-colors"
+              className="lg:hidden w-full flex items-center justify-between px-4 py-3 rounded-xl mb-3 transition-colors"
               style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--foreground)" }}>
               <span className="font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>
                 <CodeComment>التفاصيل والإجراءات</CodeComment>
@@ -826,58 +1478,77 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
               }} />
             </button>
 
-            {/* Desktop close button */}
-            <div className="hidden lg:flex justify-end mb-1">
-              <button onClick={() => setDesktopSidebarClosed(true)}
-                className="flex items-center gap-1 text-xs font-medium transition-colors"
-                style={{ color: "var(--muted-foreground)" }}
-                onMouseEnter={e => (e.currentTarget.style.color = "var(--foreground)")}
-                onMouseLeave={e => (e.currentTarget.style.color = "var(--muted-foreground)")}>
-                إخفاء <ChevronLeft className="w-3.5 h-3.5" />
+            {/* Desktop toggle — stays in this column so the main pane never shifts */}
+            <div className="hidden lg:flex justify-start pb-4">
+              <button
+                type="button"
+                onClick={() => setDesktopSidebarClosed(c => !c)}
+                aria-expanded={!desktopSidebarClosed}
+                aria-controls="ticket-sidebar"
+                className="inline-flex w-40 shrink-0 items-center justify-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+                style={{ color: "#4F46E5", background: "rgba(79,70,229,0.08)", border: "1px solid rgba(79,70,229,0.15)" }}>
+                <ChevronLeft className={`w-3.5 h-3.5 transition-transform ${desktopSidebarClosed ? "" : "rotate-180"}`} />
+                {desktopSidebarClosed ? "عرض التفاصيل" : "إخفاء"}
               </button>
             </div>
 
-            {/* Collapsible content: hidden on mobile by default, always visible on desktop */}
-            <div className={`space-y-4 lg:block ${mobileSidebarOpen ? "block" : "hidden"}`}>
+            {/* Collapsible content: hidden on mobile by default, toggled on desktop */}
+            <div
+              id="ticket-sidebar"
+              className={`space-y-4 ${mobileSidebarOpen ? "block" : "hidden"} ${desktopSidebarClosed ? "lg:hidden" : "lg:block"}`}>
 
             {/* Ticket info */}
             <div className="rounded-xl p-4 space-y-3" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-              {[
-                { icon: User,    label: ticket.creatorId === user?.id ? "أنت" : `${ticket.creator?.firstName} ${ticket.creator?.lastName}`, field: "طالب التذكرة" },
-                { icon: Monitor, label: ticket.system?.name, field: "النظام" },
-                { icon: Clock,   label: format(new Date(ticket.createdAt), "d MMM yyyy", { locale: ar }), field: "تاريخ الإنشاء" },
-                ...(ticket.estimatedDeadline ? [{ icon: Clock, label: `التسليم: ${format(new Date(ticket.estimatedDeadline), "d MMM yyyy", { locale: ar })}`, field: "تاريخ التسليم المتوقع" }] : []),
-              ].map(({ icon: Icon, label, field }, i) => label && (
-                <div key={i} className="flex items-center gap-2 text-sm" style={{ color: "var(--muted-foreground)" }}>
-                  <span title={field} aria-label={field} className="shrink-0 cursor-help">
-                    <Icon className="w-3.5 h-3.5" aria-hidden />
-                  </span>
-                  <span>{label}</span>
-                </div>
-              ))}
               {ticket.company && (
-                <div className="flex items-center gap-2 text-sm" style={{ color: "var(--muted-foreground)" }}>
-                  <span title="الشركة" aria-label="الشركة" className="shrink-0 cursor-help">
-                    <CompanyLogo company={ticket.company} size="xs" />
-                  </span>
-                  <span>{ticket.company.name}</span>
-                </div>
+                <SidebarMeta field="الشركة" icon={<CompanyLogo company={ticket.company} size="xs" />}>
+                  {ticket.company.name}
+                </SidebarMeta>
               )}
-              {assignedDev && (
-                <div className="flex items-center gap-2 pt-1" style={{ borderTop: "1px solid var(--border)" }}>
-                  <div title={assignedDevLabel} aria-label={assignedDevLabel}
-                    className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-indigo-300 cursor-help"
-                    style={{ background: "rgba(79,70,229,0.18)" }}>
-                    {assignedDev.firstName?.[0]}
-                  </div>
-                  <div>
-                    <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>المطور المُكلَّف</p>
-                    <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>
-                      {assignedDevName}
-                    </p>
-                  </div>
-                </div>
+              {ticket.system?.name && (
+                <SidebarMeta field="النظام" icon={<Monitor className="w-3.5 h-3.5" aria-hidden />}>
+                  {ticket.system.name}
+                </SidebarMeta>
               )}
+              {ticket.estimatedDeadline && !canPlanEdit && (
+                <SidebarMeta field="تاريخ التسليم المتوقع" icon={<CalendarClock className="w-3.5 h-3.5" aria-hidden />}>
+                  {`التسليم: ${format(parseTimestamp(ticket.estimatedDeadline), "d MMM yyyy", { locale: ar })}`}
+                </SidebarMeta>
+              )}
+              <SidebarMeta field="طالب التذكرة" icon={<User className="w-3.5 h-3.5" aria-hidden />}>
+                <UserNameWithYou
+                  person={{ ...ticket.creator, id: ticket.creatorId }}
+                  currentUserId={user?.id}
+                />
+              </SidebarMeta>
+              <SidebarMeta field="تاريخ الإنشاء" icon={<Clock className="w-3.5 h-3.5" aria-hidden />}>
+                {formatAbsoluteTime(ticket.createdAt)}
+              </SidebarMeta>
+              {ticket.completedAt && (
+                <SidebarMeta field={ESTIMATE_LABELS.completedAt} icon={<Check className="w-3.5 h-3.5" aria-hidden />}>
+                  {formatAbsoluteTime(ticket.completedAt)}
+                </SidebarMeta>
+              )}
+
+              <TicketPlanPanel
+                ticketId={id}
+                canEdit={canPlanEdit || canEstimateEdit}
+                estimateOnly={canEstimateEdit && !canPlanEdit}
+                plan={{
+                  scheduledStart: ticket.scheduledStart,
+                  estimatedDeadline: ticket.estimatedDeadline,
+                  estimatedHours: ticket.estimatedHours,
+                  difficultyLevel: ticket.difficultyLevel,
+                }}
+              />
+
+              <TicketAssignees
+                ticketId={id}
+                canManage={canAssign && !["DRAFT", "NEW", "AWAITING_APPROVAL", "AWAITING_INFO", "REJECTED", "COMPLETED", "CLOSED"].includes(ticket.status)}
+                currentUserId={user?.id}
+                developers={developerList}
+              />
+
+              <TicketEstimateSummary ticket={ticket} />
             </div>
 
             {/* Actions */}
@@ -886,9 +1557,19 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                 <CodeComment>الإجراءات</CodeComment>
               </p>
 
+              {/* Stopping and restarting sits above the workflow buttons: while a
+                  ticket is stopped, resuming it is the only move that matters. */}
+              <TicketBlockPanel
+                status={ticket.status}
+                canBlock={canBlock}
+                canHold={canHold}
+                canResume={canResume}
+                onRequest={setConfirmKind}
+              />
+
               {ticket.status === "DRAFT" && ticket.creatorId === user?.id && (
-                <ActionBtn onClick={() => actions.submit.mutate(undefined)} disabled={actions.submit.isPending}>
-                  {actions.submit.isPending ? <><Spinner />جارٍ الإرسال...</> : "إرسال للمراجعة"}
+                <ActionBtn onClick={() => setConfirmKind("submit")} disabled={actions.submit.isPending}>
+                  إرسال للمراجعة
                 </ActionBtn>
               )}
 
@@ -906,119 +1587,73 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                       </p>
                     </div>
                   </div>
-                  <ActionBtn onClick={() => actions.submit.mutate(undefined)} disabled={actions.submit.isPending}>
-                    {actions.submit.isPending ? <><Spinner />جارٍ الإرسال...</> : "إعادة الإرسال للمراجعة"}
+                  <ActionBtn onClick={() => setConfirmKind("resubmit")} disabled={actions.submit.isPending}>
+                    إعادة الإرسال للمراجعة
                   </ActionBtn>
                 </div>
               )}
 
+              {/* The three decisions read as one group. The note used to sit
+                  between them, splitting the group in half; it is asked for in
+                  the confirmation instead, where it is about to be used. */}
               {ticket.status === "NEW" && canApprove && (
                 <>
-                  <textarea value={approvalNotes} onChange={e => setApprovalNotes(e.target.value)}
-                    placeholder="ملاحظات (اختياري)" rows={2}
-                    className="w-full rounded-xl px-3 py-2 text-xs outline-none resize-none"
-                    style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }} />
-                  <p className="font-brm text-xs mb-2" style={{ color: "var(--muted-foreground)" }}>
-                    <CodeComment>ستُنشر الملاحظات كتعليق على التذكرة</CodeComment>
-                  </p>
-                  <ActionBtn onClick={() => actions.approve.mutate({ decision: "APPROVED", notes: approvalNotes })} disabled={actions.approve.isPending}>
-                    {actions.approve.isPending ? <><Spinner />جارٍ الاعتماد...</> : "اعتماد"}
+                  <ActionBtn onClick={() => setConfirmKind("approve")} disabled={actions.approve.isPending}>
+                    اعتماد
                   </ActionBtn>
-                  <ActionBtn variant="outline" onClick={() => actions.approve.mutate({ decision: "NEEDS_INFO", notes: approvalNotes })} disabled={actions.approve.isPending}>
-                    {actions.approve.isPending ? <><Spinner />جارٍ الإرسال...</> : "طلب معلومات"}
+                  <ActionBtn variant="outline" onClick={() => setConfirmKind("needsInfo")} disabled={actions.approve.isPending}>
+                    طلب معلومات
                   </ActionBtn>
-                  <ActionBtn variant="danger" onClick={() => actions.approve.mutate({ decision: "REJECTED", notes: approvalNotes })} disabled={actions.approve.isPending}>
-                    {actions.approve.isPending ? <><Spinner />جارٍ الرفض...</> : "رفض"}
+                  <ActionBtn variant="danger" onClick={() => setConfirmKind("reject")} disabled={actions.approve.isPending}>
+                    رفض
                   </ActionBtn>
                 </>
               )}
 
               {ticket.status === "APPROVED" && canAssign && (
-                assignForm ? (
-                  <div className="space-y-2">
-                    <Select
-                      value={assignDevId || null}
-                      onValueChange={v => setAssignDevId(v ?? "")}
-                      items={[
-                        { value: null, label: SELECT_PLACEHOLDERS.developer },
-                        ...developerList.map((d: any) => ({ value: d.id, label: `${d.firstName} ${d.lastName}` })),
-                      ]}
-                    >
-                      <SelectTrigger className="w-full h-9 text-xs" aria-label={SELECT_PLACEHOLDERS.developer}>
-                        <SelectValue placeholder={SELECT_PLACEHOLDERS.developer} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={null}>{SELECT_PLACEHOLDERS.developer}</SelectItem>
-                        {developerList.map((d: any) => (
-                          <SelectItem key={d.id} value={d.id}>{d.firstName} {d.lastName}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <div>
-                      <p className="font-brm text-xs mb-1" style={{ color: "var(--muted-foreground)" }}>تاريخ البدء</p>
-                      <input type="date" value={assignStartDate} onChange={e => setAssignStartDate(e.target.value)}
-                        className="w-full rounded-xl px-3 py-2 text-xs outline-none"
-                        style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }}
-                        onFocus={e => (e.target.style.borderColor = "#4F46E5")}
-                        onBlur={e => (e.target.style.borderColor = "var(--border)")} />
-                    </div>
-                    <div>
-                      <p className="font-brm text-xs mb-1" style={{ color: "var(--muted-foreground)" }}>تاريخ التسليم المتوقع <span style={{ color: "#EF4444" }}>*</span></p>
-                      <input type="date" value={assignDeadline} onChange={e => setAssignDeadline(e.target.value)}
-                        className="w-full rounded-xl px-3 py-2 text-xs outline-none"
-                        style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }}
-                        onFocus={e => (e.target.style.borderColor = "#4F46E5")}
-                        onBlur={e => (e.target.style.borderColor = "var(--border)")} />
-                    </div>
-                    <div>
-                      <p className="font-brm text-xs mb-1" style={{ color: "var(--muted-foreground)" }}>الساعات المقدّرة</p>
-                      <input type="number" min="1" value={assignHours} onChange={e => setAssignHours(e.target.value)}
-                        placeholder="مثال: 8"
-                        className="w-full rounded-xl px-3 py-2 text-xs outline-none"
-                        style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }}
-                        onFocus={e => (e.target.style.borderColor = "#4F46E5")}
-                        onBlur={e => (e.target.style.borderColor = "var(--border)")} />
-                    </div>
-                    <div className="flex gap-2 pt-1">
-                      <ActionBtn
-                        onClick={() => {
-                          if (!assignDevId || !assignDeadline) return;
-                          actions.assign.mutate({
-                            developerId: assignDevId,
-                            estimatedDeadline: assignDeadline,
-                            ...(assignStartDate ? { startDate: assignStartDate } : {}),
-                            ...(assignHours ? { estimatedHours: parseInt(assignHours) } : {}),
-                          });
-                          setAssignForm(false); setAssignDevId(""); setAssignDeadline(""); setAssignStartDate(""); setAssignHours("");
-                        }}
-                        disabled={!assignDevId || !assignDeadline || actions.assign.isPending}>
-                        {actions.assign.isPending ? <><Spinner />جارٍ الإسناد...</> : "جدولة وإسناد"}
-                      </ActionBtn>
-                      <button onClick={() => { setAssignForm(false); setAssignDevId(""); setAssignDeadline(""); setAssignStartDate(""); setAssignHours(""); }}
-                        className="px-3 py-2.5 rounded-xl text-xs font-medium transition-all"
-                        style={{ border: "1px solid var(--border)", color: "var(--muted-foreground)" }}>
-                        إلغاء
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <ActionBtn onClick={() => setAssignForm(true)}>إسناد وجدولة</ActionBtn>
-                )
+                <>
+                  <ActionBtn
+                    onClick={() => setConfirmKind("assign")}
+                    disabled={!(ticketAssignees?.length ?? 0) || !ticket.estimatedDeadline || actions.assign.isPending}>
+                    جدولة
+                  </ActionBtn>
+                  {!(ticketAssignees?.length ?? 0) && (
+                    <p className="font-brm text-xs" style={{ color: "#F59E0B" }}>{ASSIGNEE_LABELS.empty}</p>
+                  )}
+                  {!ticket.estimatedDeadline && (ticketAssignees?.length ?? 0) > 0 && (
+                    <p className="font-brm text-xs" style={{ color: "#F59E0B" }}>حدّد تاريخ التسليم المتوقع في التخطيط أولاً</p>
+                  )}
+                </>
               )}
 
               {ticket.status === "SCHEDULED" && isDeveloper && (
-                <ActionBtn onClick={() => actions.startWork.mutate(undefined)} disabled={actions.startWork.isPending}>
-                  {actions.startWork.isPending ? <><Spinner />جارٍ التحديث...</> : "بدء العمل"}
+                <ActionBtn onClick={() => setConfirmKind("start")} disabled={actions.startWork.isPending}>
+                  بدء العمل
                 </ActionBtn>
               )}
               {ticket.status === "IN_PROGRESS" && isDeveloper && (
-                <ActionBtn onClick={() => actions.submitForTesting.mutate(undefined)} disabled={actions.submitForTesting.isPending}>
-                  {actions.submitForTesting.isPending ? <><Spinner />جارٍ الإرسال...</> : "إرسال للاختبار"}
-                </ActionBtn>
+                <div>
+                  <ActionBtn
+                    onClick={() => setConfirmKind("submitForTesting")}
+                    disabled={actions.submitForTesting.isPending || openTaskCount > 0 || unmetBlockerCount > 0}
+                  >
+                    إرسال للاختبار
+                  </ActionBtn>
+                  {openTaskCount > 0 && (
+                    <p className="font-brm text-xs mt-1.5" style={{ color: "#F59E0B" }}>
+                      <CodeComment>{`أكمل ${openTaskCount} مهمة مفتوحة أولاً`}</CodeComment>
+                    </p>
+                  )}
+                  {unmetBlockerCount > 0 && (
+                    <p className="font-brm text-xs mt-1.5" style={{ color: "#F59E0B" }}>
+                      <CodeComment>{DEPENDENCY_LABELS.unmetSubmitHint}</CodeComment>
+                    </p>
+                  )}
+                </div>
               )}
               {((ticket.status === "AWAITING_TESTING" && canVerifyTesting) || (ticket.status === "AWAITING_OWNER_APPROVAL" && canAcceptDelivery)) && (
-                <ActionBtn onClick={() => actions.approveCompletion.mutate(undefined)} disabled={actions.approveCompletion.isPending}>
-                  {actions.approveCompletion.isPending ? <><Spinner />جارٍ الاعتماد...</> : "اعتماد الإكمال"}
+                <ActionBtn onClick={() => setConfirmKind("approveCompletion")} disabled={actions.approveCompletion.isPending}>
+                  اعتماد الإكمال
                 </ActionBtn>
               )}
               {ticket.status === "COMPLETED" && canClose && (
@@ -1027,46 +1662,26 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                     placeholder="ملاحظات الإغلاق *" rows={2}
                     className="w-full rounded-xl px-3 py-2 text-xs outline-none resize-none mb-2"
                     style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }} />
-                  <ActionBtn onClick={() => actions.close.mutate({ closureNotes })} disabled={!closureNotes.trim() || actions.close.isPending}>
-                    {actions.close.isPending ? <><Spinner />جارٍ الإغلاق...</> : "إغلاق التذكرة"}
+                  <ActionBtn onClick={() => setConfirmKind("closeTicket")} disabled={!closureNotes.trim() || actions.close.isPending}>
+                    إغلاق التذكرة
                   </ActionBtn>
                 </>
               )}
               {["CLOSED", "REJECTED"].includes(ticket.status) && canReopen && (
-                <ActionBtn variant="outline" onClick={() => actions.reopen.mutate(undefined)} disabled={actions.reopen.isPending}>
-                  {actions.reopen.isPending ? <><Spinner />جارٍ الفتح...</> : "إعادة الفتح"}
+                <ActionBtn variant="outline" onClick={() => setConfirmKind("reopen")} disabled={actions.reopen.isPending}>
+                  إعادة الفتح
                 </ActionBtn>
               )}
               {canArchive && !ticket.isArchived && (
-                confirmArchive ? (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => { actions.archive.mutate(undefined); setConfirmArchive(false); }}
-                      disabled={actions.archive.isPending}
-                      className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
-                      style={{ background: "rgba(239,68,68,0.1)", color: "#EF4444", border: "1px solid rgba(239,68,68,0.3)" }}
-                    >
-                      {actions.archive.isPending ? <><Spinner />جارٍ الأرشفة...</> : "تأكيد"}
-                    </button>
-                    <button
-                      onClick={() => setConfirmArchive(false)}
-                      className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
-                      style={{ border: "1px solid var(--border)", color: "var(--muted-foreground)" }}
-                    >
-                      إلغاء
-                    </button>
-                  </div>
-                ) : (
-                  <ActionBtn variant="ghost" onClick={() => setConfirmArchive(true)}>أرشفة</ActionBtn>
-                )
+                <ActionBtn variant="ghost" onClick={() => setConfirmKind("archive")}>أرشفة</ActionBtn>
               )}
               {canArchive && ticket.isArchived && (
                 <ActionBtn
                   variant="outline"
-                  onClick={() => actions.unarchive.mutate(undefined)}
+                  onClick={() => setConfirmKind("unarchive")}
                   disabled={actions.unarchive.isPending}
                 >
-                  {actions.unarchive.isPending ? <><Spinner />جارٍ التراجع...</> : "إلغاء الأرشفة"}
+                  إلغاء الأرشفة
                 </ActionBtn>
               )}
 
@@ -1074,9 +1689,12 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
               {canForceStatus && (
                 <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12, marginTop: 4 }}>
                   <button
+                    type="button"
                     onClick={() => setForceStatusOpen(o => !o)}
-                    className="w-full flex items-center justify-between text-xs font-semibold transition-colors"
-                    style={{ color: "var(--muted-foreground)" }}>
+                    className="w-full flex cursor-pointer items-center justify-between text-xs font-semibold transition-colors"
+                    style={{ color: "var(--muted-foreground)" }}
+                    aria-expanded={forceStatusOpen}
+                  >
                     <span className="font-brm">
                       <CodeComment>تغيير الحالة يدوياً</CodeComment>
                     </span>
@@ -1086,28 +1704,16 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                   {forceStatusOpen && (
                     <div className="mt-3 space-y-3">
                       <div className="grid grid-cols-2 gap-1.5">
-                        {([
-                          { val: "NEW",                     label: "جديدة" },
-                          { val: "AWAITING_INFO",           label: "ينتظر معلومات" },
-                          { val: "AWAITING_APPROVAL",       label: "ينتظر موافقة" },
-                          { val: "APPROVED",                label: "معتمدة" },
-                          { val: "REJECTED",                label: "مرفوضة" },
-                          { val: "SCHEDULED",               label: "مجدولة" },
-                          { val: "IN_PROGRESS",             label: "قيد التنفيذ" },
-                          { val: "AWAITING_TESTING",        label: "ينتظر اختبار" },
-                          { val: "AWAITING_OWNER_APPROVAL", label: "موافقة المالك" },
-                          { val: "COMPLETED",               label: "مكتملة" },
-                          { val: "CLOSED",                  label: "مغلقة" },
-                          { val: "ON_HOLD",                 label: "معلقة" },
-                          { val: "DRAFT",                   label: "مسودة" },
-                        ] as const).map(({ val, label }) => {
+                        {/* Driven off the label map so a new status appears here for free. */}
+                        {Object.entries(TICKET_STATUS_LABELS).map(([val, label]) => {
                           const isCurrent = ticket.status === val;
                           return (
                             <button
                               key={val}
+                              type="button"
                               disabled={isCurrent || actions.forceStatus.isPending}
-                              onClick={() => actions.forceStatus.mutate({ status: val, reason: forceStatusReason || undefined })}
-                              className="py-1.5 px-2 rounded-lg text-xs font-medium transition-all disabled:cursor-default"
+                              onClick={() => setConfirmForceStatus(val)}
+                              className="cursor-pointer py-1.5 px-2 rounded-lg text-xs font-medium transition-all disabled:cursor-default"
                               style={{
                                 background: isCurrent ? "rgba(79,70,229,0.15)" : "var(--muted)",
                                 color: isCurrent ? "#4F46E5" : "var(--foreground)",
@@ -1146,7 +1752,6 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
             </div>{/* end collapsible content */}
           </div>{/* end sidebar */}
         </div>
-      </div>
     </AppShell>
 
     {lightboxUrl && (
@@ -1158,7 +1763,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
 
     {confirmDeleteId && (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
-        <div className="rounded-2xl p-6 max-w-sm w-full space-y-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+        <div className="rounded-2xl p-5 max-w-sm w-full space-y-4 sm:p-6" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
           <p className="font-semibold text-sm" style={{ color: "var(--foreground)" }}>هل أنت متأكد من حذف هذا المرفق؟</p>
           <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>لا يمكن التراجع عن هذا الإجراء.</p>
           <div className="flex gap-3">
@@ -1172,6 +1777,128 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
               style={{ border: "1px solid var(--border)", color: "var(--muted-foreground)" }}>
               إلغاء
             </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {confirmKind && (
+      <ConfirmModal
+        title={TICKET_ACTION_CONFIRM[confirmKind].title}
+        confirm={TICKET_ACTION_CONFIRM[confirmKind].confirm}
+        hint={needsPauseReason ? BLOCK_LABELS.resumeTo : TICKET_ACTION_CONFIRM.hint}
+        danger={"danger" in TICKET_ACTION_CONFIRM[confirmKind]}
+        actionLabel={TICKET_ACTION_CONFIRM.action}
+        pending={confirmPending}
+        confirmDisabled={needsPauseReason && pauseReason.trim().length < 3}
+        onConfirm={runConfirmedAction}
+        onClose={() => { setConfirmKind(null); setPauseReason(""); setApprovalNotes(""); }}
+      >
+        {needsPauseReason && (
+          <PauseReasonField value={pauseReason} onChange={setPauseReason} />
+        )}
+        {needsApprovalNotes && (
+          <label className="block">
+            <span className="font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>
+              {TICKET_ACTION_CONFIRM.notes}
+            </span>
+            <textarea
+              value={approvalNotes}
+              onChange={(e) => setApprovalNotes(e.target.value)}
+              rows={3}
+              autoFocus
+              aria-label={TICKET_ACTION_CONFIRM.notes}
+              placeholder={TICKET_ACTION_CONFIRM.notesPlaceholder}
+              className="w-full mt-1.5 rounded-xl px-3 py-2 text-sm outline-none resize-none"
+              style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }}
+            />
+            <span className="font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>
+              {TICKET_ACTION_CONFIRM.notesHint}
+            </span>
+          </label>
+        )}
+      </ConfirmModal>
+    )}
+
+    {confirmForceStatus && (
+      <ConfirmModal
+        title={FORCE_STATUS_LABELS.title}
+        subtitle={`${TICKET_STATUS_LABELS[ticket.status]} → ${TICKET_STATUS_LABELS[confirmForceStatus]}`}
+        confirm={FORCE_STATUS_LABELS.confirm}
+        hint={FORCE_STATUS_LABELS.hint}
+        actionLabel={FORCE_STATUS_LABELS.action}
+        pendingLabel="جارٍ التغيير..."
+        pending={actions.forceStatus.isPending}
+        onConfirm={() => {
+          actions.forceStatus.mutate(
+            { status: confirmForceStatus, reason: forceStatusReason || undefined },
+            {
+              onSuccess: () => {
+                setConfirmForceStatus(null);
+                setForceStatusReason("");
+              },
+            },
+          );
+        }}
+        onClose={() => setConfirmForceStatus(null)}
+      />
+    )}
+
+    {confirmDeleteTask && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+        onClick={() => { if (!deletingTask) setConfirmDeleteTask(null); }}
+      >
+        <div
+          className="palette-modal brm-modal max-w-md rounded-2xl overflow-hidden"
+          style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 24px 64px rgba(0,0,0,0.3)" }}
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="flex shrink-0 items-center justify-between gap-3 px-5 py-4 sm:px-6 sm:py-5" style={{ borderBottom: "1px solid var(--border)" }}>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(239,68,68,0.12)" }}>
+                <Trash2 className="w-5 h-5" style={{ color: "#EF4444" }} />
+              </div>
+              <div>
+                <h2 className="text-base font-bold" style={{ color: "var(--foreground)" }}>{TASK_LABELS.delete}</h2>
+                <p className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>{confirmDeleteTask.title}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setConfirmDeleteTask(null)}
+              disabled={deletingTask}
+              className="transition-colors disabled:opacity-50"
+              style={{ color: "var(--muted-foreground)" }}
+              aria-label={TASK_LABELS.close}
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="p-6 space-y-4">
+            <p className="text-sm" style={{ color: "var(--foreground)" }}>{TASK_LABELS.deleteConfirm}</p>
+            <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>{TASK_LABELS.deleteHint}</p>
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => deleteTask(confirmDeleteTask.id)}
+                disabled={deletingTask}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-60"
+                style={{ background: "rgba(239,68,68,0.1)", color: "#EF4444", border: "1px solid rgba(239,68,68,0.3)" }}
+              >
+                {deletingTask ? "جارٍ الحذف..." : TASK_LABELS.deleteAction}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteTask(null)}
+                disabled={deletingTask}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-60"
+                style={{ border: "1px solid var(--border)", color: "var(--muted-foreground)" }}
+              >
+                {TASK_LABELS.cancel}
+              </button>
+            </div>
           </div>
         </div>
       </div>

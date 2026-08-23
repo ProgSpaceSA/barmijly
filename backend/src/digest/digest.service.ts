@@ -45,6 +45,8 @@ const TICKET_SELECT = {
   priority: true,
   finalPriority: true,
   estimatedDeadline: true,
+  company: { select: { name: true } },
+  system: { select: { name: true } },
 } satisfies Prisma.TicketSelect;
 
 type TicketRow = Prisma.TicketGetPayload<{ select: typeof TICKET_SELECT }>;
@@ -62,7 +64,8 @@ export class DigestService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    if (this.config.get<string>('DAILY_DIGEST_ENABLED') === 'false') {
+    const enabled = this.config.get<string>('DAILY_DIGEST_ENABLED')?.trim();
+    if (enabled !== undefined && /^(0|false|no|off)$/i.test(enabled)) {
       this.logger.log('Daily digest disabled (DAILY_DIGEST_ENABLED=false)');
       return;
     }
@@ -338,6 +341,8 @@ export class DigestService implements OnModuleInit {
       priority: ticket.finalPriority ?? ticket.priority,
       estimatedDeadline: ticket.estimatedDeadline,
       url: `${frontendUrl}/tickets/${ticket.id}`,
+      companyName: ticket.company.name,
+      systemName: ticket.system.name,
     };
   }
 

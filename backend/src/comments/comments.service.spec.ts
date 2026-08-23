@@ -171,7 +171,11 @@ describe('CommentsService — editing and deleting', () => {
       );
 
       expect(notifications.notifyMany).toHaveBeenCalledTimes(1);
-      expect(notifications.notifyMany).toHaveBeenCalledWith(['qa-2'], expect.anything());
+      expect(notifications.notifyMany).toHaveBeenCalledWith(
+        ['qa-2'],
+        expect.objectContaining({ title: 'تمت الإشارة إليك في تعليق' }),
+        'author-1',
+      );
       expect(email.sendMentionEmail).toHaveBeenCalledTimes(1);
     });
 

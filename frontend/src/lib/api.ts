@@ -5,7 +5,9 @@ import { getSessionEpoch } from "@/lib/query-client";
 type SessionConfig = InternalAxiosRequestConfig & { sessionEpoch?: number };
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "https://barmijly.ai/api",
+  baseURL:
+    process.env.NEXT_PUBLIC_API_URL
+    ?? (process.env.NODE_ENV === "development" ? "http://localhost:3002/api" : "https://barmijly.ai/api"),
   headers: { "Content-Type": "application/json" },
 });
 

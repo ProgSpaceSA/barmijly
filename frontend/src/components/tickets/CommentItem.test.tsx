@@ -53,8 +53,9 @@ describe('CommentItem', () => {
     expect(screen.getByText('أحمد علي')).toBeInTheDocument();
   });
 
-  it('says "أنت" when the viewer wrote it', () => {
+  it('shows the author name with a you badge when the viewer wrote it', () => {
     renderItem();
+    expect(screen.getByText('أحمد علي')).toBeInTheDocument();
     expect(screen.getByText('أنت')).toBeInTheDocument();
   });
 

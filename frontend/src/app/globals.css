@@ -5,6 +5,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  color-scheme: light;
   --background: #F5F7FA;
   --foreground: #0F172A;
   --primary: #4F46E5;
@@ -40,6 +41,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: #0B0B12;
   --foreground: #EEEFF4;
   --card: #14141C;
@@ -125,6 +127,14 @@
 
 * { box-sizing: border-box; }
 
+button:not(:disabled),
+[type="button"]:not(:disabled),
+[type="submit"]:not(:disabled),
+[type="reset"]:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
 html {
   background: var(--background);
 }
@@ -136,6 +146,31 @@ body {
   direction: rtl;
   -webkit-font-smoothing: antialiased;
   transition: background 0.25s, color 0.25s;
+}
+
+/* No native <select> is left in the app — every picker goes through
+   `components/ui/select`. These rules stay as the safety net for any future
+   one: Chromium ignores most background CSS on the native control unless
+   color-scheme matches the theme, and paints a white box with light text. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--muted);
+  color: var(--foreground);
+  border-color: var(--border);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2364748B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 0.7rem center;
+  background-size: 1rem;
+  cursor: pointer;
+}
+.dark select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%239A9AAD' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+}
+select option,
+select optgroup {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
 }
 
 [dir="rtl"] { text-align: right; }
@@ -606,32 +641,73 @@ body {
 }
 [dir="rtl"] .brm-comment-mentioned { box-shadow: inset -3px 0 0 0 #8B5CF6; }
 
-.brm-comment-actions { opacity: 0; transition: opacity 0.15s; align-self: flex-start; }
+.brm-comment-actions {
+  position: absolute;
+  top: 0;
+  inset-inline-end: 0;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.15s;
+  padding: 2px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--background) 88%, transparent);
+  backdrop-filter: blur(4px);
+}
 .brm-comment:hover .brm-comment-actions,
 .brm-comment:focus-within .brm-comment-actions { opacity: 1; }
 @media (hover: none) { .brm-comment-actions { opacity: 1; } }
 
 .brm-comment-confirm {
+  position: absolute;
+  top: 0;
+  inset-inline-end: 0;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  align-self: flex-start;
-  gap: 6px;
-  width: max-content;
-  max-width: 11.5rem;
-  padding: 8px 10px;
+  gap: 8px;
+  min-width: 10.5rem;
+  max-width: 14rem;
+  padding: 10px 12px;
   border-radius: 12px;
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.25);
-  flex-shrink: 0;
+  background: var(--background);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
 }
 .brm-comment-confirm > p {
   margin: 0;
   font-size: 0.72rem;
-  line-height: 1.4;
+  line-height: 1.45;
   color: #EF4444;
   text-align: start;
 }
+.brm-comment-confirm-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.brm-comment-confirm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  color: var(--muted-foreground);
+  background: var(--muted);
+  transition: background 0.15s, color 0.15s;
+}
+.brm-comment-confirm-btn:disabled { opacity: 0.5; }
+.brm-comment-confirm-btn-danger {
+  color: #fff;
+  background: #EF4444;
+  border-color: #EF4444;
+}
+.brm-comment-confirm-btn-danger:hover:not(:disabled) { background: #DC2626; }
 
 .brm-icon-btn {
   display: inline-flex;
@@ -989,6 +1065,63 @@ kbd.brm-kbd {
 .brm-badge-mention { background: rgba(139, 92, 246, 0.16); color: #7C3AED; }
 .dark .brm-badge-mention { background: rgba(167, 139, 250, 0.20); color: #C4B5FD; }
 
+.brm-badge-you { background: rgba(79, 70, 229, 0.14); color: #4F46E5; }
+.dark .brm-badge-you { background: rgba(79, 70, 229, 0.2); color: #818CF8; }
+
+/* Relation group headers — bordered chips so «تحجب» / «مرتبطة بـ» read at a glance. */
+.brm-relation-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.2rem 0.55rem;
+  border-radius: 0.45rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.25;
+  border: 1px solid transparent;
+}
+.brm-relation-label[data-tone="depends"] {
+  color: #B91C1C;
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+.dark .brm-relation-label[data-tone="depends"] {
+  color: #FDA4AF;
+  background: rgba(244, 63, 94, 0.14);
+  border-color: rgba(244, 63, 94, 0.4);
+}
+.brm-relation-label[data-tone="blocks"] {
+  color: #C2410C;
+  background: rgba(249, 115, 22, 0.1);
+  border-color: rgba(249, 115, 22, 0.35);
+}
+.dark .brm-relation-label[data-tone="blocks"] {
+  color: #FDBA74;
+  background: rgba(249, 115, 22, 0.14);
+  border-color: rgba(249, 115, 22, 0.4);
+}
+.brm-relation-label[data-tone="relates"] {
+  color: #4338CA;
+  background: rgba(79, 70, 229, 0.1);
+  border-color: rgba(79, 70, 229, 0.35);
+}
+.dark .brm-relation-label[data-tone="relates"] {
+  color: #A5B4FC;
+  background: rgba(99, 102, 241, 0.16);
+  border-color: rgba(129, 140, 248, 0.4);
+}
+.brm-relation-label[data-tone="duplicates"] {
+  color: #475569;
+  background: rgba(100, 116, 139, 0.1);
+  border-color: rgba(100, 116, 139, 0.35);
+}
+.dark .brm-relation-label[data-tone="duplicates"] {
+  color: #CBD5E1;
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
 .brm-hint-internal {
   display: flex;
   align-items: center;
@@ -1175,6 +1308,15 @@ kbd.brm-kbd {
 .brm-md-link:hover { text-decoration-color: #4F46E5; }
 .dark .brm-md-link { color: #A5B4FC; text-decoration-color: rgba(165, 180, 252, 0.4); }
 .dark .brm-md-link:hover { text-decoration-color: #A5B4FC; }
+
+/* Ticket links in relations, timeline, and markdown — colour only, no underline. */
+.brm-ticket-link {
+  color: #4F46E5;
+  font-weight: 500;
+  text-decoration: none;
+}
+.brm-ticket-link:hover { text-decoration: none; opacity: 0.88; }
+.dark .brm-ticket-link { color: #A5B4FC; }
 .brm-md-link-icon {
   display: inline-block;
   width: 0.75em;
@@ -1528,3 +1670,534 @@ kbd.brm-kbd {
   height: 22px;
   z-index: 2;
 }
+
+/* ══ Responsive shell ═══════════════════════════════════════════════════════
+   The app is built around a 16rem rail pinned to the physical right. That rail
+   is affordable from `lg` up and nowhere below it, so under 1024px the same
+   element becomes an off-canvas drawer and a slim bar takes over the top.
+
+   Everything here is additive: the desktop layout below is what the app has
+   always rendered, restated as media queries so the mobile branch can exist.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+@keyframes brm-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.brm-shell {
+  /* A stray wide child must not hand the whole page a sideways scrollbar.
+     `clip` rather than `hidden`: it does not become a scroll container, so the
+     sticky top bar still resolves against the viewport. */
+  overflow-x: clip;
+}
+
+/* ── Top bar (below `lg` only) ──────────────────────────────────────────── */
+
+.brm-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 56px;
+  padding-inline: 12px;
+  background: color-mix(in srgb, var(--background) 88%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+
+.brm-topbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  color: var(--foreground);
+  transition: background 0.15s;
+}
+.brm-topbar-btn:hover,
+.brm-topbar-btn:active { background: var(--muted); }
+
+.brm-topbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--foreground);
+}
+
+/* ── Sidebar: drawer below `lg`, rail from `lg` up ──────────────────────── */
+
+.brm-sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100%;
+  height: 100dvh;
+  width: 16rem;
+  max-width: 86vw;
+  display: flex;
+  flex-direction: column;
+  z-index: 60;
+  /* The rail lives on the physical right in both directions, so the drawer
+     slides out the same way — `translateX` is physical and ignores `dir`. */
+  transform: translateX(100%);
+  visibility: hidden;
+  transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.24s;
+}
+.brm-sidebar[data-open="true"] {
+  transform: translateX(0);
+  visibility: visible;
+  box-shadow: -14px 0 40px rgba(0, 0, 0, 0.32);
+}
+
+.brm-sidebar-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  margin-inline-start: auto;
+  border-radius: 10px;
+}
+
+.brm-sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(5, 5, 9, 0.55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  animation: brm-backdrop-in 0.18s ease both;
+}
+
+/* ── Main column ────────────────────────────────────────────────────────── */
+
+.brm-main {
+  /* No `width` here on purpose: a block already fills its containing block
+     minus its margins. Declaring `width: 100%` would over-constrain the box
+     against the `margin-right: 16rem` below, and RTL resolves that by pulling
+     `margin-left` negative — which hangs the whole page off the left edge. */
+  min-height: 100vh;
+  max-width: 1400px;
+  padding: 16px 16px 40px;
+}
+
+@media (min-width: 640px) {
+  .brm-main { padding: 20px 24px 40px; }
+}
+
+@media (min-width: 1024px) {
+  /* `[data-open]` is repeated so this beats the open-state rule on specificity
+     as well as order: a drawer left open across a resize must not carry its
+     drop shadow onto the permanent rail. */
+  .brm-sidebar,
+  .brm-sidebar[data-open="true"] {
+    transform: none;
+    visibility: visible;
+    max-width: none;
+    box-shadow: none;
+    transition: none;
+  }
+  .brm-main {
+    /* The historical layout: 16rem of clearance for the rail, 2rem gutters. */
+    margin-right: 16rem;
+    padding: 24px 32px;
+  }
+  /* These three are the drawer's furniture and belong to it, not to desktop.
+     `lg:hidden` in the JSX cannot hide them — utilities are layered and this
+     file is not — so the breakpoint has to live here. */
+  .brm-topbar,
+  .brm-sidebar-close,
+  .brm-sidebar-backdrop { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brm-sidebar { transition: none; }
+  .brm-sidebar-backdrop { animation: none; }
+}
+
+/* ══ Responsive components ══════════════════════════════════════════════════
+   Blocks whose desktop shape does not survive a narrow column. Each one keeps
+   its desktop rendering untouched and only changes below the width where it
+   actually breaks.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* ── Page header ────────────────────────────────────────────────────────── */
+
+/* Title and action share a line until the action would squeeze the title. */
+.brm-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.brm-page-header > :first-child { min-width: 0; }
+
+/* ── Activity terminal (dashboard) ──────────────────────────────────────── */
+
+@media (max-width: 1023px) {
+  .brm-term-bar { padding: 8px 12px; }
+  /* The `$ brmctl …` prompt is decoration; the traffic lights and the state
+     chip carry the meaning, and they are what fits. */
+  .brm-term-bar > .ltr-isolate { display: none; }
+  .brm-term-strip { padding: 8px 12px; gap: 10px; }
+  .brm-term-row {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  /* The meta group (due date, status, timestamp) drops under the title rather
+     than competing with it for a ~180px column. */
+  .brm-term-row > :last-child {
+    width: 100%;
+    padding-inline-start: 34px;
+    flex-wrap: wrap;
+  }
+  .brm-term-body { max-height: 60vh; }
+}
+
+/* ── Stat tiles ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 639px) {
+  .brm-stat { padding: 12px 13px; min-height: 82px; }
+  .brm-stat-value { font-size: 1.5rem; }
+  .brm-stat-label { font-size: 0.72rem; }
+  .brm-stat-icon { width: 30px; height: 30px; border-radius: 9px; }
+  /* The sparkline overlaps the value once the tile is half a phone wide. */
+  .brm-stat-spark { display: none; }
+}
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+
+/* A table cannot reflow, so it scrolls inside its own box instead of widening
+   the card that holds it. */
+.brm-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.brm-table-scroll > table { min-width: 34rem; }
+
+/* ── Dialogs ────────────────────────────────────────────────────────────── */
+
+/* Inline picker panels — relation kind, short single-choice lists. */
+.brm-panel {
+  border: 1px solid var(--border);
+}
+
+.brm-option-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  max-height: 14rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--card);
+}
+
+.brm-option-list__item {
+  display: block;
+  width: 100%;
+  text-align: start;
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.35;
+  color: var(--foreground);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.brm-option-list__item:hover,
+.brm-option-list__item:focus-visible {
+  outline: none;
+  background: rgba(99, 102, 241, 0.14);
+}
+
+.brm-option-list__item[data-selected] {
+  background: rgba(99, 102, 241, 0.22);
+  font-weight: 600;
+}
+
+.brm-list-choice {
+  display: block;
+  width: 100%;
+  text-align: start;
+  padding: 0.5rem 0.625rem;
+  font-size: 0.875rem;
+  line-height: 1.35;
+  color: var(--foreground);
+  background: transparent;
+  border: 0;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.brm-list-choice:hover,
+.brm-list-choice:focus-visible {
+  outline: none;
+  background: rgba(99, 102, 241, 0.12);
+}
+
+/* Every modal in the app is a centred card inside a `fixed inset-0` flexbox.
+   On a short viewport the card used to grow past both edges with no way to
+   reach the buttons; now the card caps and its body scrolls. */
+.brm-modal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: min(90dvh, 100% - 2rem);
+}
+.brm-modal > :last-child {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* ── Filter pill rails ──────────────────────────────────────────────────── */
+
+/* Long pill rows wrap by default. On a phone a row of ten statuses becomes
+   four stacked lines, so below `sm` it scrolls sideways as one strip. */
+@media (max-width: 639px) {
+  .brm-pill-rail {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    max-width: 100%;
+  }
+  .brm-pill-rail::-webkit-scrollbar { display: none; }
+  .brm-pill-rail > * { flex-shrink: 0; }
+}
+
+/* ── Comments & editors ─────────────────────────────────────────────────── */
+
+@media (max-width: 639px) {
+  .brm-comment { padding: 8px 9px; }
+  .brm-comment-confirm { max-width: 100%; }
+  .brm-composer-toolbar { padding: 8px; gap: 8px; }
+  .brm-mdedit-toolbar { padding: 6px; }
+  .brm-mdedit-mirror,
+  .brm-mdedit-input { padding: 12px; }
+  .brm-mdedit-preview { padding: 12px; max-height: 60vh; }
+  /* The cheat-sheet strip is a desktop nicety and eats a third of a phone. */
+  .brm-mdedit-cheats { display: none; }
+  .brm-md-fence > pre { padding: 10px; font-size: 0.72rem; }
+}
+
+/* ── Touch targets ──────────────────────────────────────────────────────── */
+
+/* Hover-only affordances have no hover on a touch screen, and a 26px icon
+   button is under every platform minimum. Both are corrected for coarse
+   pointers only, so desktop density is untouched. */
+@media (pointer: coarse) {
+  .brm-icon-btn { width: 34px; height: 34px; }
+  .brm-attach-remove { opacity: 1; }
+  .brm-nav-link { padding: 12px; }
+}
+
+/* ── Row titles ─────────────────────────────────────────────────────────── */
+
+/* A list-row title is clipped to one line on desktop so a column of rows stays
+   scannable. On a phone the row IS the card, and a title cut to
+   «تعديل قالب الفاتورة الـ…» names nothing the reader can act on — so below
+   `sm` the title wraps onto as many lines as it needs instead of being cut. */
+.brm-row-title {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+
+/* 1024px — the width at which the sidebar becomes a permanent rail — is the
+   one breakpoint this file needs: below it a row is the full width of the
+   card and the title uses all of it; at desktop the row is a single line
+   again and the ellipsis keeps a column of rows even. `.brm-term-row` stops
+   stacking at exactly the same width, so there is no band where a title is
+   cut short while the row still has room to show it. */
+@media (min-width: 1024px) {
+  .brm-row-title {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* ── Overflow guards ────────────────────────────────────────────────────── */
+
+/* Arabic wraps at word boundaries; a pasted URL or a long identifier has none,
+   and one of them is enough to widen a card past the viewport. */
+.brm-main :where(h1, h2, h3, p, span, td, th, li) { overflow-wrap: break-word; }
+
+/* A flex item will not shrink below its longest word — `min-width: auto` sets
+   that floor. Half this UI is Arabic prose next to Latin identifiers like
+   `TicketRequesterC6`, and one of those is wider than the column it sits in on
+   a phone, so the heading used to spill sideways over its neighbours instead
+   of wrapping. Headings are never the item that should win that fight. */
+.brm-main :where(h1, h2, h3, h4),
+.brm-row-title { min-width: 0; }
+
+/* ══ Ticket work UI ═════════════════════════════════════════════════════════
+   Roster, stop/resume and prerequisites. Every colour below is declared twice —
+   once for light and once under `.dark` — because these blocks carry meaning
+   (stopped, waiting, leading) and a tint tuned for one theme is unreadable in
+   the other.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* ── Avatars ────────────────────────────────────────────────────────────── */
+
+.brm-person {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: rgba(79, 70, 229, 0.10);
+  color: #4338CA;
+}
+.brm-person[data-lead="true"] {
+  background: rgba(79, 70, 229, 0.18);
+  color: #3730A3;
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.25);
+}
+.dark .brm-person { background: rgba(99, 102, 241, 0.16); color: #A5B4FC; }
+.dark .brm-person[data-lead="true"] {
+  background: rgba(99, 102, 241, 0.28);
+  color: #C7D2FE;
+  box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.35);
+}
+
+/* ── Tone buttons ───────────────────────────────────────────────────────── */
+
+.brm-tone-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+.brm-tone-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.brm-tone-btn[data-tone="danger"] {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.28);
+  color: #B91C1C;
+}
+.brm-tone-btn[data-tone="danger"]:not(:disabled):hover { background: rgba(239, 68, 68, 0.14); }
+.dark .brm-tone-btn[data-tone="danger"] {
+  background: rgba(244, 63, 94, 0.12);
+  border-color: rgba(244, 63, 94, 0.32);
+  color: #FDA4AF;
+}
+
+.brm-tone-btn[data-tone="neutral"] {
+  background: var(--muted);
+  border-color: var(--border);
+  color: var(--foreground);
+}
+.brm-tone-btn[data-tone="neutral"]:not(:disabled):hover { background: var(--accent); }
+
+.brm-tone-btn[data-tone="success"] {
+  background: rgba(16, 185, 129, 0.10);
+  border-color: rgba(16, 185, 129, 0.30);
+  color: #047857;
+}
+.brm-tone-btn[data-tone="success"]:not(:disabled):hover { background: rgba(16, 185, 129, 0.16); }
+.dark .brm-tone-btn[data-tone="success"] {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.32);
+  color: #6EE7B7;
+}
+
+.brm-tone-btn[data-tone="brand"] {
+  background: rgba(79, 70, 229, 0.10);
+  border-color: rgba(79, 70, 229, 0.28);
+  color: #4338CA;
+}
+.brm-tone-btn[data-tone="brand"]:not(:disabled):hover { background: rgba(79, 70, 229, 0.16); }
+.dark .brm-tone-btn[data-tone="brand"] {
+  background: rgba(99, 102, 241, 0.16);
+  border-color: rgba(99, 102, 241, 0.34);
+  color: #C7D2FE;
+}
+
+/* A quiet text button for row-level actions that must not compete with the row. */
+.brm-quiet-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  transition: background 0.15s, color 0.15s;
+}
+.brm-quiet-btn:hover { background: var(--accent); color: var(--foreground); }
+.brm-quiet-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── Banners ────────────────────────────────────────────────────────────── */
+
+.brm-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+}
+.brm-notice[data-tone="danger"] {
+  background: rgba(239, 68, 68, 0.06);
+  border-color: rgba(239, 68, 68, 0.28);
+}
+.brm-notice[data-tone="danger"] .brm-notice-icon { color: #DC2626; }
+.dark .brm-notice[data-tone="danger"] {
+  background: rgba(244, 63, 94, 0.10);
+  border-color: rgba(244, 63, 94, 0.30);
+}
+.dark .brm-notice[data-tone="danger"] .brm-notice-icon { color: #FB7185; }
+
+.brm-notice[data-tone="neutral"] {
+  background: var(--muted);
+  border-color: var(--border);
+}
+.brm-notice[data-tone="neutral"] .brm-notice-icon { color: var(--muted-foreground); }
+
+/* ── Count chips ────────────────────────────────────────────────────────── */
+
+.brm-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+.brm-count[data-tone="danger"] { background: rgba(239, 68, 68, 0.10); color: #B91C1C; }
+.dark .brm-count[data-tone="danger"] { background: rgba(244, 63, 94, 0.16); color: #FDA4AF; }
+.brm-count[data-tone="ok"] { background: rgba(16, 185, 129, 0.10); color: #047857; }
+.dark .brm-count[data-tone="ok"] { background: rgba(16, 185, 129, 0.16); color: #6EE7B7; }

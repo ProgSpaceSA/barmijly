@@ -60,6 +60,7 @@ DATABASE_URL="postgresql://barmijly:barmijly2024@localhost:5432/barmijly"
 JWT_SECRET="change-this-in-production"
 JWT_EXPIRES_IN="7d"
 
+MAIL_ENABLED=false                     # local/QA: keep false. Production: true (case-insensitive)
 MAIL_HOST="smtp.gmail.com"
 MAIL_PORT=587
 MAIL_USER="your@gmail.com"
@@ -128,7 +129,7 @@ Authorization: Bearer <token>
 | Method | Endpoint | Roles | Description |
 |--------|----------|-------|-------------|
 | GET | `/users` | Head, Manager, Senior | List all users |
-| GET | `/users/developers` | Head, Manager | List active developers |
+| GET | `/users/developers` | Signed in | Active developers in the caller's company reach; pass `ticketId` to match the assign picker |
 | GET | `/users/:id` | Head, Manager, Senior | Get user |
 | POST | `/users` | Head, Manager | Create user |
 | PATCH | `/users/:id` | Head, Manager | Update user |
@@ -148,15 +149,27 @@ Each has `GET`, `POST`, `PATCH :id`, `PATCH :id/deactivate`. Systems also have `
 | PATCH | `/tickets/:id` | Creator / Manager | Edit draft or awaiting-info ticket |
 | PATCH | `/tickets/:id/submit` | Creator | Submit draft → NEW |
 | PATCH | `/tickets/:id/approve` | Head | Approve / Reject / Request info |
-| PATCH | `/tickets/:id/assign` | Manager / Head | Assign developer + set metadata |
-| PATCH | `/tickets/:id/start` | Developer | Mark IN_PROGRESS |
-| PATCH | `/tickets/:id/submit-for-testing` | Developer | Move to AWAITING_TESTING |
+| PATCH | `/tickets/:id/assign` | Manager / Head | Assign one or more developers (`developerIds`, `leadDeveloperId`) + set metadata |
+| PATCH | `/tickets/:id/plan` | Manager / Head (full plan); assigned Developer (hours + difficulty only) | Update schedule / estimate without a status move |
+| GET | `/tickets/:id/assignees` | Role-filtered | Active roster, lead first |
+| POST | `/tickets/:id/assignees` | Manager / Head | Add a developer at any status |
+| DELETE | `/tickets/:id/assignees/:developerId` | Manager / Head | Remove a developer. Refused for the lead, or anyone still holding a task |
+| PATCH | `/tickets/:id/lead` | Manager / Head | Hand the lead role over |
+| PATCH | `/tickets/:id/start` | **Lead** | Mark IN_PROGRESS. Refused while a prerequisite is unfinished |
+| PATCH | `/tickets/:id/submit-for-testing` | **Lead** | Move to AWAITING_TESTING. Refused while any task is open |
+| PATCH | `/tickets/:id/block` | Developer / QA / Manager / Head | Stop the ticket (BLOCKED) with a required reason, optionally naming the blocking ticket |
+| PATCH | `/tickets/:id/hold` | Manager / Head / Senior | Park the ticket (ON_HOLD) with a required reason |
+| PATCH | `/tickets/:id/resume` | Lead (BLOCKED) / Manager / Head | Return to the status the ticket stopped from |
+| GET | `/tickets/:id/timeline` | Role-filtered | Everything that happened to the ticket, oldest first — status moves, tasks, assignment, lead handover, relations. Reads `AuditLog`, so every writer contributes without a second table |
+| GET | `/tickets/:id/dependencies` | Role-filtered | `blockedBy` and `blocking`, each row carrying its relation `type` |
+| POST | `/tickets/:id/dependencies` | Manager / Head | Relate two tickets: `otherTicketId`, `direction` (`blockedBy` default or `blocks`), `type` (`BLOCKS` default, `RELATES_TO`, `DUPLICATES`). Rejects self-edges; rejects cycles for `BLOCKS` only |
+| DELETE | `/tickets/:id/dependencies/:otherTicketId` | Manager / Head | Remove the relation, named from either end |
 | PATCH | `/tickets/:id/approve-completion` | QA / requester / system owner / Head, PM | QA passes → owner approval; requester or system owner (or leadership) accepts → COMPLETED |
 | PATCH | `/tickets/:id/close` | Manager / Head | Close with closure notes |
 | PATCH | `/tickets/:id/archive` | Manager / Head | Archive (soft) |
 | PATCH | `/tickets/:id/reopen` | Manager / Head | Reopen closed/rejected ticket |
 | POST | `/tickets/:id/duplicate` | Any | Clone ticket as new draft |
-| GET | `/tickets` | Role-filtered | List tickets with filters + pagination (`status`, `companyId`, `search`, `overdue=true`, `mine=true`, …). `mine=true` keeps tickets the caller is assigned to, or that have at least one task assigned to them |
+| GET | `/tickets` | Role-filtered | List tickets with filters + pagination (`status`, `companyId`, `developerId`, `search`, `overdue=true`, `mine=true`, …). `mine=true` keeps tickets the caller is assigned to, or that have at least one task assigned to them. `developerId` keeps tickets with an active assignment to that developer |
 | GET | `/tickets/my-created` | Signed in | Dashboard activity queue: tickets the user filed or owns, plus the statuses their role must act on (same buckets as the daily digest) |
 | GET | `/tickets/:id` | Role-filtered | Ticket detail with full history |
 
@@ -168,7 +181,20 @@ DRAFT → NEW → AWAITING_APPROVAL → APPROVED → SCHEDULED → IN_PROGRESS
                                 ↘ AWAITING_INFO → NEW
                                                        ↓
                               AWAITING_TESTING → AWAITING_OWNER_APPROVAL → COMPLETED → CLOSED
+
+any active status ⇄ BLOCKED   (block / resume — involuntary, something is in the way)
+any live status   ⇄ ON_HOLD   (hold / resume — a deliberate parking decision)
 ```
+
+`resume` returns the ticket to the status it stopped from, read out of
+`TicketStatusHistory`. Both stopped states pause the work clock, so `actualHours`
+never counts time nobody was working.
+
+#### Gates
+
+- `start` is refused while any **`BLOCKS`** prerequisite is not COMPLETED or CLOSED. `RELATES_TO` and `DUPLICATES` are navigation aids and gate nothing.
+- `submit-for-testing` is refused while the ticket has tasks in NEW or IN_PROGRESS.
+- Both are bypassed only through `force-status`, which is audited.
 
 #### Approval Decisions
 
@@ -176,6 +202,22 @@ DRAFT → NEW → AWAITING_APPROVAL → APPROVED → SCHEDULED → IN_PROGRESS
 - `REJECTED` — moves to rejected (with reason)
 - `NEEDS_INFO` — moves back to awaiting info, notifies creator
 - `CONVERT_TO_PROJECT` — puts on hold for separate project handling
+
+### Tasks
+
+| Method | Endpoint | Who | Description |
+|--------|----------|-----|-------------|
+| GET | `/tickets/:ticketId/tasks` | Role-filtered | Tasks on a ticket |
+| POST | `/tickets/:ticketId/tasks` | Manager / Head / Senior; Developer & QA for themselves | Create a task (`title`, `assignedToId`, `dueDate?`, `estimatedHours?`, `difficultyLevel?` 1–5) |
+| GET | `/tasks/my` | Signed in | The caller's own tasks, soonest due first |
+| PATCH | `/tasks/:id` | Assignee (status + estimate) / Manager (everything) | Update a task — developers revise hours/difficulty only; managers may also retitle, reassign and reschedule |
+| DELETE | `/tasks/:id` | Manager; creator for their own untouched NEW task | Delete a task |
+
+Holding a task on a ticket makes you an active assignee on it; losing your last
+task takes you back off, unless you are the lead. Task estimates roll up into
+`Ticket.tasksEstimatedHours` / `tasksWeightTotal`, and `GET /tickets/:id` returns
+`effectiveEstimatedHours` (the rollup, falling back to the planned figure),
+`openTaskCount` and `actualHours`.
 
 ### Comments
 
@@ -341,8 +383,9 @@ npx prisma studio                      # visual DB browser
 
 Uses Nodemailer. Configure SMTP in `.env`.  
 For Gmail: use an **App Password** (not your main password).  
-Emails sent for: invitations, status updates.  
-If SMTP is not configured, email errors are logged but do not crash the app.
+Emails sent for: invitations, status updates, mentions, assignments, daily digest.  
+`MAIL_ENABLED` is case-insensitive. Outside `NODE_ENV=production`, mail stays off unless `MAIL_ENABLED=true`.  
+Jest / e2e never hit SMTP. If SMTP fails, errors are logged but do not crash the app.
 
 ---
 

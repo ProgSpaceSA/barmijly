@@ -51,7 +51,10 @@ export class AuthService {
   }
 
   async forgotPassword(dto: ForgotPasswordDto) {
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+      include: { company: { select: { name: true } } },
+    });
     // Always return success to avoid email enumeration
     if (!user || !user.isActive) return { message: 'If this email exists, a reset link has been sent' };
 
@@ -65,7 +68,9 @@ export class AuthService {
     await this.prisma.passwordResetToken.create({ data: { token, userId: user.id, expiresAt } });
 
     const frontendUrl = this.config.get<string>('FRONTEND_URL', 'http://localhost:3000');
-    await this.email.sendPasswordReset(user.email, user.firstName, token, frontendUrl);
+    await this.email.sendPasswordReset(user.email, user.firstName, token, frontendUrl, {
+      companyName: user.company?.name,
+    });
 
     return { message: 'If this email exists, a reset link has been sent' };
   }

@@ -161,7 +161,11 @@ describe('comment access', () => {
       );
 
       expect(comment.mentions).toEqual(['qa-1']);
-      expect(notifications.notifyMany).toHaveBeenCalledWith(['qa-1'], expect.anything());
+      expect(notifications.notifyMany).toHaveBeenCalledWith(
+        ['qa-1'],
+        expect.objectContaining({ title: 'تمت الإشارة إليك في تعليق' }),
+        'actor-1',
+      );
     });
 
     it('drops an outsider mentioned on an internal comment', async () => {
@@ -190,7 +194,7 @@ describe('comment access', () => {
         asUser(UserRole.PROJECT_MANAGER),
       );
 
-      expect(notifications.notifyMany).toHaveBeenCalledWith(['qa-1'], expect.anything());
+      expect(notifications.notifyMany).toHaveBeenCalledWith(['qa-1'], expect.anything(), 'actor-1');
       expect(email.sendMentionEmail).toHaveBeenCalledTimes(1);
     });
 

@@ -39,3 +39,5 @@ Default is dark (`brm-theme` in localStorage). Support both themes via `next-the
 - Status badges use `TICKET_STATUS_COLORS` / `PRIORITY_COLORS`
 - Empty states via `EmptyState` component
 - Toast notifications via `sonner`
+- Page loading via skeletons in `LoadingSpinner.tsx` (not spinners)
+- Layouts are mobile-first — see `.cursor/rules/responsive-ui.mdc`

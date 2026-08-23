@@ -29,6 +29,9 @@ enum TicketStatus {
   AWAITING_OWNER_APPROVAL
   COMPLETED
   CLOSED
+  /// Involuntary: waiting on a prerequisite, another team, or missing input.
+  BLOCKED
+  /// A deliberate pause by leadership.
   ON_HOLD
 }
 
@@ -84,6 +87,15 @@ enum TaskStatus {
 enum CommentVisibility {
   PUBLIC
   INTERNAL
+}
+
+/// How two tickets relate. Only BLOCKS is a constraint — it gates `start` and is
+/// the only kind checked for cycles. The others are navigation aids: they say
+/// "look at this too", not "you may not proceed".
+enum TicketDependencyType {
+  BLOCKS
+  RELATES_TO
+  DUPLICATES
 }
 
 enum SignupRequestStatus {
@@ -165,6 +177,7 @@ model User {
   tasksAssigned      TicketTask[] @relation("TaskAssignee")
   tasksCreated       TicketTask[] @relation("TaskCreator")
   statusChanges      TicketStatusHistory[] @relation("StatusHistoryChanger")
+  dependenciesCreated TicketDependency[] @relation("DependencyCreator")
 }
 
 model UserSystem {
@@ -195,6 +208,13 @@ model Ticket {
   estimatedDeadline    DateTime?
   estimatedHours       Int?
   difficultyLevel      Int?
+  /// Rollups over this ticket's tasks. Single writer: TaskRollupService.
+  tasksEstimatedHours  Int?
+  tasksWeightTotal     Int?
+  /// Stamped by changeStatus. startedAt is the first move into IN_PROGRESS and
+  /// is never reset; completedAt clears if the ticket moves back out of COMPLETED.
+  startedAt            DateTime?
+  completedAt          DateTime?
   needsUiUx            Boolean               @default(false)
   needsBackend         Boolean               @default(false)
   needsFrontend        Boolean               @default(false)
@@ -216,6 +236,13 @@ model Ticket {
   relatedTicketId      String?
   relatedTicket        Ticket?               @relation("RelatedTickets", fields: [relatedTicketId], references: [id])
   relatedTickets       Ticket[]              @relation("RelatedTickets")
+  /// Why the ticket is BLOCKED or ON_HOLD. Cleared on resume. The status to
+  /// return to is read out of TicketStatusHistory rather than stored, so it
+  /// cannot drift when force-status is used.
+  pauseReason          String?
+  blockedByTicketId    String?
+  blockedByTicket      Ticket?               @relation("BlockedBy", fields: [blockedByTicketId], references: [id])
+  blockedTickets       Ticket[]              @relation("BlockedBy")
   templateId           String?
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
@@ -227,6 +254,29 @@ model Ticket {
   notifications        Notification[]
   auditLogs            AuditLog[]
   tasks                TicketTask[]
+  blocking             TicketDependency[]    @relation("BlockingTicket")
+  blockedBy            TicketDependency[]    @relation("BlockedTicket")
+}
+
+/// "This ticket cannot start until that one is done."
+///
+/// Replaces Ticket.relatedTicketId, which said only "related" — no direction, no
+/// meaning, and nothing read it. Edges are checked for cycles before they are
+/// written, so the graph stays a DAG.
+model TicketDependency {
+  id               String   @id @default(uuid())
+  blockingTicketId String
+  blockingTicket   Ticket   @relation("BlockingTicket", fields: [blockingTicketId], references: [id], onDelete: Cascade)
+  blockedTicketId  String
+  blockedTicket    Ticket   @relation("BlockedTicket", fields: [blockedTicketId], references: [id], onDelete: Cascade)
+  type             TicketDependencyType @default(BLOCKS)
+  createdById      String
+  createdBy        User     @relation("DependencyCreator", fields: [createdById], references: [id])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([blockingTicketId, blockedTicketId])
+  @@index([blockedTicketId])
 }
 
 model TicketComment {
@@ -271,6 +321,9 @@ model TicketStatusHistory {
   createdAt   DateTime      @default(now())
 }
 
+/// Who is working a ticket. A membership row per developer, not an append-only
+/// log — assignment history lives in AuditLog. Exactly one active row per ticket
+/// carries isLead, enforced by a partial unique index.
 model TicketAssignment {
   id                String    @id @default(uuid())
   ticketId          String
@@ -281,8 +334,13 @@ model TicketAssignment {
   startDate         DateTime?
   estimatedDeadline DateTime?
   isActive          Boolean   @default(true)
+  /// The lead owns the ticket-level transitions; everyone else works their tasks.
+  isLead            Boolean   @default(false)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
+
+  @@unique([ticketId, developerId])
+  @@index([ticketId, isActive])
 }
 
 model TicketApproval {
@@ -389,18 +447,26 @@ model SignupRequest {
 }
 
 model TicketTask {
-  id           String              @id @default(cuid())
-  ticketId     String
-  ticket       Ticket              @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  title        String
-  description  String?
-  assignedToId String
-  assignedTo   User                @relation("TaskAssignee", fields: [assignedToId], references: [id])
-  createdById  String
-  createdBy    User                @relation("TaskCreator", fields: [createdById], references: [id])
-  status       TaskStatus          @default(NEW)
-  dueDate      DateTime?
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-  attachments  TicketAttachment[]
+  id              String             @id @default(cuid())
+  ticketId        String
+  ticket          Ticket             @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  title           String
+  description     String?
+  assignedToId    String
+  assignedTo      User               @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  createdById     String
+  createdBy       User               @relation("TaskCreator", fields: [createdById], references: [id])
+  status          TaskStatus         @default(NEW)
+  dueDate         DateTime?
+  estimatedHours  Int?
+  /// 1–5, the same scale as Ticket.difficultyLevel (req.md §9 «مستوى الصعوبة»).
+  difficultyLevel Int?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  attachments     TicketAttachment[]
+
+  @@index([ticketId, status])
+  @@index([assignedToId, status])
 }

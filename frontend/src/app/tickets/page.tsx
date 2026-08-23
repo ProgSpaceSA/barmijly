@@ -6,45 +6,18 @@ import { AppShell } from "@/components/layout/AppShell";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SkeletonList } from "@/components/shared/LoadingSpinner";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { StatusBadge, PriorityBadge } from "@/components/shared/StatusBadge";
-import { RelativeTime } from "@/components/shared/RelativeTime";
-import { TicketCodeBadge } from "@/components/shared/TicketCodeBadge";
+import { TicketListCard } from "@/components/shared/TicketListCard";
 import { useTickets } from "@/hooks/useTickets";
 import { useAuthStore, type UserRole } from "@/store/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { TICKET_MINE_LABEL, TICKET_STATUS_LABELS, TICKET_TYPE_LABELS } from "@/lib/constants";
+import { TICKET_MINE_LABEL, TICKET_STATUS_LABELS } from "@/lib/constants";
 import { ticketStatusFilterKeys } from "@/lib/permissions";
-import { format } from "date-fns";
-import { ar } from "date-fns/locale";
-import { Plus, Search, User, Clock } from "lucide-react";
-import Link from "next/link";
+import { Plus, Search, User } from "lucide-react";
 import api from "@/lib/api";
+import { qk } from "@/lib/query-keys";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import { CodeComment } from "@/components/shared/CodeComment";
-
-const DONE_STATUSES = new Set(["CLOSED", "COMPLETED", "REJECTED"]);
-
-function isOverdue(ticket: { estimatedDeadline?: string | null; status: string }) {
-  if (!ticket.estimatedDeadline || DONE_STATUSES.has(ticket.status)) return false;
-  return new Date(ticket.estimatedDeadline) < new Date();
-}
-
-const STATUS_BAR_COLORS: Record<string, string> = {
-  DRAFT:                   "#94A3B8",
-  NEW:                     "#3B82F6",
-  AWAITING_INFO:           "#F59E0B",
-  AWAITING_APPROVAL:       "#F97316",
-  APPROVED:                "#10B981",
-  REJECTED:                "#EF4444",
-  SCHEDULED:               "#8B5CF6",
-  IN_PROGRESS:             "#22C55E",
-  AWAITING_TESTING:        "#06B6D4",
-  AWAITING_OWNER_APPROVAL: "#14B8A6",
-  COMPLETED:               "#10B981",
-  CLOSED:                  "#6B7280",
-  ON_HOLD:                 "#94A3B8",
-};
 
 function statusFilterPills(role: UserRole | undefined) {
   const keys = ticketStatusFilterKeys(role);
@@ -81,11 +54,13 @@ function TicketsPageContent() {
   const searchParams = useSearchParams();
   const overdueOnLoad = searchParams.get("overdue") === "true";
   const mineOnLoad = searchParams.get("mine") === "true";
+  const developerOnLoad = searchParams.get("developerId") ?? "";
   const { user } = useAuthStore();
   const [filters, setFilters] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
     if (overdueOnLoad) initial.overdue = "true";
     if (mineOnLoad) initial.mine = "true";
+    else if (developerOnLoad) initial.developerId = developerOnLoad;
     return initial;
   });
   const [activeStatus, setActiveStatus] = useState(() =>
@@ -93,20 +68,29 @@ function TicketsPageContent() {
   );
   const [activeCompany, setActiveCompany] = useState("");
   const [mineOnly, setMineOnly] = useState(mineOnLoad);
+  const [developerId, setDeveloperId] = useState(mineOnLoad ? "" : developerOnLoad);
   const { data, isLoading } = useTickets(filters);
 
   const isDeveloper = user?.role === "DEVELOPER";
+  const canFilterByDeveloper = !isDeveloper;
 
   const { data: companies } = useQuery({
-    queryKey: ["companies-list"],
+    queryKey: qk.companies.list(),
     queryFn: () => api.get("/companies").then(r => r.data as any[]),
     staleTime: 60_000,
     enabled: !isDeveloper,
   });
 
+  const { data: developers } = useQuery({
+    queryKey: qk.users.developers(),
+    queryFn: () => api.get("/users/developers").then(r => r.data as { id: string; firstName: string; lastName: string }[]),
+    staleTime: 60_000,
+    enabled: canFilterByDeveloper,
+  });
+
   // For developers: derive visible companies from their own ticket scope (no company filter, high limit)
   const { data: devBaseTickets } = useQuery({
-    queryKey: ["tickets-dev-base"],
+    queryKey: qk.tickets.devBase(),
     queryFn: () => api.get("/tickets", { params: { limit: 200 } }).then(r => r.data),
     staleTime: 60_000,
     enabled: isDeveloper,
@@ -137,9 +121,19 @@ function TicketsPageContent() {
     setFilter("companyId", companyId);
   };
 
-  const setMineFilter = (on: boolean) => {
-    setMineOnly(on);
-    setFilter("mine", on ? "true" : "");
+  const setAssignmentFilter = (next: { mine?: boolean; developerId?: string }) => {
+    const mine = Boolean(next.mine);
+    const nextDeveloperId = next.developerId ?? "";
+    setMineOnly(mine);
+    setDeveloperId(nextDeveloperId);
+    setFilters(prev => {
+      const updated: Record<string, string> = { ...prev };
+      if (mine) updated.mine = "true";
+      else delete updated.mine;
+      if (nextDeveloperId) updated.developerId = nextDeveloperId;
+      else delete updated.developerId;
+      return updated;
+    });
   };
 
   const companyList: any[] = isDeveloper
@@ -151,6 +145,8 @@ function TicketsPageContent() {
         ).values()
       )
     : Array.isArray(companies) ? companies : (companies as any)?.data ?? [];
+
+  const developerList = Array.isArray(developers) ? developers : [];
 
   return (
     <AppShell>
@@ -179,7 +175,7 @@ function TicketsPageContent() {
           <p className="font-brm text-xs mb-2 uppercase tracking-widest" style={{ color: "var(--muted-foreground)" }}>
             <CodeComment>الشركات</CodeComment>
           </p>
-          <div className="flex flex-wrap gap-1.5 p-1 rounded-xl w-fit" style={{ background: "var(--muted)" }}>
+          <div className="brm-pill-rail flex flex-wrap gap-1.5 p-1 rounded-xl w-fit max-w-full" style={{ background: "var(--muted)" }}>
             <FilterPill label="الكل" active={activeCompany === ""} onClick={() => setCompanyFilter("")} />
             {companyList.map((c: any) => (
               <FilterPill
@@ -199,7 +195,7 @@ function TicketsPageContent() {
         <p className="font-brm text-xs mb-2 uppercase tracking-widest" style={{ color: "var(--muted-foreground)" }}>
           <CodeComment>الحالة</CodeComment>
         </p>
-        <div className="flex flex-wrap gap-1.5 p-1 rounded-xl w-fit" style={{ background: "var(--muted)" }}>
+        <div className="brm-pill-rail flex flex-wrap gap-1.5 p-1 rounded-xl w-fit max-w-full" style={{ background: "var(--muted)" }}>
           {statusFilterPills(user?.role).map(({ key, label }) => (
             <FilterPill key={key} label={label} active={activeStatus === key} onClick={() => setStatusFilter(key)} />
           ))}
@@ -211,14 +207,26 @@ function TicketsPageContent() {
         <p className="font-brm text-xs mb-2 uppercase tracking-widest" style={{ color: "var(--muted-foreground)" }}>
           <CodeComment>الإسناد</CodeComment>
         </p>
-        <div className="flex flex-wrap gap-1.5 p-1 rounded-xl w-fit" style={{ background: "var(--muted)" }} role="group" aria-label="الإسناد">
-          <FilterPill label="الكل" ariaLabel="كل التذاكر" active={!mineOnly} onClick={() => setMineFilter(false)} />
+        <div className="brm-pill-rail flex flex-wrap gap-1.5 p-1 rounded-xl w-fit max-w-full" style={{ background: "var(--muted)" }} role="group" aria-label="الإسناد">
+          <FilterPill label="الكل" ariaLabel="كل التذاكر" active={!mineOnly && !developerId} onClick={() => setAssignmentFilter({})} />
           <FilterPill
             label={TICKET_MINE_LABEL}
             active={mineOnly}
-            onClick={() => setMineFilter(true)}
+            onClick={() => setAssignmentFilter({ mine: true })}
             icon={<User className="w-3 h-3" />}
           />
+          {canFilterByDeveloper && developerList.map((dev) => {
+            const name = [dev.firstName, dev.lastName].filter(Boolean).join(" ");
+            return (
+              <FilterPill
+                key={dev.id}
+                label={name}
+                ariaLabel={`التذاكر المُسندة إلى ${name}`}
+                active={developerId === dev.id}
+                onClick={() => setAssignmentFilter({ developerId: dev.id })}
+              />
+            );
+          })}
         </div>
       </div>
 
@@ -242,102 +250,12 @@ function TicketsPageContent() {
         />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          {data.data.map((ticket: any) => {
-            const barColor = STATUS_BAR_COLORS[ticket.status] ?? "#94A3B8";
-            const assignedDev = ticket.assignments?.[0]?.developer;
-            const assignedDevName = [assignedDev?.firstName, assignedDev?.lastName]
-              .filter(Boolean)
-              .join(" ");
-            const assignedDevLabel = assignedDevName
-              ? `المطور المُكلَّف: ${assignedDevName}`
-              : "المطور المُكلَّف";
-
-            return (
-              <Link key={ticket.id} href={`/tickets/${ticket.id}`} style={{ display: "block" }}>
-                <div
-                  className="rounded-xl flex overflow-hidden transition-all hover:shadow-md"
-                  style={{
-                    background: "var(--card)",
-                    border: "1px solid var(--border)",
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-                  }}
-                >
-                  <div className="w-1 shrink-0 self-stretch" style={{ background: barColor, borderRadius: "0 4px 4px 0" }} />
-
-                  <div className="flex-1 p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                          <StatusBadge status={ticket.status} />
-                          <PriorityBadge priority={ticket.finalPriority || ticket.priority} />
-                          <TicketCodeBadge ticketNumber={ticket.ticketNumber} />
-                          <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>{TICKET_TYPE_LABELS[ticket.type]}</span>
-                        </div>
-                        <h3 className="font-semibold truncate" style={{ color: "var(--foreground)" }}>{ticket.title}</h3>
-                        <div className="flex items-center gap-4 mt-2 flex-wrap">
-                          <span
-                            className="flex items-center gap-1 text-xs cursor-help"
-                            title="طالب التذكرة"
-                            aria-label="طالب التذكرة"
-                            style={{ color: "var(--muted-foreground)" }}
-                          >
-                            <User className="w-3 h-3" aria-hidden />
-                            {ticket.creator?.id === user?.id ? "أنت" : `${ticket.creator?.firstName} ${ticket.creator?.lastName}`}
-                          </span>
-                          {ticket.system?.name && (
-                            <span
-                              className="text-xs cursor-help"
-                              title="النظام"
-                              aria-label="النظام"
-                              style={{ color: "var(--muted-foreground)" }}
-                            >
-                              {ticket.system.name}
-                            </span>
-                          )}
-                          {ticket.company && (
-                            <span
-                              className="flex items-center gap-1 text-xs cursor-help"
-                              title="الشركة"
-                              aria-label="الشركة"
-                              style={{ color: "var(--muted-foreground)" }}
-                            >
-                              <CompanyLogo company={ticket.company} size="xs" />
-                              {ticket.company.name}
-                            </span>
-                          )}
-                          {ticket.estimatedDeadline && (
-                            <span
-                              className={`flex items-center gap-1 text-xs cursor-help ${isOverdue(ticket) ? "brm-overdue" : ""}`}
-                              title="تاريخ التسليم المتوقع"
-                              aria-label="تاريخ التسليم المتوقع"
-                              style={{ color: isOverdue(ticket) ? undefined : "var(--muted-foreground)" }}
-                            >
-                              <Clock className="w-3 h-3" aria-hidden />
-                              التسليم: {format(new Date(ticket.estimatedDeadline), "d MMM yyyy", { locale: ar })}
-                            </span>
-                          )}
-                          <RelativeTime date={ticket.createdAt} label="تاريخ الإنشاء" />
-                        </div>
-                      </div>
-                      {ticket.assignments?.[0] && (
-                        <div
-                          title={assignedDevLabel}
-                          aria-label={assignedDevLabel}
-                          className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-indigo-600 text-sm shrink-0 cursor-help"
-                          style={{ background: "rgba(79,70,229,0.1)" }}
-                        >
-                          {assignedDev?.firstName?.[0]}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
+          {data.data.map((ticket: any) => (
+            <TicketListCard key={ticket.id} ticket={ticket} currentUserId={user?.id} />
+          ))}
 
           {data.totalPages > 1 && (
-            <div className="flex justify-center gap-2 pt-4">
+            <div className="flex flex-wrap justify-center gap-2 pt-4">
               {Array.from({ length: data.totalPages }, (_, i) => i + 1).map(p => (
                 <Button
                   key={p}

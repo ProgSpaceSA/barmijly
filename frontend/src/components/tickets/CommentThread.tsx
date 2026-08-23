@@ -6,6 +6,7 @@ import { AtSign, Globe, Lock, MessageSquare } from "lucide-react";
 import { format, isSameDay, isToday, isYesterday } from "date-fns";
 import { ar } from "date-fns/locale";
 import api from "@/lib/api";
+import { qk } from "@/lib/query-keys";
 import { useAddComment, useDeleteComment, useUpdateComment } from "@/hooks/useTickets";
 import { CommentItem } from "@/components/tickets/CommentItem";
 import { CommentComposer, type CommentSubmit } from "@/components/tickets/CommentComposer";
@@ -55,10 +56,13 @@ export function CommentThread({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("ALL");
 
-  const refresh = useCallback(
-    () => qc.invalidateQueries({ queryKey: ["ticket", ticketId] }),
-    [qc, ticketId],
-  );
+  const refresh = useCallback(() => {
+    // Prefix, so the activity log picks the comment up in the same pass as the
+    // thread — they are two views of the write that just landed.
+    qc.invalidateQueries({ queryKey: qk.ticket.detail(ticketId) });
+    // A comment also shows on its author's profile.
+    qc.invalidateQueries({ queryKey: qk.users.all });
+  }, [qc, ticketId]);
 
   /**
    * Uploads run before the thread refreshes, so the comment and its media land

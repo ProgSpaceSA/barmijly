@@ -16,11 +16,18 @@ const pending = {
   role: UserRole.DEVELOPER,
   status: InvitationStatus.PENDING,
   token: 'old-token',
+  receiverId: 'user-1',
+  companyId: 'company-1',
 };
 
 describe('InvitationsService', () => {
   let service: InvitationsService;
-  let prisma: { emailInvitation: { findUnique: jest.Mock; update: jest.Mock } };
+  let prisma: {
+    emailInvitation: { findUnique: jest.Mock; update: jest.Mock };
+    user: { findUnique: jest.Mock };
+    company: { findMany: jest.Mock };
+    system: { findMany: jest.Mock };
+  };
   let email: { sendInvitation: jest.Mock };
 
   beforeEach(async () => {
@@ -28,6 +35,19 @@ describe('InvitationsService', () => {
       emailInvitation: {
         findUnique: jest.fn().mockResolvedValue(pending),
         update: jest.fn().mockResolvedValue({ ...pending, status: InvitationStatus.PENDING }),
+      },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          companyId: 'company-1',
+          systems: [{ systemId: 'system-1' }],
+          companies: [{ companyId: 'company-1' }],
+        }),
+      },
+      company: {
+        findMany: jest.fn().mockResolvedValue([{ name: 'شركة الاختبار' }]),
+      },
+      system: {
+        findMany: jest.fn().mockResolvedValue([{ name: 'نظام الاختبار' }]),
       },
     };
     email = { sendInvitation: jest.fn().mockResolvedValue(undefined) };
