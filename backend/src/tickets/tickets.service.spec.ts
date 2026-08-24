@@ -833,14 +833,19 @@ describe('TicketsService', () => {
   });
 
   describe('timeline — everything that happened, not only status', () => {
-    it('reads the ticket audit log oldest first', async () => {
+    it('reads ticket audits by ticketId or Ticket entityId, oldest first', async () => {
       currentTicket(ticketAt(TicketStatus.IN_PROGRESS));
 
       await service.timeline(TICKET_ID, asUser(UserRole.PROJECT_MANAGER));
 
       expect(prisma.auditLog.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { ticketId: TICKET_ID },
+          where: {
+            OR: [
+              { ticketId: TICKET_ID },
+              { entity: 'Ticket', entityId: TICKET_ID },
+            ],
+          },
           orderBy: { createdAt: 'asc' },
         }),
       );
@@ -853,6 +858,7 @@ describe('TicketsService', () => {
           id: 'a-1',
           action: 'STATUS_CHANGE',
           entity: 'Ticket',
+          entityId: TICKET_ID,
           createdAt: new Date('2026-08-20T10:00:00Z'),
           user: { id: 'pm-1', firstName: 'ريم', lastName: 'العتيبي', role: UserRole.PROJECT_MANAGER },
           oldValues: { status: TicketStatus.SCHEDULED },
@@ -869,6 +875,95 @@ describe('TicketsService', () => {
         to: { status: TicketStatus.IN_PROGRESS },
         subjects: [],
       });
+    });
+
+    it('fills status transitions from TicketStatusHistory when audit rows are missing', async () => {
+      currentTicket(ticketAt(TicketStatus.IN_PROGRESS));
+      prisma.auditLog.findMany.mockResolvedValue([]);
+      prisma.ticketStatusHistory.findMany.mockResolvedValue([
+        {
+          id: 'h-1',
+          fromStatus: TicketStatus.APPROVED,
+          toStatus: TicketStatus.SCHEDULED,
+          reason: null,
+          createdAt: new Date('2026-08-19T09:00:00Z'),
+          changedBy: { id: 'pm-1', firstName: 'ريم', lastName: 'العتيبي', role: UserRole.PROJECT_MANAGER },
+        },
+      ]);
+
+      const [entry] = await service.timeline(TICKET_ID, asUser(UserRole.PROJECT_MANAGER));
+
+      expect(entry).toMatchObject({
+        id: 'status-history:h-1',
+        action: 'STATUS_CHANGE',
+        actor: { firstName: 'ريم' },
+        from: { status: TicketStatus.APPROVED },
+        to: { status: TicketStatus.SCHEDULED },
+      });
+    });
+
+    it('does not duplicate a status row that already exists in the audit log', async () => {
+      const at = new Date('2026-08-20T10:00:00Z');
+      currentTicket(ticketAt(TicketStatus.IN_PROGRESS));
+      prisma.auditLog.findMany.mockResolvedValue([
+        {
+          id: 'a-1',
+          action: 'STATUS_CHANGE',
+          entity: 'Ticket',
+          entityId: TICKET_ID,
+          createdAt: at,
+          user: { id: 'pm-1', firstName: 'ريم', lastName: 'العتيبي', role: UserRole.PROJECT_MANAGER },
+          oldValues: { status: TicketStatus.SCHEDULED },
+          newValues: { status: TicketStatus.IN_PROGRESS },
+        },
+      ]);
+      prisma.ticketStatusHistory.findMany.mockResolvedValue([
+        {
+          id: 'h-1',
+          fromStatus: TicketStatus.SCHEDULED,
+          toStatus: TicketStatus.IN_PROGRESS,
+          reason: null,
+          createdAt: at,
+          changedBy: { id: 'pm-1', firstName: 'ريم', lastName: 'العتيبي', role: UserRole.PROJECT_MANAGER },
+        },
+      ]);
+
+      const entries = await service.timeline(TICKET_ID, asUser(UserRole.PROJECT_MANAGER));
+
+      expect(entries).toHaveLength(1);
+      expect(entries[0].id).toBe('a-1');
+    });
+
+    it('keeps only FORCE_STATUS when a paired STATUS_CHANGE exists for the same move', async () => {
+      const at = new Date('2026-08-20T10:00:00Z');
+      currentTicket(ticketAt(TicketStatus.DRAFT));
+      prisma.auditLog.findMany.mockResolvedValue([
+        {
+          id: 'a-force',
+          action: 'FORCE_STATUS',
+          entity: 'Ticket',
+          entityId: TICKET_ID,
+          createdAt: at,
+          user: { id: 'pm-1', firstName: 'ريم', lastName: 'العتيبي', role: UserRole.PROJECT_MANAGER },
+          oldValues: null,
+          newValues: { status: TicketStatus.DRAFT, reason: 'تغيير يدوي' },
+        },
+        {
+          id: 'a-status',
+          action: 'STATUS_CHANGE',
+          entity: 'Ticket',
+          entityId: TICKET_ID,
+          createdAt: at,
+          user: { id: 'pm-1', firstName: 'ريم', lastName: 'العتيبي', role: UserRole.PROJECT_MANAGER },
+          oldValues: { status: TicketStatus.COMPLETED },
+          newValues: { status: TicketStatus.DRAFT, reason: 'تغيير يدوي' },
+        },
+      ]);
+
+      const entries = await service.timeline(TICKET_ID, asUser(UserRole.PROJECT_MANAGER));
+
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({ id: 'a-force', action: 'FORCE_STATUS' });
     });
 
     it('resolves the affected developer on an assignment entry', async () => {
@@ -1402,7 +1497,15 @@ describe('TicketsService', () => {
           reason: 'انتظار العميل',
         }),
       });
-      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'FORCE_STATUS', entity: 'Ticket' }));
+      expect(audit.log).toHaveBeenCalledTimes(1);
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'FORCE_STATUS',
+        entity: 'Ticket',
+        ticketId: TICKET_ID,
+        oldValues: { status: TicketStatus.IN_PROGRESS },
+        newValues: { status: TicketStatus.ON_HOLD, reason: 'انتظار العميل' },
+      }));
+      expect(audit.log).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'STATUS_CHANGE' }));
     });
 
     it('refuses a forced status change by a developer', async () => {

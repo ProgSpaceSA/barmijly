@@ -684,16 +684,102 @@ export class TicketsService {
    * relations being drawn are all real events on the ticket, and every one of
    * them already writes an AuditLog row — so the log is the timeline, and this
    * just shapes it for reading.
+   *
+   * Older STATUS_CHANGE audits often omitted `ticketId` (only `entityId` was
+   * set). Those rows are still included via entityId, and any status transition
+   * that never got an audit row is filled in from TicketStatusHistory so the
+   * activity panel does not go blank after deploy.
    */
   async timeline(id: string, user: any) {
     await this.findById(id);
     await this.access.assertCanViewTicket(id, user);
 
-    const entries = await this.prisma.auditLog.findMany({
-      where: { ticketId: id },
-      include: { user: { select: { id: true, firstName: true, lastName: true, role: true } } },
-      orderBy: { createdAt: 'asc' },
+    const actorSelect = { id: true, firstName: true, lastName: true, role: true } as const;
+    const [auditEntries, statusHistory] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where: {
+          OR: [
+            { ticketId: id },
+            { entity: 'Ticket', entityId: id },
+          ],
+        },
+        include: { user: { select: actorSelect } },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.ticketStatusHistory.findMany({
+        where: { ticketId: id },
+        include: { changedBy: { select: actorSelect } },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ]);
+
+    const statusToken = (value: unknown): string =>
+      typeof value === 'string' ? value : '';
+
+    const statusTransitionKey = (
+      from: unknown,
+      to: unknown,
+      at: Date,
+    ) => `${statusToken(from)}|${statusToken(to)}|${Math.floor(at.getTime() / 1000)}`;
+
+    // FORCE_STATUS already accounts for the move — do not also synthesize (or
+    // keep) a normal STATUS_CHANGE for the same second.
+    const forceToSecond = new Set(
+      auditEntries
+        .filter((e) => e.action === 'FORCE_STATUS')
+        .map((e) => {
+          const to = statusToken(parseAuditBag(e.newValues)?.status);
+          return `${to}|${Math.floor(e.createdAt.getTime() / 1000)}`;
+        }),
+    );
+
+    const auditsForTimeline = auditEntries.filter((e) => {
+      if (e.action !== 'STATUS_CHANGE') return true;
+      const to = statusToken(parseAuditBag(e.newValues)?.status);
+      return !forceToSecond.has(`${to}|${Math.floor(e.createdAt.getTime() / 1000)}`);
     });
+
+    const statusCovered = new Set(
+      auditsForTimeline
+        .filter((e) => e.action === 'STATUS_CHANGE' || e.action === 'FORCE_STATUS')
+        .map((e) => {
+          const from = parseAuditBag(e.oldValues)?.status;
+          const to = parseAuditBag(e.newValues)?.status;
+          return statusTransitionKey(from, to, e.createdAt);
+        }),
+    );
+
+    // Legacy FORCE_STATUS rows omit oldValues — still count as covering history.
+    for (const e of auditsForTimeline) {
+      if (e.action !== 'FORCE_STATUS') continue;
+      const to = statusToken(parseAuditBag(e.newValues)?.status);
+      const second = Math.floor(e.createdAt.getTime() / 1000);
+      for (const h of statusHistory) {
+        if (h.toStatus === to && Math.floor(h.createdAt.getTime() / 1000) === second) {
+          statusCovered.add(statusTransitionKey(h.fromStatus, h.toStatus, h.createdAt));
+        }
+      }
+    }
+
+    const historyOnly = statusHistory
+      .filter((h) => {
+        const key = statusTransitionKey(h.fromStatus, h.toStatus, h.createdAt);
+        return !statusCovered.has(key);
+      })
+      .map((h) => ({
+        id: `status-history:${h.id}`,
+        action: 'STATUS_CHANGE',
+        entity: 'Ticket',
+        entityId: id,
+        createdAt: h.createdAt,
+        user: h.changedBy,
+        oldValues: { status: h.fromStatus },
+        newValues: { status: h.toStatus, ...(h.reason ? { reason: h.reason } : {}) },
+      }));
+
+    const entries = [...auditsForTimeline, ...historyOnly].sort(
+      (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+    );
 
     const depIds = [
       ...new Set(
@@ -1158,14 +1244,12 @@ export class TicketsService {
   async forceStatus(id: string, dto: ForceStatusDto, user: any) {
     assertCan(user, 'ticket:force-status');
     const ticket = await this.findById(id);
-    // changeStatus already writes the STATUS_CHANGE audit entry; this second one
-    // records that the move bypassed the workflow, which is the part worth
-    // finding later.
-    const updated = await this.changeStatus(ticket, dto.status, user.id, {
+    // One audit row only — FORCE_STATUS — so the timeline does not also show a
+    // normal STATUS_CHANGE for the same move.
+    return this.changeStatus(ticket, dto.status, user.id, {
       reason: dto.reason || 'تغيير يدوي',
+      auditAction: 'FORCE_STATUS',
     });
-    await this.audit.log({ action: 'FORCE_STATUS', entity: 'Ticket', entityId: id, ticketId: id, userId: user.id, newValues: { status: dto.status, reason: dto.reason } });
-    return updated;
   }
 
   /**
@@ -1179,9 +1263,13 @@ export class TicketsService {
     ticket: any,
     toStatus: TicketStatus,
     userId: string,
-    opts: { reason?: string; data?: Prisma.TicketUncheckedUpdateInput } = {},
+    opts: {
+      reason?: string;
+      data?: Prisma.TicketUncheckedUpdateInput;
+      auditAction?: 'STATUS_CHANGE' | 'FORCE_STATUS';
+    } = {},
   ) {
-    const { reason, data } = opts;
+    const { reason, data, auditAction = 'STATUS_CHANGE' } = opts;
 
     const [updated] = await Promise.all([
       this.prisma.ticket.update({
@@ -1192,7 +1280,7 @@ export class TicketsService {
         data: { ticketId: ticket.id, fromStatus: ticket.status, toStatus, changedById: userId, reason },
       }),
       this.audit.log({
-        action: 'STATUS_CHANGE',
+        action: auditAction,
         entity: 'Ticket',
         entityId: ticket.id,
         // Without this the entry is invisible to the per-ticket timeline.
