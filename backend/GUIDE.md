@@ -157,6 +157,7 @@ Each has `GET`, `POST`, `PATCH :id`, `PATCH :id/deactivate`. Systems also have `
 | PATCH | `/tickets/:id/lead` | Manager / Head | Hand the lead role over |
 | PATCH | `/tickets/:id/start` | **Lead** | Mark IN_PROGRESS. Refused while a prerequisite is unfinished |
 | PATCH | `/tickets/:id/submit-for-testing` | **Lead** | Move to AWAITING_TESTING. Refused while any task is open |
+| PATCH | `/tickets/:id/request-changes` | QA / Manager / Head | Return AWAITING_TESTING → IN_PROGRESS with a required reason; notifies ticket assignees |
 | PATCH | `/tickets/:id/block` | Developer / QA / Manager / Head | Stop the ticket (BLOCKED) with a required reason, optionally naming the blocking ticket |
 | PATCH | `/tickets/:id/hold` | Manager / Head / Senior | Park the ticket (ON_HOLD) with a required reason |
 | PATCH | `/tickets/:id/resume` | Lead (BLOCKED) / Manager / Head | Return to the status the ticket stopped from |
@@ -181,6 +182,7 @@ DRAFT → NEW → AWAITING_APPROVAL → APPROVED → SCHEDULED → IN_PROGRESS
                                 ↘ AWAITING_INFO → NEW
                                                        ↓
                               AWAITING_TESTING → AWAITING_OWNER_APPROVAL → COMPLETED → CLOSED
+                              AWAITING_TESTING → IN_PROGRESS   (request-changes — QA asks for fixes)
 
 any active status ⇄ BLOCKED   (block / resume — involuntary, something is in the way)
 any live status   ⇄ ON_HOLD   (hold / resume — a deliberate parking decision)
@@ -285,6 +287,7 @@ Each digest contains, scoped to what that user may see:
 | بانتظار إجراءك | Tickets that *entered* a status that role can move, in the lookback window. The chip is the full queue. |
 | تمت الإشارة إليك | Comments from the lookback window mentioning the user |
 | تعليقات لم تقرأها | Unread `COMMENT_ADDED` notifications from the lookback window, grouped by ticket |
+| أخطاء على تذاكرك | Bugs filed or linked to your assigned tickets in the lookback window (includes read in-app notifications) |
 | مهامك المفتوحة | Open tasks assigned to the user that were created in the window, or are due within 3 days |
 | تجاوزت الموعد اليوم | Tickets whose deadline fell in the lookback window (not the whole overdue backlog) |
 | مواعيد قريبة | `estimatedDeadline` within the next 3 days — these may repeat until the date passes |

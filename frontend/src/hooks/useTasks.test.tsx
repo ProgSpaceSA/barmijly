@@ -68,7 +68,7 @@ describe("task writes", () => {
     // The open-task count on the ticket gates «إرسال للاختبار». Ticking a task
     // off on the dashboard has to reach it, and the hub does not know which
     // ticket the task belongs to.
-    mockPatch.mockResolvedValue({ data: { id: "task-1", status: "COMPLETED" } });
+    mockPatch.mockResolvedValue({ data: { id: "task-1", status: "COMPLETED", ticketId: TICKET } });
     const client = seededClient();
     const { result } = renderHook(() => useUpdateTaskStatus(), { wrapper: wrapperFor(client) });
 
@@ -79,5 +79,30 @@ describe("task writes", () => {
     expect(client.getQueryState(qk.ticket.detail(TICKET))?.isInvalidated).toBe(true);
     expect(client.getQueryState(qk.ticket.tasks(TICKET))?.isInvalidated).toBe(true);
     expect(client.getQueryState(qk.tickets.list({}))?.isInvalidated).toBe(true);
+  });
+
+  it("updates the ticket task list immediately when status changes on the ticket page", async () => {
+    mockPatch.mockResolvedValue({
+      data: {
+        id: "task-1",
+        status: "IN_PROGRESS",
+        title: "YYY",
+        assignedTo: { id: "dev-1", firstName: "Dev", lastName: "All" },
+        createdBy: { id: "pm-1", firstName: "PM", lastName: "One" },
+      },
+    });
+    const client = seededClient();
+    client.setQueryData(qk.ticket.tasks(TICKET), [
+      { id: "task-1", status: "NEW", title: "YYY" },
+    ]);
+    const { result } = renderHook(() => useTaskActions(TICKET), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      await result.current.update.mutateAsync({ id: "task-1", status: "IN_PROGRESS" });
+    });
+
+    expect(client.getQueryData(qk.ticket.tasks(TICKET))).toEqual([
+      expect.objectContaining({ id: "task-1", status: "IN_PROGRESS" }),
+    ]);
   });
 });

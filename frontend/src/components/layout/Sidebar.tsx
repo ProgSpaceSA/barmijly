@@ -4,11 +4,12 @@ import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import { useTheme } from "@/hooks/useTheme";
 import {
-  LayoutDashboard, Ticket, Users, Building2,
+  LayoutDashboard, Ticket, Users, Building2, FlaskConical, Bug,
   BarChart3, Bell, LogOut, Mail, UserPlus, Sun, Moon, Archive, X,
 } from "lucide-react";
-import { ROLE_LABELS } from "@/lib/constants";
+import { NAV_UNREAD_LABEL, ROLE_LABELS, TESTING_LABELS } from "@/lib/constants";
 import { useUnreadCount } from "@/hooks/useNotifications";
+import { useOpenBugCount } from "@/hooks/useBugs";
 import { usePermissions } from "@/hooks/usePermissions";
 import type { Action } from "@/lib/permissions";
 /** `action: null` means every signed-in user gets the link. */
@@ -16,6 +17,8 @@ const navItems: { href: string; label: string; icon: any; action: Action | null;
   { href: "/dashboard",        label: "لوحة التحكم",       icon: LayoutDashboard, action: null },
   { href: "/tickets",          label: "التذاكر",            icon: Ticket,          action: null },
   { href: "/tickets/archived", label: "الأرشيف",            icon: Archive,         action: "ticket:read-archived" },
+  { href: "/test-suites",      label: "الاختبارات",         icon: FlaskConical,    action: "test:read" },
+  { href: "/bugs",             label: "الأخطاء",            icon: Bug,             action: "test:read" },
   { href: "/notifications",    label: "الإشعارات",          icon: Bell,            action: null },
   { href: "/reports",          label: "التقارير",           icon: BarChart3,       action: "report:read-team" },
   { href: "/users",            label: "المستخدمون",         icon: Users,           action: "user:read", altAction: "user:read-directory" },
@@ -23,6 +26,40 @@ const navItems: { href: string; label: string; icon: any; action: Action | null;
   { href: "/invitations",      label: "الدعوات",            icon: Mail,            action: "invitation:manage" },
   { href: "/signup-requests",  label: "طلبات التسجيل",     icon: UserPlus,        action: "signup:review" },
 ];
+
+/**
+ * The count bubble on a nav icon. Same markup for notifications and bugs.
+ *
+ * The digits are hidden from assistive tech and replaced with a sentence:
+ * otherwise the link's accessible name reads "99+ الأخطاء", which is a number
+ * glued to a noun rather than a statement about anything.
+ */
+function NavBadge({ count, label }: { count: number; label: string }) {
+  if (count <= 0) return null;
+  return (
+    <>
+      <span
+        aria-hidden
+        className="absolute font-brm font-bold text-white inline-flex items-center justify-center rounded-full pointer-events-none"
+        style={{
+          top: -7,
+          insetInlineEnd: -8,
+          width: count > 99 ? undefined : 16,
+          height: 16,
+          minWidth: 16,
+          paddingInline: count > 99 ? 4 : 0,
+          boxSizing: "border-box",
+          fontSize: count > 9 ? 8 : 9,
+          lineHeight: 1,
+          background: "#EF4444",
+        }}
+      >
+        {count > 99 ? "99+" : count}
+      </span>
+      <span className="sr-only">{`${count} ${label}`}</span>
+    </>
+  );
+}
 
 /**
  * One element in two modes: a permanent rail from `lg` up, and an off-canvas
@@ -42,6 +79,9 @@ export function Sidebar({
   const { can: allowed } = usePermissions();
   const { isDark, toggle } = useTheme();
   const { data: unreadCount } = useUnreadCount();
+  // Only asked for when the user has a QA surface at all — otherwise the badge
+  // would 403 on every page load for a requester.
+  const { data: openBugCount } = useOpenBugCount(allowed("test:read"));
 
   const visibleItems = navItems.filter((item) =>
     item.action === null ||
@@ -50,6 +90,16 @@ export function Sidebar({
   );
 
   const initials = `${user?.firstName?.[0] ?? ""}${user?.lastName?.[0] ?? ""}`;
+
+  /** Two links carry a count; everything else carries none. */
+  const badgeFor = (href: string): number => {
+    if (href === "/notifications") return (unreadCount as number) ?? 0;
+    if (href === "/bugs") return openBugCount ?? 0;
+    return 0;
+  };
+
+  const badgeLabelFor = (href: string): string =>
+    href === "/bugs" ? TESTING_LABELS.openBugs : NAV_UNREAD_LABEL;
 
   return (
     <aside
@@ -100,25 +150,7 @@ export function Sidebar({
             >
               <span className="relative inline-flex w-4 h-4 shrink-0">
                 <Icon className="w-4 h-4" />
-                {item.href === "/notifications" && (unreadCount as number) > 0 && (
-                  <span
-                    className="absolute font-brm font-bold text-white inline-flex items-center justify-center rounded-full pointer-events-none"
-                    style={{
-                      top: -7,
-                      insetInlineEnd: -8,
-                      width: (unreadCount as number) > 99 ? undefined : 16,
-                      height: 16,
-                      minWidth: 16,
-                      paddingInline: (unreadCount as number) > 99 ? 4 : 0,
-                      boxSizing: "border-box",
-                      fontSize: (unreadCount as number) > 9 ? 8 : 9,
-                      lineHeight: 1,
-                      background: "#EF4444",
-                    }}
-                  >
-                    {(unreadCount as number) > 99 ? "99+" : unreadCount}
-                  </span>
-                )}
+                <NavBadge count={badgeFor(item.href)} label={badgeLabelFor(item.href)} />
               </span>
               <span>{item.label}</span>
             </Link>

@@ -237,6 +237,83 @@ describe('TicketTimeline', () => {
     expect(screen.getByRole('link', { name: /ربط البوابة/ })).toHaveAttribute('href', '/tickets/ticket-9');
   });
 
+  it('labels bug status changes with Arabic bug statuses', async () => {
+    mockGet.mockResolvedValue({
+      data: [entry({
+        action: 'BUG_STATUS_CHANGE',
+        entity: 'Bug',
+        from: { status: 'OPEN' },
+        to: { status: 'IN_PROGRESS' },
+      })],
+    });
+    show();
+
+    await waitFor(() => expect(screen.getByText(TIMELINE_LABELS.BUG_STATUS_CHANGE)).toBeInTheDocument());
+    expect(screen.getByText(/من مفتوح إلى قيد الإصلاح/)).toBeInTheDocument();
+  });
+
+  it('shows bug code and title when a bug is promoted', async () => {
+    mockGet.mockResolvedValue({
+      data: [entry({
+        action: 'BUG_PROMOTE',
+        entity: 'Bug',
+        to: { ticketId: 'ticket-9', bugNumber: 12, title: 'زر الحفظ لا يستجيب' },
+      })],
+    });
+    show();
+
+    await waitFor(() => expect(screen.getByText(TIMELINE_LABELS.BUG_PROMOTE)).toBeInTheDocument());
+    expect(screen.getByText(/BUG-0012/)).toBeInTheDocument();
+    expect(screen.getByText(/زر الحفظ لا يستجيب/)).toBeInTheDocument();
+  });
+
+  it('summarizes bug field updates', async () => {
+    mockGet.mockResolvedValue({
+      data: [entry({
+        action: 'BUG_UPDATE',
+        entity: 'Bug',
+        from: { title: 'قديم', severity: 'MINOR', ticketId: null, testCaseId: null, bugNumber: 11 },
+        to: { title: 'جديد', severity: 'MAJOR', ticketId: 'ticket-1', testCaseId: null, bugNumber: 11 },
+      })],
+    });
+    show();
+
+    await waitFor(() => expect(screen.getByText(TIMELINE_LABELS.BUG_UPDATE)).toBeInTheDocument());
+    expect(screen.getByText(/العنوان: من قديم إلى جديد/)).toBeInTheDocument();
+    expect(screen.getByText(/الخطورة: من بسيط إلى كبير/)).toBeInTheDocument();
+    expect(screen.getByText(/رُبط بتذكرة \(BUG-0011/)).toBeInTheDocument();
+  });
+
+  it('shows bug code, title, and severity on create', async () => {
+    mockGet.mockResolvedValue({
+      data: [entry({
+        action: 'BUG_CREATE',
+        entity: 'Bug',
+        to: { bugNumber: 4, title: 'خطأ جديد', severity: 'CRITICAL' },
+      })],
+    });
+    show();
+
+    await waitFor(() => expect(screen.getByText(TIMELINE_LABELS.BUG_CREATE)).toBeInTheDocument());
+    expect(screen.getByText(/BUG-0004/)).toBeInTheDocument();
+    expect(screen.getByText(/خطأ جديد/)).toBeInTheDocument();
+  });
+
+  it('falls back to bug title when update bags have no field diffs', async () => {
+    mockGet.mockResolvedValue({
+      data: [entry({
+        action: 'BUG_UPDATE',
+        entity: 'Bug',
+        from: { title: 'نفس العنوان', bugNumber: 7 },
+        to: { title: 'نفس العنوان', bugNumber: 7 },
+      })],
+    });
+    show();
+
+    await waitFor(() => expect(screen.getByText(TIMELINE_LABELS.BUG_UPDATE)).toBeInTheDocument());
+    expect(screen.getByText(/BUG-0007 · نفس العنوان/)).toBeInTheDocument();
+  });
+
   it('falls back to the raw action rather than rendering nothing', async () => {
     mockGet.mockResolvedValue({ data: [entry({ action: 'SOMETHING_NEW' })] });
     show();

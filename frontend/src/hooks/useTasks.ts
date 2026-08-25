@@ -4,6 +4,15 @@ import api from "@/lib/api";
 import { toast } from "sonner";
 import { qk } from "@/lib/query-keys";
 
+function patchTaskList(
+  list: unknown,
+  taskId: string,
+  patch: Record<string, unknown>,
+) {
+  if (!Array.isArray(list)) return list;
+  return list.map((t: { id: string }) => (t.id === taskId ? { ...t, ...patch } : t));
+}
+
 /**
  * A task write is never only a task write.
  *
@@ -12,15 +21,21 @@ import { qk } from "@/lib/query-keys";
  * ticket and its roster too — not just the task list.
  */
 function settleTaskWrite(qc: QueryClient, ticketId: string) {
-  // Prefix: the ticket detail plus its task list, roster and activity log.
   qc.invalidateQueries({ queryKey: qk.ticket.detail(ticketId) });
+  qc.invalidateQueries({ queryKey: qk.ticket.tasks(ticketId) });
+  qc.invalidateQueries({ queryKey: qk.ticket.timeline(ticketId) });
   qc.invalidateQueries({ queryKey: qk.tasks.all });
-  // Open-task counts and the estimate rollup ride along on the list cards.
   qc.invalidateQueries({ queryKey: qk.tickets.all });
+  void qc.refetchQueries({ queryKey: qk.ticket.tasks(ticketId), type: "active" });
 }
 
-const failTask = (e: { response?: { data?: { message?: string } } }) =>
-  toast.error(e.response?.data?.message || "حدث خطأ");
+const failTask = (e: unknown) => {
+  const message =
+    e && typeof e === "object" && "response" in e
+      ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
+      : undefined;
+  toast.error(message || "حدث خطأ");
+};
 
 export function useTicketTasks(ticketId: string) {
   return useQuery({
@@ -32,21 +47,41 @@ export function useTicketTasks(ticketId: string) {
 
 export function useTaskActions(ticketId: string) {
   const qc = useQueryClient();
-  const settled = { onSuccess: () => settleTaskWrite(qc, ticketId), onError: failTask };
+  const fail = failTask;
+  const settled = () => settleTaskWrite(qc, ticketId);
   return {
     create: useMutation({
       mutationFn: (data: Record<string, unknown>) =>
         api.post(`/tickets/${ticketId}/tasks`, data).then(r => r.data),
-      ...settled,
+      onSuccess: settled,
+      onError: fail,
     }),
     update: useMutation({
       mutationFn: ({ id, ...data }: { id: string } & Record<string, unknown>) =>
         api.patch(`/tasks/${id}`, data).then(r => r.data),
-      ...settled,
+      onMutate: async (vars) => {
+        const { id, ...patch } = vars;
+        const tasksKey = qk.ticket.tasks(ticketId);
+        await qc.cancelQueries({ queryKey: tasksKey });
+        const prevTasks = qc.getQueryData(tasksKey);
+        qc.setQueryData(tasksKey, (old) => patchTaskList(old, id, patch));
+        return { prevTasks, tasksKey };
+      },
+      onError: (err, _vars, ctx) => {
+        if (ctx?.prevTasks !== undefined) qc.setQueryData(ctx.tasksKey, ctx.prevTasks);
+        fail(err);
+      },
+      onSuccess: (data) => {
+        if (data?.id) {
+          qc.setQueryData(qk.ticket.tasks(ticketId), (old) => patchTaskList(old, data.id, data));
+        }
+        settled();
+      },
     }),
     remove: useMutation({
       mutationFn: (id: string) => api.delete(`/tasks/${id}`).then(r => r.data),
-      ...settled,
+      onSuccess: settled,
+      onError: fail,
     }),
   };
 }
@@ -75,11 +110,14 @@ export function useUpdateTaskStatus() {
     onError: (_e, _v, ctx) => {
       if (ctx?.prev) qc.setQueryData(qk.tasks.mine(), ctx.prev);
     },
+    onSuccess: (data, { id }) => {
+      qc.setQueryData(qk.tasks.mine(), (old: unknown) => patchTaskList(old, id, data ?? {}));
+      if (data?.ticketId) {
+        qc.setQueryData(qk.ticket.tasks(data.ticketId), (old) => patchTaskList(old, id, data));
+      }
+    },
     onSettled: (_d, _e, vars) => {
       qc.invalidateQueries({ queryKey: qk.tasks.all });
-      // The hub and the ticket page show the same task; moving it on one must
-      // not leave the other showing the previous status — and the ticket itself
-      // carries the open-task count that gates «إرسال للاختبار».
       qc.invalidateQueries({ queryKey: qk.ticket.all });
       qc.invalidateQueries({ queryKey: qk.tickets.all });
       void vars;

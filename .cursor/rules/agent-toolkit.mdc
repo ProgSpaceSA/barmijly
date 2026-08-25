@@ -10,6 +10,7 @@ Load the matching skill before coding. Skills live in `.cursor/skills/` (also `.
 | Task | Skill |
 |------|-------|
 | Ticket status, approve, assign, comments | `barmijly-ticket-workflow` |
+| Test suites, cases, bugs (QA surface) | `TEST_SUITES_PLAN.md` + rule `testing-domain` |
 | New feature spanning API + UI | `barmijly-full-stack-feature` |
 | New/changed HTTP endpoint | `barmijly-api-sync` |
 | Copy this repo's code style | `barmijly-patterns` |

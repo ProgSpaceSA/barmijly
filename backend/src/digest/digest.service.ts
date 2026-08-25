@@ -13,10 +13,11 @@ import {
   DEFAULT_DIGEST_TIMEZONE,
   DIGEST_DUE_SOON_DAYS,
   DIGEST_MAX_ITEMS,
-  DigestActionGroup, DigestRecipient, DigestTicketRef, UserDigest,
+  DigestActionGroup, DigestBugAlert, DigestRecipient, DigestTicketRef, UserDigest,
   formatTicketCode,
 } from './digest.types';
 import { ACTION_BUCKETS } from '../tickets/action-queues';
+import { formatBugCode } from '../testing/test-code';
 
 export const DIGEST_JOB_NAME = 'daily-digest';
 
@@ -133,7 +134,7 @@ export class DigestService implements OnModuleInit {
       status: { notIn: CLOSED_STATUSES },
     };
 
-    const [mentionComments, unreadGroups, openTasks, overdueTotal, overdueRows, newlyOverdueCount, dueSoonTotal, dueSoonRows, queued] =
+    const [mentionComments, unreadGroups, recentTicketBugs, bugNotifications, openTasks, overdueTotal, overdueRows, newlyOverdueCount, dueSoonTotal, dueSoonRows, queued] =
       await Promise.all([
         this.prisma.ticketComment.findMany({
           where: {
@@ -164,6 +165,34 @@ export class DigestService implements OnModuleInit {
             createdAt: { gte: since },
           },
           _count: { _all: true },
+        }),
+        this.prisma.bug.findMany({
+          where: {
+            isArchived: false,
+            ticketId: { not: null },
+            createdAt: { gte: since },
+            ticket: {
+              isArchived: false,
+              ...scope,
+              assignments: { some: { developerId: recipient.id, isActive: true } },
+            },
+          },
+          include: {
+            ticket: { select: TICKET_SELECT },
+            reportedBy: { select: { firstName: true, lastName: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: DIGEST_MAX_ITEMS * 4,
+        }),
+        this.prisma.notification.findMany({
+          where: {
+            userId: recipient.id,
+            type: NotificationType.BUG_ASSIGNED,
+            ticketId: { not: null },
+            createdAt: { gte: since },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: DIGEST_MAX_ITEMS * 4,
         }),
         this.prisma.ticketTask.findMany({
           where: {
@@ -222,6 +251,13 @@ export class DigestService implements OnModuleInit {
       }))
       .sort((a, b) => b.count - a.count);
 
+    const { bugAlerts, bugAlertTotal } = await this.buildBugAlerts(
+      scope,
+      frontendUrl,
+      recentTicketBugs.filter((b): b is typeof b & { ticket: TicketRow } => b.ticket !== null),
+      bugNotifications,
+    );
+
     const digest: UserDigest = {
       // Narrowed on purpose — callers pass the full User entity, which carries the password hash.
       recipient: {
@@ -240,6 +276,8 @@ export class DigestService implements OnModuleInit {
       })),
       unreadThreads: unreadThreads.slice(0, DIGEST_MAX_ITEMS),
       unreadTotal: unreadThreads.reduce((sum, t) => sum + t.count, 0),
+      bugAlerts,
+      bugAlertTotal,
       actionGroups: queued.groups,
       actionTotal: queued.total,
       openTasks: openTasks.map((task) => ({
@@ -259,6 +297,7 @@ export class DigestService implements OnModuleInit {
     digest.isEmpty =
       digest.mentions.length === 0 &&
       digest.unreadThreads.length === 0 &&
+      digest.bugAlerts.length === 0 &&
       digest.actionGroups.length === 0 &&
       digest.openTasks.length === 0 &&
       newlyOverdueCount === 0 &&
@@ -329,6 +368,95 @@ export class DigestService implements OnModuleInit {
     const base: Prisma.TicketWhereInput = { isArchived: false };
     const scope = await this.access.ticketScope(recipient);
     return scope ? { AND: [base, scope] } : base;
+  }
+
+  private async buildBugAlerts(
+    scope: Prisma.TicketWhereInput,
+    frontendUrl: string,
+    recentTicketBugs: Array<{
+      id: string;
+      bugNumber: number;
+      title: string;
+      createdAt: Date;
+      ticket: TicketRow;
+      reportedBy: { firstName: string; lastName: string };
+    }>,
+    bugNotifications: Array<{
+      id: string;
+      ticketId: string | null;
+      body: string;
+      metadata: Prisma.JsonValue | null;
+      createdAt: Date;
+    }>,
+  ): Promise<{ bugAlerts: DigestBugAlert[]; bugAlertTotal: number }> {
+    type Draft = {
+      ticket: TicketRow;
+      bugCode: string;
+      summary: string;
+      createdAt: Date;
+    };
+    const byKey = new Map<string, Draft>();
+
+    for (const bug of recentTicketBugs) {
+      const reporter = [bug.reportedBy.firstName, bug.reportedBy.lastName].filter(Boolean).join(' ');
+      byKey.set(bug.id, {
+        ticket: bug.ticket,
+        bugCode: formatBugCode(bug.bugNumber),
+        summary: `${reporter || 'فريق الاختبار'} سجّل الخطأ «${bug.title}» على تذكرتك`,
+        createdAt: bug.createdAt,
+      });
+    }
+
+    const notifTicketIds = [
+      ...new Set(
+        bugNotifications
+          .map((n) => n.ticketId)
+          .filter((id): id is string => typeof id === 'string'),
+      ),
+    ];
+    const notifTickets = notifTicketIds.length
+      ? await this.prisma.ticket.findMany({
+          where: { id: { in: notifTicketIds }, isArchived: false, ...scope },
+          select: TICKET_SELECT,
+        })
+      : [];
+    const notifTicketById = new Map(notifTickets.map((t) => [t.id, t]));
+
+    for (const n of bugNotifications) {
+      const meta = n.metadata as { bugId?: string; bugNumber?: number } | null;
+      const key = meta?.bugId ?? `n-${n.id}`;
+      const ticket = n.ticketId ? notifTicketById.get(n.ticketId) : undefined;
+      if (!ticket) continue;
+
+      if (byKey.has(key)) {
+        byKey.set(key, {
+          ...byKey.get(key)!,
+          summary: n.body,
+          createdAt: n.createdAt,
+        });
+      } else {
+        byKey.set(key, {
+          ticket,
+          bugCode: meta?.bugNumber ? formatBugCode(meta.bugNumber) : '',
+          summary: n.body,
+          createdAt: n.createdAt,
+        });
+      }
+    }
+
+    const sorted = [...byKey.values()].sort(
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+    );
+
+    return {
+      bugAlerts: sorted.slice(0, DIGEST_MAX_ITEMS).map((row) => ({
+        ticket: this.toRef(row.ticket, frontendUrl),
+        bugCode: row.bugCode,
+        summary: row.summary,
+        createdAt: row.createdAt,
+      })),
+      bugAlertTotal: sorted.length,
+    };
   }
 
   private toRef(ticket: TicketRow, frontendUrl: string): DigestTicketRef {

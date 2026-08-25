@@ -10,8 +10,20 @@ import { TaskStatus, TicketStatus } from '@prisma/client';
 /**
  * Statuses where the clock does not run. A ticket sitting in one of these is
  * waiting on somebody, so the elapsed wall time is not work time.
+ *
+ * AWAITING_TESTING and AWAITING_OWNER_APPROVAL are post-dev queues — the
+ * developer's work is done, but `completedAt` is only stamped at COMPLETED.
  */
 export const PAUSED_STATUSES: TicketStatus[] = [
+  TicketStatus.BLOCKED,
+  TicketStatus.ON_HOLD,
+  TicketStatus.AWAITING_INFO,
+  TicketStatus.AWAITING_TESTING,
+  TicketStatus.AWAITING_OWNER_APPROVAL,
+];
+
+/** Explicit holds — `/resume` returns to `fromStatus` even when that status pauses the clock. */
+export const RESUMABLE_HOLD_STATUSES: TicketStatus[] = [
   TicketStatus.BLOCKED,
   TicketStatus.ON_HOLD,
   TicketStatus.AWAITING_INFO,
@@ -154,6 +166,9 @@ export function resumeTargetFrom(
 ): TicketStatus {
   for (let i = history.length - 1; i >= 0; i -= 1) {
     const edge = history[i];
+    if (RESUMABLE_HOLD_STATUSES.includes(edge.toStatus) && edge.fromStatus) {
+      return edge.fromStatus;
+    }
     if (isPaused(edge.toStatus) && edge.fromStatus && !isPaused(edge.fromStatus)) {
       return edge.fromStatus;
     }

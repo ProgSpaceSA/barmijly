@@ -35,3 +35,41 @@ export async function downloadAttachment(attachmentId: string, fileName: string)
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 }
+
+export type AttachmentOwner = Partial<
+  Record<
+    "ticketId" | "commentId" | "taskId" | "testCaseId" | "bugId" | "testStepId" | "suiteId",
+    string
+  >
+>;
+
+/**
+ * Uploads one file against whichever owner is given. The API takes the owner
+ * as a query param and resolves scope from it, so callers never have to know
+ * which check applies to a step versus a ticket.
+ */
+export async function uploadAttachment(
+  file: File,
+  owner: AttachmentOwner,
+  options?: { onUploadProgress?: (percent: number) => void },
+) {
+  const form = new FormData();
+  form.append("file", file);
+  const params = new URLSearchParams(
+    Object.entries(owner).filter(([, v]) => Boolean(v)) as [string, string][],
+  );
+  const res = await api.post(`/attachments/upload?${params.toString()}`, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+    onUploadProgress: (event) => {
+      if (!options?.onUploadProgress) return;
+      const percent = event.total ? Math.round((event.loaded / event.total) * 100) : 0;
+      options.onUploadProgress(percent);
+    },
+  });
+  return res.data;
+}
+
+/** Removes one attachment row and its file. */
+export async function deleteAttachment(attachmentId: string) {
+  await api.delete(`/attachments/${attachmentId}`);
+}

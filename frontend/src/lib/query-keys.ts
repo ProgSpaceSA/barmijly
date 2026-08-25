@@ -26,6 +26,8 @@ const ticketKeys = {
   assignees: (id: string) => ["ticket", id, "assignees"] as const,
   dependencies: (id: string) => ["ticket", id, "dependencies"] as const,
   tasks: (id: string) => ["ticket", id, "tasks"] as const,
+  /** Suites, cases and bugs for the «الاختبارات والأخطاء» section. */
+  testing: (id: string) => ["ticket", id, "testing"] as const,
   /** People this ticket will accept a mention for. */
   mentionable: (id: string) => ["ticket", id, "mentionable"] as const,
 };
@@ -50,12 +52,39 @@ export const qk = {
     ticketKeys.assignees(id),
     ticketKeys.dependencies(id),
     ticketKeys.tasks(id),
+    ticketKeys.testing(id),
   ],
 
   tasks: {
     /** Only the cross-ticket views; a ticket's own tasks live under `qk.ticket`. */
     all: ["tasks"] as const,
     mine: () => ["tasks", "my"] as const,
+  },
+
+  /** Test suites. A suite write invalidates `all`, which covers its cases. */
+  suites: {
+    all: ["suites"] as const,
+    list: (filters: Record<string, string>) => ["suites", "list", filters] as const,
+    detail: (id: string) => ["suites", "detail", id] as const,
+  },
+
+  /**
+   * A case lives under its suite, so publishing or running one refreshes the
+   * workspace and the rollup on the list card without naming either.
+   */
+  cases: {
+    all: ["cases"] as const,
+    bySuite: (suiteId: string) => ["suites", "detail", suiteId, "cases"] as const,
+    detail: (id: string) => ["cases", "detail", id] as const,
+    steps: (id: string) => ["cases", "detail", id, "steps"] as const,
+  },
+
+  bugs: {
+    all: ["bugs"] as const,
+    list: (filters: Record<string, string>) => ["bugs", "list", filters] as const,
+    detail: (id: string) => ["bugs", "detail", id] as const,
+    steps: (id: string) => ["bugs", "detail", id, "steps"] as const,
+    openCount: () => ["bugs", "open-count"] as const,
   },
 
   users: {
@@ -76,6 +105,8 @@ export const qk = {
   systems: {
     all: ["systems"] as const,
     detail: (id: string) => ["systems", id] as const,
+    /** `/systems?companyId=…`. Distinct from `detail` — a company is not a system. */
+    byCompany: (companyId: string) => ["systems", "by-company", companyId] as const,
   },
 
   notifications: {

@@ -644,6 +644,31 @@ export class TicketsService {
   }
 
   /**
+   * QA found issues — send the ticket back to IN_PROGRESS so developers can
+   * fix them. Same gate as verify-testing; reason is required for the history.
+   */
+  async requestChanges(id: string, dto: { reason: string }, user: any) {
+    assertCan(user, 'ticket:verify-testing');
+    const ticket = await this.findById(id);
+    await this.access.assertCanViewTicket(id, user);
+    if (ticket.status !== TicketStatus.AWAITING_TESTING) {
+      throw new BadRequestException('Ticket is not awaiting testing');
+    }
+
+    const updated = await this.changeStatus(ticket, TicketStatus.IN_PROGRESS, user.id, {
+      reason: dto.reason,
+    });
+
+    await this.notifyPause(
+      ticket,
+      'طُلبت تعديلات',
+      `طُلبت تعديلات على التذكرة «${ticket.title}»: ${dto.reason}`,
+      user,
+    );
+    return updated;
+  }
+
+  /**
    * Two different transitions behind one endpoint, each with its own gate:
    * AWAITING_TESTING moves on the tester's word, AWAITING_OWNER_APPROVAL on the
    * business side (req.md §3: الطالب أو مالك النظام). A developer holds

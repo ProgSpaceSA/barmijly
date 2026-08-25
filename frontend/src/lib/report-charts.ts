@@ -201,13 +201,14 @@ export function developerInitials(name: string): string {
 function compareDevelopers(a: DeveloperStat, b: DeveloperStat) {
   const idleDelta = Number(a.assigned === 0) - Number(b.assigned === 0);
   if (idleDelta !== 0) return idleDelta;
+  if (b.completed !== a.completed) return b.completed - a.completed;
   if (b.completionRate !== a.completionRate) return b.completionRate - a.completionRate;
   if (a.overdue !== b.overdue) return a.overdue - b.overdue;
   if (b.assigned !== a.assigned) return b.assigned - a.assigned;
   return a.name.localeCompare(b.name, "ar");
 }
 
-/** Active developers first, then completion, then load. Idle rows keep a rank after the active set. */
+/** Active developers first, then completed volume, then completion rate. Idle rows keep a rank after the active set. */
 export function rankDevelopers(
   developers: DeveloperStat[],
   options: { hideIdle?: boolean } = {},

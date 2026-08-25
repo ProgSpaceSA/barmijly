@@ -40,6 +40,14 @@ export interface DigestUnreadThread {
   count: number;
 }
 
+/** Unread BUG_ASSIGNED notification tied to a ticket the recipient works. */
+export interface DigestBugAlert {
+  ticket: DigestTicketRef;
+  bugCode: string;
+  summary: string;
+  createdAt: Date;
+}
+
 export interface DigestTaskRef {
   id: string;
   title: string;
@@ -70,6 +78,9 @@ export interface UserDigest {
   mentions: DigestMention[];
   unreadThreads: DigestUnreadThread[];
   unreadTotal: number;
+  bugAlerts: DigestBugAlert[];
+  /** Unread bug notifications in the window — listed rows may be capped. */
+  bugAlertTotal: number;
   actionGroups: DigestActionGroup[];
   /** Full queue size — the listed groups are only what moved in the window. */
   actionTotal: number;

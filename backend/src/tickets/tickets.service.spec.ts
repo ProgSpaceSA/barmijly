@@ -528,7 +528,53 @@ describe('TicketsService', () => {
         }),
       });
     });
+  });
 
+  describe('requestChanges', () => {
+    it('returns AWAITING_TESTING to IN_PROGRESS with a reason and notifies developers', async () => {
+      currentTicket(ticketAt(TicketStatus.AWAITING_TESTING));
+      prisma.ticketAssignment.findMany.mockResolvedValue([
+        { developerId: 'dev-1' },
+        { developerId: 'dev-2' },
+      ]);
+
+      await service.requestChanges(
+        TICKET_ID,
+        { reason: 'فشل اختبار تسجيل الدخول' },
+        asUser(UserRole.QA, 'qa-1'),
+      );
+
+      expect(prisma.ticket.update).toHaveBeenCalledWith({
+        where: { id: TICKET_ID },
+        data: expect.objectContaining({ status: TicketStatus.IN_PROGRESS }),
+      });
+      expect(prisma.ticketStatusHistory.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          fromStatus: TicketStatus.AWAITING_TESTING,
+          toStatus: TicketStatus.IN_PROGRESS,
+          reason: 'فشل اختبار تسجيل الدخول',
+        }),
+      });
+      expect(notifications.notifyMany).toHaveBeenCalledWith(
+        expect.arrayContaining(['dev-1', 'dev-2', CREATOR_ID]),
+        expect.objectContaining({
+          type: expect.anything(),
+          title: 'طُلبت تعديلات',
+          ticketId: TICKET_ID,
+        }),
+        'qa-1',
+      );
+    });
+
+    it('refuses when the ticket is not awaiting testing', async () => {
+      currentTicket(ticketAt(TicketStatus.IN_PROGRESS));
+      await expect(
+        service.requestChanges(TICKET_ID, { reason: 'يحتاج إصلاح' }, asUser(UserRole.QA)),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('approveCompletion — owner refusals', () => {
     it('refuses a requester signing off on a ticket they do not own', async () => {
       currentTicket(ticketAt(TicketStatus.AWAITING_OWNER_APPROVAL));
 
@@ -1329,6 +1375,7 @@ describe('TicketsService', () => {
       ['assign', () => service.assign(TICKET_ID, { developerIds: ['dev-1'] } as any, asUser(UserRole.PROJECT_MANAGER, 'head-1')), TicketStatus.APPROVED, TicketStatus.SCHEDULED],
       ['startWork', () => service.startWork(TICKET_ID, asUser(UserRole.DEVELOPER, 'head-1')), TicketStatus.SCHEDULED, TicketStatus.IN_PROGRESS],
       ['submitForTesting', () => service.submitForTesting(TICKET_ID, asUser(UserRole.DEVELOPER, 'head-1')), TicketStatus.IN_PROGRESS, TicketStatus.AWAITING_TESTING],
+      ['requestChanges', () => service.requestChanges(TICKET_ID, { reason: 'يحتاج إصلاح' }, asUser(UserRole.QA, 'head-1')), TicketStatus.AWAITING_TESTING, TicketStatus.IN_PROGRESS],
       ['approveCompletion (QA)', () => service.approveCompletion(TICKET_ID, asUser(UserRole.QA, 'head-1')), TicketStatus.AWAITING_TESTING, TicketStatus.AWAITING_OWNER_APPROVAL],
       ['approveCompletion (owner)', () => service.approveCompletion(TICKET_ID, asUser(UserRole.PROJECT_MANAGER, 'head-1')), TicketStatus.AWAITING_OWNER_APPROVAL, TicketStatus.COMPLETED],
       // close() used to write the ticket row directly, leaving the final and

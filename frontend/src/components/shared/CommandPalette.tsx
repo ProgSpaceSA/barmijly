@@ -2,33 +2,55 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { Search, Ticket as TicketIcon, LayoutDashboard, Users, Building2 } from "lucide-react";
+import { Search, Ticket as TicketIcon, LayoutDashboard, Users, Building2, Bug } from "lucide-react";
 import { usePermissions } from "@/hooks/usePermissions";
 import type { Action } from "@/lib/permissions";
+import { TESTING_LABELS } from "@/lib/constants";
+import { BugEditorDialog } from "@/components/testing/BugEditorDialog";
 
 interface Result {
   id: string;
   label: string;
   sub?: string;
-  href: string;
+  href?: string;
   icon?: React.ReactNode;
+  /** Opens the bug editor instead of navigating. */
+  openBugDialog?: boolean;
 }
 
+type QuickLinkDef = {
+  id: string;
+  label: string;
+  href?: string;
+  icon: React.ReactNode;
+  action: Action | null;
+  openBugDialog?: boolean;
+};
+
 /** `action: null` means every signed-in user gets the shortcut. */
-const QUICK_LINKS: (Result & { action: Action | null })[] = [
+const QUICK_LINKS: QuickLinkDef[] = [
   { id: "dash",    label: "لوحة التحكم",      href: "/dashboard",  icon: <LayoutDashboard className="w-4 h-4" />, action: null },
   { id: "tickets", label: "التذاكر",           href: "/tickets",    icon: <TicketIcon className="w-4 h-4" />,      action: null },
   { id: "new",     label: "تذكرة جديدة",       href: "/tickets/new", icon: <TicketIcon className="w-4 h-4" />,     action: "ticket:create" },
+  { id: "new-bug", label: TESTING_LABELS.newBug, icon: <Bug className="w-4 h-4" />, action: "bug:create", openBugDialog: true },
   { id: "users",   label: "المستخدمون",        href: "/users",      icon: <Users className="w-4 h-4" />,           action: "user:read" },
   { id: "co",      label: "الشركات والأنظمة",  href: "/companies",  icon: <Building2 className="w-4 h-4" />,       action: "structure:manage" },
 ];
 
 export function CommandPalette() {
   const { can: allowed } = usePermissions();
+  const [bugOpen, setBugOpen] = useState(false);
   // Same gate as the sidebar: a shortcut to a page the role cannot open is a
   // dead end, and ctrl+k is the one way around a hidden nav link.
   const quickLinks = useMemo(
-    () => QUICK_LINKS.filter((l) => l.action === null || allowed(l.action)),
+    (): Result[] =>
+      QUICK_LINKS.filter((l) => l.action === null || allowed(l.action)).map((l) => ({
+        id: l.id,
+        label: l.label,
+        href: l.href,
+        icon: l.icon,
+        openBugDialog: l.openBugDialog,
+      })),
     [allowed],
   );
 
@@ -73,7 +95,7 @@ export function CommandPalette() {
         href: `/tickets/${t.id}`,
         icon: <TicketIcon className="w-4 h-4" />,
       }));
-      setResults(tickets.length ? tickets : [{ id: "none", label: "لا توجد نتائج", href: "" }]);
+      setResults(tickets.length ? tickets : [{ id: "none", label: "لا توجد نتائج" }]);
     } catch {
       setResults(quickLinks);
     } finally {
@@ -86,77 +108,93 @@ export function CommandPalette() {
     return () => clearTimeout(t);
   }, [query, search]);
 
-  const navigate = (href: string) => {
-    if (!href) return;
-    setOpen(false);
-    router.push(href);
+  const select = (r: Result | undefined) => {
+    if (!r || r.id === "none") return;
+    if (r.openBugDialog) {
+      setOpen(false);
+      setBugOpen(true);
+      return;
+    }
+    if (r.href) {
+      setOpen(false);
+      router.push(r.href);
+    }
   };
 
   const handleKey = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") { e.preventDefault(); setActive(a => Math.min(a + 1, results.length - 1)); }
     if (e.key === "ArrowUp")   { e.preventDefault(); setActive(a => Math.max(a - 1, 0)); }
-    if (e.key === "Enter")     { navigate(results[active]?.href ?? ""); }
+    if (e.key === "Enter")     { select(results[active]); }
   };
 
-  if (!open) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-[9999] flex items-start justify-center p-4 pt-[12vh] sm:pt-[15vh]"
-      style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}
-      onClick={() => setOpen(false)}
-    >
-      <div
-        className="palette-modal brm-modal max-w-lg rounded-2xl overflow-hidden"
-        style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 24px 64px rgba(0,0,0,0.3)" }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Search input */}
-        <div className="flex shrink-0 items-center gap-3 px-4 py-3 border-b" style={{ borderColor: "var(--border)" }}>
-          <Search className="w-4 h-4 shrink-0" style={{ color: "var(--muted-foreground)" }} />
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={e => { setQuery(e.target.value); setActive(0); }}
-            onKeyDown={handleKey}
-            placeholder="ابحث عن تذكرة أو انتقل إلى..."
-            className="flex-1 bg-transparent outline-none text-sm"
-            style={{ color: "var(--foreground)", fontFamily: "'Cairo', sans-serif" }}
-            dir="rtl"
-          />
-          {loading && <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />}
-          <kbd className="font-brm text-xs px-1.5 py-0.5 rounded" style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>ESC</kbd>
-        </div>
+    <>
+      {open && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-start justify-center p-4 pt-[12vh] sm:pt-[15vh]"
+          style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}
+          onClick={() => setOpen(false)}
+        >
+          <div
+            className="palette-modal brm-modal max-w-lg rounded-2xl overflow-hidden"
+            style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 24px 64px rgba(0,0,0,0.3)" }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Search input */}
+            <div className="flex shrink-0 items-center gap-3 px-4 py-3 border-b" style={{ borderColor: "var(--border)" }}>
+              <Search className="w-4 h-4 shrink-0" style={{ color: "var(--muted-foreground)" }} />
+              <input
+                ref={inputRef}
+                value={query}
+                onChange={e => { setQuery(e.target.value); setActive(0); }}
+                onKeyDown={handleKey}
+                placeholder="ابحث عن تذكرة أو انتقل إلى..."
+                className="flex-1 bg-transparent outline-none text-sm"
+                style={{ color: "var(--foreground)", fontFamily: "'Cairo', sans-serif" }}
+                dir="rtl"
+              />
+              {loading && <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />}
+              <kbd className="font-brm text-xs px-1.5 py-0.5 rounded" style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>ESC</kbd>
+            </div>
 
-        {/* Results */}
-        <div className="max-h-72 flex-1 overflow-y-auto py-1">
-          {results.map((r, i) => (
-            <button
-              key={r.id}
-              onClick={() => navigate(r.href)}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-right transition-colors"
-              style={{
-                background: i === active ? "var(--muted)" : "transparent",
-                color: r.href ? "var(--foreground)" : "var(--muted-foreground)",
-              }}
-              onMouseEnter={() => setActive(i)}
-            >
-              <span style={{ color: "var(--muted-foreground)" }}>{r.icon}</span>
-              <span className="flex-1 truncate">{r.label}</span>
-              {r.sub && <span className="font-brm text-xs shrink-0" style={{ color: "var(--muted-foreground)" }}>{r.sub}</span>}
-            </button>
-          ))}
-        </div>
+            {/* Results */}
+            <div className="max-h-72 flex-1 overflow-y-auto py-1">
+              {results.map((r, i) => {
+                const disabled = r.id === "none";
+                return (
+                  <button
+                    key={r.id}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => select(r)}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-right transition-colors disabled:cursor-default"
+                    style={{
+                      background: i === active ? "var(--muted)" : "transparent",
+                      color: disabled ? "var(--muted-foreground)" : "var(--foreground)",
+                    }}
+                    onMouseEnter={() => setActive(i)}
+                  >
+                    <span style={{ color: "var(--muted-foreground)" }}>{r.icon}</span>
+                    <span className="flex-1 truncate">{r.label}</span>
+                    {r.sub && <span className="font-brm text-xs shrink-0" style={{ color: "var(--muted-foreground)" }}>{r.sub}</span>}
+                  </button>
+                );
+              })}
+            </div>
 
-        {/* Footer */}
-        <div className="hidden shrink-0 gap-4 border-t px-4 py-2 sm:flex" style={{ borderColor: "var(--border)" }}>
-          {[["↑↓", "تنقل"], ["↵", "فتح"], ["ESC", "إغلاق"]].map(([k, l]) => (
-            <span key={k} className="flex items-center gap-1 font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>
-              <kbd className="px-1 py-0.5 rounded text-[10px]" style={{ background: "var(--muted)" }}>{k}</kbd> {l}
-            </span>
-          ))}
+            {/* Footer */}
+            <div className="hidden shrink-0 gap-4 border-t px-4 py-2 sm:flex" style={{ borderColor: "var(--border)" }}>
+              {[["↑↓", "تنقل"], ["↵", "فتح"], ["ESC", "إغلاق"]].map(([k, l]) => (
+                <span key={k} className="flex items-center gap-1 font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>
+                  <kbd className="px-1 py-0.5 rounded text-[10px]" style={{ background: "var(--muted)" }}>{k}</kbd> {l}
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+
+      {bugOpen && <BugEditorDialog onClose={() => setBugOpen(false)} />}
+    </>
   );
 }

@@ -35,6 +35,8 @@ const digestFor = (over: Partial<UserDigest> = {}): UserDigest => ({
   mentions: [],
   unreadThreads: [],
   unreadTotal: 0,
+  bugAlerts: [],
+  bugAlertTotal: 0,
   actionGroups: [],
   actionTotal: 0,
   openTasks: [],
@@ -255,6 +257,13 @@ describe('EmailService', () => {
         }],
         unreadThreads: [{ ticket, count: 2 }],
         unreadTotal: 2,
+        bugAlerts: [{
+          ticket,
+          bugCode: 'BUG-0005',
+          summary: 'ليان سجّل الخطأ «زر الحفظ لا يعمل» على تذكرتك',
+          createdAt: new Date('2026-08-18T10:00:00Z'),
+        }],
+        bugAlertTotal: 1,
         openTasks: [{
           id: 'task-1',
           title: 'مراجعة الاستعلام',
@@ -272,6 +281,7 @@ describe('EmailService', () => {
     expect(html).toContain('border-right:3px solid #4338CA');
     expect(html).toContain('border-right:3px solid #7C3AED');
     expect(html).toContain('border-right:3px solid #6366F1');
+    expect(html).toContain('border-right:3px solid #EF4444');
     expect(html).toContain('border-right:3px solid #0284C7');
     expect(html).toContain('border-right:3px solid #DC2626');
     expect(html).toContain('border-right:3px solid #D97706');
@@ -279,6 +289,40 @@ describe('EmailService', () => {
     expect(html).toContain('color:#7C3AED;font-size:22px');
     expect(html).toContain('color:#0284C7;font-size:22px');
     expect(html).toContain('color:#4338CA;font-size:22px');
+  });
+
+  it('keeps stat cards equal width when three metrics are shown', async () => {
+    const html = await htmlOf(
+      digestFor({
+        actionGroups: [{ label: 'بانتظار اعتمادك', tickets: [ticketRef()], total: 8 }],
+        actionTotal: 8,
+        overdueTotal: 2,
+        dueSoonTotal: 4,
+      }),
+    );
+
+    expect((html.match(/width="33%"/g) ?? []).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('lists bug alerts with ticket and bug codes', async () => {
+    const ticket = ticketRef();
+    const html = await htmlOf(
+      digestFor({
+        bugAlerts: [{
+          ticket,
+          bugCode: 'BUG-0005',
+          summary: 'ليان سجّل الخطأ «زر الحفظ لا يعمل» على تذكرتك',
+          createdAt: new Date('2026-08-18T10:00:00Z'),
+        }],
+        bugAlertTotal: 3,
+      }),
+    );
+
+    expect(html).toContain('أخطاء على تذاكرك');
+    expect(html).toContain('BRM-0031');
+    expect(html).toContain('BUG-0005');
+    expect(html).toContain('زر الحفظ لا يعمل');
+    expect(html).toContain('و2 خطأ آخر');
   });
 
     it('adds the manager compliment for the live mailboxes', async () => {

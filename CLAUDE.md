@@ -27,7 +27,8 @@ The rest are scoped by glob — **read the matching rule before editing files it
 | `.cursor/rules/rtl-arabic-ui.mdc` | `frontend/**/*.{tsx,css}` |
 | `.cursor/rules/responsive-ui.mdc` | `frontend/**/*.{tsx,css}` |
 | `.cursor/rules/ticket-domain.mdc` | `backend/src/tickets/**`, `frontend/src/**/ticket*`, `useTickets.ts` |
+| `.cursor/rules/testing-domain.mdc` | `backend/src/testing/**`, `backend/src/bugs/**`, `frontend/src/components/testing/**`, test-suite/bugs routes, `useTest*.ts`, `useBugs.ts` |
 | `.cursor/rules/api-sync.mdc` | `*.controller.ts`, `frontend/src/hooks/**`, `frontend/src/lib/**` |
-| `.cursor/rules/testing.mdc` | `backend/**/*.spec.ts`, `backend/test/**`, `QA_TESTING.md` |
+| `.cursor/rules/testing.mdc` | `backend/**/*.spec.ts`, `frontend/**/*.test.tsx`, `backend/test/**`, `QA_TESTING.md` |
 
 New `.mdc` files may appear — re-check `.cursor/rules/` rather than trusting this table.

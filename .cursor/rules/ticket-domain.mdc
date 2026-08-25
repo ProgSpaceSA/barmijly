@@ -16,6 +16,7 @@ alwaysApply: false
 | Start | `PATCH /tickets/:id/start` | SCHEDULED, APPROVED | DEVELOPER |
 | Submit for testing | `PATCH /tickets/:id/submit-for-testing` | IN_PROGRESS | DEVELOPER |
 | Verify testing | `PATCH /tickets/:id/approve-completion` | AWAITING_TESTING | QA, MANAGER, HEAD |
+| Request changes | `PATCH /tickets/:id/request-changes` | AWAITING_TESTING → IN_PROGRESS | QA, MANAGER, HEAD |
 | Accept delivery | `PATCH /tickets/:id/approve-completion` | AWAITING_OWNER_APPROVAL | Creator, SYSTEM_OWNER (in scope), MANAGER, HEAD |
 | Close | `PATCH /tickets/:id/close` | COMPLETED | MANAGER, HEAD |
 

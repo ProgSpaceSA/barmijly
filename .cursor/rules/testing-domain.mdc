@@ -1,0 +1,107 @@
+---
+description: Test suites, cases, bugs — domain rules and ship checklists
+globs: "{backend/src/testing/**,backend/src/bugs/**,frontend/src/**/test-suite*,frontend/src/**/bugs/**,frontend/src/components/testing/**,frontend/src/hooks/useTest*.ts,frontend/src/hooks/useBugs.ts,TEST_SUITES_PLAN.md}"
+alwaysApply: false
+---
+
+# Testing domain (QA surface)
+
+Source of truth: `TEST_SUITES_PLAN.md` (approved plan). Read it before implementing.
+
+## Visibility
+
+- `TICKET_REQUESTER`: **403 on every testing/bug endpoint**; no sidebar nav.
+- `SYSTEM_OWNER` / `SENIOR_MANAGEMENT`: read-only; scoped to assigned systems/companies.
+- `DEVELOPER`: author suites/cases, execute, and manage bugs within systems they can see.
+  Recording a result still requires assignment to a linked ticket.
+
+## Never
+
+- Hard-delete suites, cases, or bugs — archive only.
+- Skip `PROGRAMMING_HEAD` approval — promote creates a `DRAFT` ticket, not `APPROVED`.
+- Plain textarea or `String[]` for steps in the UI — use `OrderedStepList`.
+- Ship a screen without checking **360px and `lg`** (see `responsive-ui.mdc`).
+
+---
+
+## Backend action checklists
+
+Mirror `backend-nestjs.mdc` ticket checklist: every mutating action writes history + audit where applicable.
+
+### Record case result (`POST /test-cases/:id/result`)
+
+1. Role: `test:execute` + scope
+2. Update `lastResult`, `lastRunAt`, `lastRunById`, optional `actualResult`
+3. Insert `TestCaseResultHistory` (one row)
+4. `TestRollupService` refresh (ACTIVE cases only)
+5. If `FAIL` → `TEST_CASE_FAILED` to linked ticket lead dev
+
+### Bug status change (`POST /bugs/:id/status`)
+
+1. Role: `bug:assign` or actor rules per service
+2. Insert `BugStatusHistory`
+3. `AuditService.log` on the bug
+
+### Promote bug (`POST /bugs/:id/promote`)
+
+1. Refuse if `bug.ticketId` already set
+2. Create `Ticket` — `DRAFT`, `BUG_FIX`, scope from bug; body includes numbered repro steps + screenshot links
+3. Set `bug.ticketId`
+4. `AuditLog` on bug and ticket
+
+### Step mutate (create / patch / reorder / delete)
+
+1. Role: `test:author` for case steps; `bug:create` for bug repro steps
+2. Rebalance contiguous `order` after reorder or delete
+3. Delete cascades step attachment (`testStepId`)
+
+---
+
+## Frontend ship checklists
+
+Same spirit as **creating a ticket** (`tickets/new`): labels, RTL, responsive, role gates, tests, API sync.
+
+### New test suite
+
+- [ ] Arabic labels in `constants.ts` (`TESTING_LABELS`, `TEST_STATE_LABELS`)
+- [ ] Hook synced with `POST /test-suites` (`barmijly-api-sync`)
+- [ ] Company/system scoped pickers; owner defaults to actor
+- [ ] List card: health spine + pass-rate bar after first case run
+- [ ] Skeleton + empty state on list page
+- [ ] `*.test.tsx` for list page + `SuiteListCard`
+- [ ] Works at 360px and `lg`
+
+### New test case (in workspace)
+
+- [ ] `OrderedStepList` for خطوات التنفيذ — not a textarea
+- [ ] ≥1 step required to publish
+- [ ] Case-level attachments separate from step screenshots
+- [ ] Footer: result segmented control + save actions; sticky on mobile
+- [ ] `TestCasePanel` filter pills including «المُسندة إليّ»
+- [ ] Specs for `OrderedStepList`, `StepRow`, `TestCaseDetail`
+- [ ] Mobile: panel → full-screen detail with back
+
+### File a bug (`BugEditorDialog`)
+
+- [ ] Shared dialog: case context strip **or** company/system pickers
+- [ ] `OrderedStepList` for خطوات إعادة الإنتاج
+- [ ] Three actions: «حفظ كمسودة» · «حفظ» · «حفظ وإنشاء تذكرة»
+- [ ] Modal shell per `frontend-nextjs.mdc` (backdrop, `brm-modal`, scroll body)
+- [ ] Spec covers both entry points (from case vs bugs page)
+
+### Bugs list + ticket section
+
+- [ ] Stat tiles (`.brm-stat`); «بدون تذكرة» filter + inline «إنشاء تذكرة»
+- [ ] `TicketTestingSection` on ticket page — no tabs; between tasks and comments
+- [ ] Read-only steps in ticket section
+- [ ] Page/component tests + responsive pass
+
+---
+
+## Tests (required)
+
+- Backend: `*.spec.ts` next to each service — see `TEST_SUITES_PLAN.md` §3.8 and §4.8
+- Frontend: `*.test.tsx` next to each component under `components/testing/` and each app route
+- Run `npm run check` before push
+
+Manual QA: `barmijly-qa-testing` skill + accounts in `QA_TESTING.md`.

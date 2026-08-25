@@ -79,7 +79,8 @@ const SAVED_HINT_MS = 2000;
 
 const difficultyItems = Object.entries(DIFFICULTY_LABELS).map(([value, label]) => ({ value, label }));
 
-const inputClass = "w-full rounded-xl px-3 py-2 text-xs outline-none";
+const inputClass = "w-full min-w-0 max-w-full rounded-xl px-3 py-2 text-xs outline-none";
+const dateInputClass = `${inputClass} font-brm`;
 const inputStyle = {
   background: "var(--muted)",
   border: "1px solid var(--border)",
@@ -193,20 +194,20 @@ export function TicketPlanPanel({
       </div>
 
       {!estimateOnly && (
-        <>
-          <div>
+        <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1">
+          <div className="min-w-0">
             <p className="font-brm text-xs mb-1" style={{ color: "var(--muted-foreground)" }}>تاريخ البدء</p>
             <input
               type="date"
               aria-label="تاريخ البدء"
               value={draft.scheduledStart}
               onChange={(e) => updateDraft({ scheduledStart: e.target.value })}
-              className={inputClass}
-              style={inputStyle}
+              className={dateInputClass}
+              style={{ ...inputStyle, direction: "ltr" }}
             />
           </div>
 
-          <div>
+          <div className="min-w-0">
             <p className="font-brm text-xs mb-1" style={{ color: "var(--muted-foreground)" }}>
               تاريخ التسليم المتوقع <span style={{ color: "#EF4444" }}>*</span>
             </p>
@@ -215,11 +216,11 @@ export function TicketPlanPanel({
               aria-label="تاريخ التسليم المتوقع"
               value={draft.estimatedDeadline}
               onChange={(e) => updateDraft({ estimatedDeadline: e.target.value })}
-              className={inputClass}
-              style={inputStyle}
+              className={dateInputClass}
+              style={{ ...inputStyle, direction: "ltr" }}
             />
           </div>
-        </>
+        </div>
       )}
 
       <div>

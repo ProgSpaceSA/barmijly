@@ -102,6 +102,28 @@ describe('actualHours', () => {
     expect(actualHours([], null, null, at(9))).toBeNull();
   });
 
+  it('stops accruing while the ticket waits in QA after submit-for-testing', () => {
+    const history = [
+      edge(TicketStatus.SCHEDULED, TicketStatus.IN_PROGRESS, 0),
+      edge(TicketStatus.IN_PROGRESS, TicketStatus.AWAITING_TESTING, 1),
+    ];
+
+    // Dev work was one hour; three days in QA must not inflate actual time.
+    expect(activeMs(history, at(0), at(73))).toBe(1 * HOUR);
+    expect(actualHours(history, at(0), null, at(73))).toBe(1);
+  });
+
+  it('stops accruing while the ticket waits for owner approval', () => {
+    const history = [
+      edge(TicketStatus.SCHEDULED, TicketStatus.IN_PROGRESS, 0),
+      edge(TicketStatus.IN_PROGRESS, TicketStatus.AWAITING_TESTING, 2),
+      edge(TicketStatus.AWAITING_TESTING, TicketStatus.AWAITING_OWNER_APPROVAL, 3),
+    ];
+
+    // Dev work was two hours; QA wait and owner-approval queue must not inflate actual time.
+    expect(activeMs(history, at(0), at(50))).toBe(2 * HOUR);
+  });
+
   it('survives a history with no closing row', () => {
     // close() used to write the ticket row directly and skip its history entry,
     // which left a gap the fold had to tolerate.

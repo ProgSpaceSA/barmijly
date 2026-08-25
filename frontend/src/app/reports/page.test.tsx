@@ -142,7 +142,7 @@ describe("ReportsPage developer performance", () => {
     renderPage();
 
     expect(await screen.findByTestId("developer-performance-card")).toBeInTheDocument();
-    expect(screen.getByText("نسبة الإنجاز من التذاكر المُسندة — مرتبة حسب الأداء")).toBeInTheDocument();
+    expect(screen.getByText("عدد المكتملة ثم نسبة الإنجاز — مرتبة حسب الأداء")).toBeInTheDocument();
 
     const rows = screen.getAllByTestId(/dev-row-/);
     expect(rows.map((el) => el.getAttribute("data-testid"))).toEqual([

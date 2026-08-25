@@ -9,10 +9,12 @@ import { useCreateTicket } from "@/hooks/useTickets";
 import api from "@/lib/api";
 import { Switch } from "@/components/ui/switch";
 import { ThemeSelect } from "@/components/shared/ThemeSelect";
-import { PRIORITY_LABELS, SELECT_PLACEHOLDERS, TICKET_TYPE_LABELS } from "@/lib/constants";
+import { PRIORITY_LABELS, SELECT_PLACEHOLDERS, TICKET_TYPE_LABELS, FILE_PICK_LABELS } from "@/lib/constants";
 import { ArrowLeft, ImagePlus, Paperclip, X, FileText } from "lucide-react";
 import { usePermissions } from "@/hooks/usePermissions";
 import { MarkdownEditor } from "@/components/shared/MarkdownEditor";
+import { FileDropZone } from "@/components/shared/FileDropZone";
+import { FilePickArea } from "@/components/shared/FilePickArea";
 
 const schema = z.object({
   title: z.string().min(5, "العنوان مطلوب"),
@@ -157,6 +159,7 @@ export default function NewTicketPage() {
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<File[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const attachInputRef = useRef<HTMLInputElement>(null);
 
@@ -231,10 +234,19 @@ export default function NewTicketPage() {
     setCoverPreview(URL.createObjectURL(file));
   };
 
+  const setCoverFromFile = (file: File) => {
+    setCoverFile(file);
+    setCoverPreview(URL.createObjectURL(file));
+  };
+
   const handleAttachChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     setAttachments(prev => [...prev, ...files]);
     e.target.value = "";
+  };
+
+  const addAttachments = (files: File[]) => {
+    setAttachments(prev => [...prev, ...files]);
   };
 
   const removeAttachment = (idx: number) => setAttachments(prev => prev.filter((_, i) => i !== idx));
@@ -251,18 +263,36 @@ export default function NewTicketPage() {
   const onSubmit = async (data: any) => {
     const ticket = await createTicket(data);
     const ticketId = ticket.id;
-    const uploads: Promise<any>[] = [];
-    if (coverFile) {
-      uploads.push(uploadFile(coverFile, ticketId).then(att => api.patch(`/tickets/${ticketId}`, { coverImageUrl: att.url })));
+
+    const queue: { file: File; kind: "cover" | "attachment" }[] = [];
+    if (coverFile) queue.push({ file: coverFile, kind: "cover" });
+    for (const file of attachments) queue.push({ file: file, kind: "attachment" });
+
+    if (queue.length > 0) {
+      setUploadProgress({ current: 0, total: queue.length });
+      for (let i = 0; i < queue.length; i++) {
+        const { file, kind } = queue[i];
+        const att = await uploadFile(file, ticketId);
+        if (kind === "cover") {
+          await api.patch(`/tickets/${ticketId}`, { coverImageUrl: att.url });
+        }
+        setUploadProgress({ current: i + 1, total: queue.length });
+      }
     }
-    for (const file of attachments) uploads.push(uploadFile(file, ticketId));
-    if (uploads.length > 0) await Promise.all(uploads);
+
     router.push(`/tickets/${ticketId}`);
   };
 
+  const isBusy = isSubmitting || uploadProgress !== null;
+  const submitLabel = uploadProgress
+    ? FILE_PICK_LABELS.uploading(uploadProgress.current, uploadProgress.total)
+    : isSubmitting
+      ? FILE_PICK_LABELS.creating
+      : "إنشاء كمسودة";
+
   return (
     <AppShell>
-      <div className="max-w-3xl">
+      <div className="w-full">
         {/* Header */}
         <div className="flex items-center gap-4 mb-6">
           <button onClick={() => router.back()} className="flex items-center gap-1.5 text-sm transition-colors"
@@ -291,9 +321,10 @@ export default function NewTicketPage() {
             onBack={() => router.back()} />
         )}
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4"
+        <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:gap-6 pb-8"
           style={{ display: isRestricted && ((companiesLoaded && companies.length === 0) || (systemsLoaded && companies.length > 0 && systems.length === 0)) ? "none" : undefined }}>
 
+          <div className="space-y-4">
           {/* Section 1: Basic Info */}
           <FormSection title="معلومات أساسية">
             <div>
@@ -352,6 +383,66 @@ export default function NewTicketPage() {
             </div>
           </FormSection>
 
+          {/* Section 3: Cover Image */}
+          <FormSection title="صورة الغلاف">
+            <input ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={handleCoverChange} />
+            <FileDropZone accept="image/*" onFiles={(files) => setCoverFromFile(files[0])}>
+              {coverPreview ? (
+                <div className="relative overflow-hidden rounded-xl" style={{ border: "1px solid var(--border)" }}>
+                  <img src={coverPreview} alt="cover" className="h-36 w-full object-cover sm:h-48" />
+                  <button type="button" onClick={() => { setCoverFile(null); setCoverPreview(null); }}
+                    className="absolute top-2 left-2 p-1 rounded-full text-white transition-colors"
+                    style={{ background: "rgba(0,0,0,0.6)" }}>
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <FilePickArea
+                  icon={ImagePlus}
+                  label={FILE_PICK_LABELS.coverEmpty}
+                  hint={FILE_PICK_LABELS.coverHint}
+                  onClick={() => coverInputRef.current?.click()}
+                  disabled={isBusy}
+                />
+              )}
+            </FileDropZone>
+          </FormSection>
+
+          {/* Section 4: Attachments */}
+          <FormSection title={attachments.length > 0 ? `المرفقات (${attachments.length})` : "المرفقات"}>
+            <input ref={attachInputRef} type="file" multiple className="hidden" onChange={handleAttachChange} />
+            <FileDropZone onFiles={addAttachments} disabled={isBusy}>
+              {attachments.length > 0 && (
+                <div className="space-y-2 mb-3">
+                  {attachments.map((file, idx) => (
+                    <div key={idx} className="flex items-center gap-3 rounded-xl p-3" style={{ background: "var(--muted)" }}>
+                      <FileText className="w-4 h-4 shrink-0" style={{ color: "#4F46E5" }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate" style={{ color: "var(--foreground)" }}>{file.name}</p>
+                        <p className="font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>{formatBytes(file.size)}</p>
+                      </div>
+                      <button type="button" onClick={() => removeAttachment(idx)} disabled={isBusy} className="transition-colors disabled:opacity-40"
+                        style={{ color: "var(--muted-foreground)" }}
+                        onMouseEnter={e => (e.currentTarget.style.color = "#EF4444")}
+                        onMouseLeave={e => (e.currentTarget.style.color = "var(--muted-foreground)")}>
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <FilePickArea
+                icon={Paperclip}
+                label={FILE_PICK_LABELS.attachEmpty}
+                hint={FILE_PICK_LABELS.attachHint}
+                onClick={() => attachInputRef.current?.click()}
+                disabled={isBusy}
+              />
+            </FileDropZone>
+          </FormSection>
+          </div>
+
+          <div className="space-y-4">
           {/* Section 2: Details */}
           <FormSection title="تفاصيل الطلب">
             <div>
@@ -405,70 +496,17 @@ export default function NewTicketPage() {
               </div>
             )}
           </FormSection>
-
-          {/* Section 3: Cover Image */}
-          <FormSection title="صورة الغلاف">
-            <input ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={handleCoverChange} />
-            {coverPreview ? (
-              <div className="relative rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
-                <img src={coverPreview} alt="cover" className="w-full h-36 object-cover sm:h-48" />
-                <button type="button" onClick={() => { setCoverFile(null); setCoverPreview(null); }}
-                  className="absolute top-2 left-2 p-1 rounded-full text-white transition-colors"
-                  style={{ background: "rgba(0,0,0,0.6)" }}>
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            ) : (
-              <button type="button" onClick={() => coverInputRef.current?.click()}
-                className="w-full h-32 rounded-xl flex flex-col items-center justify-center gap-2 border-2 border-dashed transition-all"
-                style={{ borderColor: "var(--border)", color: "var(--muted-foreground)" }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = "#4F46E5"; e.currentTarget.style.color = "#4F46E5"; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--muted-foreground)"; }}>
-                <ImagePlus className="w-6 h-6" />
-                <span className="text-sm">اضغط لرفع صورة الغلاف</span>
-                <span className="font-brm text-xs opacity-60">PNG, JPG — حد أقصى 10 MB</span>
-              </button>
-            )}
-          </FormSection>
-
-          {/* Section 4: Attachments */}
-          <FormSection title="المرفقات">
-            <input ref={attachInputRef} type="file" multiple className="hidden" onChange={handleAttachChange} />
-            {attachments.length > 0 && (
-              <div className="space-y-2">
-                {attachments.map((file, idx) => (
-                  <div key={idx} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: "var(--muted)" }}>
-                    <FileText className="w-4 h-4 shrink-0" style={{ color: "#4F46E5" }} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate" style={{ color: "var(--foreground)" }}>{file.name}</p>
-                      <p className="font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>{formatBytes(file.size)}</p>
-                    </div>
-                    <button type="button" onClick={() => removeAttachment(idx)} className="transition-colors"
-                      style={{ color: "var(--muted-foreground)" }}
-                      onMouseEnter={e => (e.currentTarget.style.color = "#EF4444")}
-                      onMouseLeave={e => (e.currentTarget.style.color = "var(--muted-foreground)")}>
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <button type="button" onClick={() => attachInputRef.current?.click()}
-              className="flex items-center gap-2 text-sm font-medium transition-colors"
-              style={{ color: "#4F46E5" }}>
-              <Paperclip className="w-4 h-4" /> إضافة مرفق
-            </button>
-          </FormSection>
+          </div>
 
           {/* Submit */}
-          <div className="flex flex-col-reverse gap-3 pb-8 sm:flex-row">
-            <button type="submit" disabled={isSubmitting}
+          <div className="flex flex-col-reverse gap-3 xl:col-span-2 sm:flex-row">
+            <button type="submit" disabled={isBusy}
               className="flex-1 py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-60 transition-all"
               style={{ background: "linear-gradient(135deg, #4F46E5, #6C5CE7)", boxShadow: "0 4px 12px rgba(79,70,229,0.3)" }}>
-              {isSubmitting ? "جارٍ الإنشاء..." : "إنشاء كمسودة"}
+              {submitLabel}
             </button>
-            <button type="button" onClick={() => router.back()}
-              className="px-6 py-3 rounded-xl text-sm font-semibold transition-all sm:shrink-0"
+            <button type="button" onClick={() => router.back()} disabled={isBusy}
+              className="px-6 py-3 rounded-xl text-sm font-semibold transition-all disabled:opacity-40 sm:shrink-0"
               style={{ border: "1px solid var(--border)", color: "var(--muted-foreground)" }}
               onMouseEnter={e => (e.currentTarget.style.background = "var(--muted)")}
               onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>

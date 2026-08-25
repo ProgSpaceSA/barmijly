@@ -45,6 +45,14 @@ const EXPECTED: Record<Action, UserRole[]> = {
   'task:manage': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
   'task:create-own': [UserRole.DEVELOPER, UserRole.QA],
 
+  // ---- testing & bugs ---------------------------------------------------
+  'test:read': [UserRole.SYSTEM_OWNER, UserRole.DEVELOPER, UserRole.QA, UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
+  'test:author': [UserRole.DEVELOPER, UserRole.QA, UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD],
+  'test:execute': [UserRole.DEVELOPER, UserRole.QA, UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD],
+  'bug:create': [UserRole.DEVELOPER, UserRole.QA, UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD],
+  'bug:assign': [UserRole.DEVELOPER, UserRole.QA, UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD],
+  'bug:promote': [UserRole.DEVELOPER, UserRole.QA, UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD],
+
   // ---- people -----------------------------------------------------------
   'user:read': [UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
   'user:read-directory': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD],

@@ -45,9 +45,17 @@ export class AttachmentsController {
     @Query('ticketId') ticketId: string,
     @Query('commentId') commentId: string,
     @Query('taskId') taskId: string,
+    @Query('testCaseId') testCaseId: string,
+    @Query('bugId') bugId: string,
+    @Query('testStepId') testStepId: string,
+    @Query('suiteId') suiteId: string,
     @CurrentUser() user: any,
   ) {
-    return this.attachmentsService.upload(file, ticketId, commentId, taskId, user);
+    return this.attachmentsService.upload(
+      file,
+      { ticketId, commentId, taskId, testCaseId, bugId, testStepId, suiteId },
+      user,
+    );
   }
 
   @Get(':id/file')

@@ -227,7 +227,8 @@ describe('TicketDetailPage', () => {
     expect(screen.getAllByText('مُكلف بها')).toHaveLength(1);
     const mineRow = screen.getByText('مهمتي').closest('div.rounded-xl') as HTMLElement;
     expect(mineRow).toHaveStyle({ border: '1px solid rgba(79, 70, 229, 0.35)' });
-    expect(within(mineRow).queryByText('أنت')).not.toBeInTheDocument();
+    expect(within(mineRow).getByText('مُكلف بها')).toBeInTheDocument();
+    expect(within(mineRow).getByLabelText('أنشأها').closest('p')).toHaveTextContent('ف ل');
   });
 
   it('shows remaining days beside each open task', async () => {
@@ -272,6 +273,7 @@ describe('TicketDetailPage', () => {
             id: 'task-1',
             title: 'ضبط قالب الفاتورة',
             status: 'COMPLETED',
+            createdAt: '2026-08-18T10:00:00.000Z',
             completedAt: '2026-08-20T14:00:00.000Z',
             assignedTo: { id: 'dev-1', firstName: 'أحمد', lastName: 'علي' },
             createdBy: { id: 'head-1', firstName: 'سارة', lastName: 'حسن' },
@@ -291,9 +293,12 @@ describe('TicketDetailPage', () => {
     await renderPage();
 
     expect(await screen.findByText('ضبط قالب الفاتورة')).toBeInTheDocument();
-    expect(screen.getByText(/أنشأها/)).toHaveTextContent('أنشأها سارة حسن');
-    expect(screen.getByText('أنجزها')).toBeInTheDocument();
-    expect(screen.getAllByText('أحمد علي').length).toBeGreaterThan(0);
+    const createdLine = screen.getByLabelText('أنشأها').closest('p');
+    expect(createdLine).toHaveTextContent('سارة حسن');
+    expect(createdLine).toHaveTextContent(/18 أغسطس/);
+    const finishedLine = screen.getByLabelText('أنجزها').closest('p');
+    expect(finishedLine).toHaveTextContent('أحمد علي');
+    expect(finishedLine).toHaveTextContent(/20 أغسطس/);
   });
 
   it('shows ticket completion date in the sidebar when set', async () => {

@@ -1,16 +1,20 @@
 ---
-description: How to test Barmijly ticket and API changes
-globs: "{backend/**/*.spec.ts,backend/test/**,QA_TESTING.md}"
+description: How to test Barmijly backend, frontend, and QA flows
+globs: "{backend/**/*.spec.ts,backend/test/**,frontend/**/*.test.tsx,frontend/src/components/testing/**,QA_TESTING.md,TEST_SUITES_PLAN.md}"
 alwaysApply: false
 ---
 
 # Testing
 
 - Backend unit: `cd backend && npm test`
+- Frontend unit: `cd frontend && npm test`
+- Full gate: `npm run check` (repo root — lint, tests, build)
 - Backend e2e: `cd backend && npm run test:e2e`
 - Tests never send email (SMTP is skipped under Jest; e2e overrides `EmailService`)
 - Local `start:dev` also stays silent unless `MAIL_ENABLED=true` (case-insensitive; `False` counts as off)
 - Ticket changes: walk the status flow in `backend/GUIDE.md`
+- Test suites / bugs: follow `TEST_SUITES_PLAN.md` §4.8 and `.cursor/rules/testing-domain.mdc`
 - Role checks: reproduce with accounts in `QA_TESTING.md` (`barmijly-qa-testing` skill)
 - New endpoint: hit Swagger `http://localhost:3001/api/docs`, then the matching frontend hook
 - Do not add English-only assertions for UI copy — labels live in `constants.ts`
+- New/changed UI: vitest + RTL spec beside the component; verify 360px and `lg` (`responsive-ui.mdc`)

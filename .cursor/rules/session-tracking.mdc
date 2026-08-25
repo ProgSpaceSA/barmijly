@@ -25,17 +25,24 @@ No essays, diffs, or file lists.
 
 ## Keep it high level
 
-One line per user-facing change. If a teammate reading the release note would not
-care, leave it out. Describe the outcome, not the implementation.
+Describe the outcome, not the implementation. If a teammate reading the release note would not care, leave it out.
 
 Tiny UX (copy-to-clipboard, chip layout, hover, padding, icon tweaks) stays off the list.
+
+## Compress — one line per feature area
+
+Prefer **fewer, fuller lines** over many thin ones. Same session, same user-facing area → **one line**.
+
+- **Feature + follow-up updates** to that feature → merge into the original `Feature:` line (semicolon-separated clauses).
+- **Several updates** in the same area (e.g. bug list polish + bug filters + bug filing) → one `Feature:` or `Update:` line covering all outcomes.
+- **Do not omit work** — every user-facing change stays in the log; compression merges lines, it does not drop items.
+- Unrelated areas (ticket form vs leaderboard vs digest) stay on separate lines.
+
+When appending mid-session, **edit an existing line** if the change belongs to that feature area; add a new line only for a distinct area.
 
 ## When to append
 
 After you add, change, or delete behavior a user would notice (code, seed, schema).
-
-If the work is a **fix or polish of an item already on the list**, do not add a
-new line. Edit that line only when the user-facing outcome itself changed.
 
 Never log:
 
@@ -43,7 +50,6 @@ Never log:
 - Documentation — `AGENTS.md`, `CLAUDE.md`, `README`, comments
 - Agent config — `.cursor/rules/*`, skills, hooks, rule imports
 - Format-only edits, `prisma generate`, dependency lock churn
-- Follow-up fixes to a Feature/Update already listed this session
 
 Fold sub-steps into the feature they serve rather than listing them separately.
 

@@ -15,6 +15,9 @@ export const TICKET_STATUS_LABELS: Record<string, string> = {
   ON_HOLD: "معلقة",
 };
 
+/** Read out beside the sidebar notification count, which is hidden as digits. */
+export const NAV_UNREAD_LABEL = "إشعار غير مقروء";
+
 /** Tickets list — assignment filter (ticket assigned to me, or a task assigned to me). */
 export const TICKET_MINE_LABEL = "تذاكري";
 
@@ -76,6 +79,16 @@ export const TASK_LABELS = {
   assigneeSync: "يُضاف المُكلَّف تلقائياً إلى فريق التذكرة",
 } as const;
 
+/** Ticket create — cover image and attachment pickers. */
+export const FILE_PICK_LABELS = {
+  coverEmpty: "اضغط أو اسحب لرفع صورة الغلاف",
+  coverHint: "PNG, JPG — حد أقصى 10 MB",
+  attachEmpty: "اضغط أو اسحب لإضافة مرفق",
+  attachHint: "أي نوع ملف — حد أقصى 10 MB",
+  creating: "جارٍ الإنشاء...",
+  uploading: (current: number, total: number) => `جارٍ رفع الملفات ${current}/${total}...`,
+} as const;
+
 /**
  * The ticket activity feed. Every entry is an AuditLog row, so the copy is
  * keyed by its action.
@@ -102,6 +115,30 @@ export const TIMELINE_LABELS = {
   DEPENDENCY_ADD: "أضاف علاقة",
   DEPENDENCY_REMOVE: "أزال علاقة",
   PLAN_UPDATED: "حدّث التخطيط",
+  BUG_STATUS_CHANGE: "غيّر حالة الخطأ",
+  BUG_PROMOTE: "أنشأ تذكرة من خطأ",
+  BUG_UPDATE: "عدّل خطأ",
+  BUG_CREATE: "سجّل خطأ",
+  BUG_ARCHIVE: "أرشف خطأ",
+  BUG_UNARCHIVE: "ألغى أرشفة خطأ",
+  CASE_CREATE: "أنشأ حالة اختبار",
+  CASE_UPDATE: "عدّل حالة اختبار",
+  CASE_PUBLISH: "فعّل حالة اختبار",
+  CASE_RESULT: "سجّل نتيجة اختبار",
+  CASE_ARCHIVE: "أرشف حالة اختبار",
+  CASE_DELETE: "حذف حالة اختبار",
+  SUITE_CREATE: "أنشأ مجموعة اختبار",
+  SUITE_UPDATE: "عدّل مجموعة اختبار",
+  SUITE_PUBLISH: "نشر مجموعة اختبار",
+  SUITE_ARCHIVE: "أرشف مجموعة اختبار",
+  SUITE_UNARCHIVE: "ألغى أرشفة مجموعة",
+  SUITE_TICKET_LINK: "ربط مجموعة اختبارات",
+  SUITE_TICKET_UNLINK: "أزال ربط مجموعة اختبارات",
+  /** Aliases kept for older audit rows. */
+  TEST_CASE_RESULT: "سجّل نتيجة اختبار",
+  TEST_CASE_UPDATE: "عدّل حالة اختبار",
+  TEST_SUITE_LINK: "ربط مجموعة اختبارات",
+  TEST_SUITE_UNLINK: "أزال ربط مجموعة اختبارات",
 } as const;
 
 /** Filter tabs for the activity feed — keyed by audit `action`. */
@@ -112,7 +149,15 @@ export const TIMELINE_FILTERS = {
   },
   status: {
     label: "الحالة",
-    actions: ["CREATE", "TICKET_CREATED", "UPDATE", "STATUS_CHANGE", "FORCE_STATUS"] as const,
+    actions: [
+      "CREATE",
+      "TICKET_CREATED",
+      "UPDATE",
+      "STATUS_CHANGE",
+      "FORCE_STATUS",
+      "BUG_STATUS_CHANGE",
+      "BUG_PROMOTE",
+    ] as const,
   },
   assign: {
     label: "الإسناد",
@@ -129,6 +174,34 @@ export const TIMELINE_FILTERS = {
   plan: {
     label: "التخطيط",
     actions: ["PLAN_UPDATED"] as const,
+  },
+  qa: {
+    label: "اختبارات",
+    actions: [
+      "BUG_CREATE",
+      "BUG_UPDATE",
+      "BUG_STATUS_CHANGE",
+      "BUG_PROMOTE",
+      "BUG_ARCHIVE",
+      "BUG_UNARCHIVE",
+      "CASE_CREATE",
+      "CASE_UPDATE",
+      "CASE_PUBLISH",
+      "CASE_RESULT",
+      "CASE_ARCHIVE",
+      "CASE_DELETE",
+      "SUITE_CREATE",
+      "SUITE_UPDATE",
+      "SUITE_PUBLISH",
+      "SUITE_ARCHIVE",
+      "SUITE_UNARCHIVE",
+      "SUITE_TICKET_LINK",
+      "SUITE_TICKET_UNLINK",
+      "TEST_CASE_RESULT",
+      "TEST_CASE_UPDATE",
+      "TEST_SUITE_LINK",
+      "TEST_SUITE_UNLINK",
+    ] as const,
   },
 } as const;
 
@@ -163,6 +236,7 @@ export const TICKET_ACTION_CONFIRM = {
   start: { title: "بدء العمل", confirm: "هل أنت متأكد من بدء العمل على هذه التذكرة؟" },
   submitForTesting: { title: "إرسال للاختبار", confirm: "هل أنت متأكد من إرسال التذكرة للاختبار؟" },
   approveCompletion: { title: "اعتماد الإكمال", confirm: "هل أنت متأكد من اعتماد إكمال هذه التذكرة؟" },
+  requestChanges: { title: "طلب تعديلات", confirm: "هل أنت متأكد من إعادة التذكرة للتطوير؟", danger: true },
   closeTicket: { title: "إغلاق التذكرة", confirm: "هل أنت متأكد من إغلاق هذه التذكرة؟" },
   reopen: { title: "إعادة الفتح", confirm: "هل أنت متأكد من إعادة فتح هذه التذكرة؟" },
   archive: { title: "أرشفة", confirm: "هل أنت متأكد من أرشفة هذه التذكرة؟", danger: true },
@@ -278,6 +352,7 @@ export const BLOCK_LABELS = {
   reason: "السبب",
   reasonRequired: "السبب مطلوب",
   reasonPlaceholder: "لماذا توقف العمل؟",
+  changesReasonPlaceholder: "ما التعديلات المطلوبة؟",
   blockedBanner: "التذكرة متوقفة",
   heldBanner: "التذكرة معلقة",
   blockedBy: "بسبب التذكرة",
@@ -403,6 +478,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   EXECUTION_COMPLETED: "اكتمال التنفيذ",
   CLOSURE_APPROVAL_REQUESTED: "اعتماد الإغلاق",
   TASK_ASSIGNED: "مهمة جديدة",
+  BUG_ASSIGNED: "خطأ",
 };
 
 /** Heading shown on the notification row. Distinct from the type chip. */
@@ -419,6 +495,7 @@ export const NOTIFICATION_TITLES: Record<string, string> = {
   EXECUTION_COMPLETED: "التذكرة جاهزة للاختبار",
   CLOSURE_APPROVAL_REQUESTED: "مطلوب اعتماد الإغلاق",
   TASK_ASSIGNED: "تم تكليفك بمهمة جديدة",
+  BUG_ASSIGNED: "خطأ على تذكرتك",
 };
 
 /** English titles stored before in-app copy switched to Arabic. */
@@ -567,3 +644,293 @@ export const MARKDOWN_CHEATSHEET: { syntax: string; label: string }[] = [
   { syntax: "| عمود |", label: "جدول" },
   { syntax: "---", label: "فاصل" },
 ];
+
+/** Authoring state of a suite or a case. Separate axis from the run result. */
+export const TEST_STATE_LABELS: Record<string, string> = {
+  DRAFT: "مسودة",
+  ACTIVE: "منشورة",
+  ARCHIVED: "مؤرشفة",
+};
+
+/** The last execution result of a case. */
+export const TEST_RESULT_LABELS: Record<string, string> = {
+  NOT_RUN: "لم يُنفَّذ",
+  PASS: "نجح",
+  FAIL: "فشل",
+  BLOCKED: "محجوب",
+  SKIPPED: "متخطى",
+};
+
+/** Impact, judged by whoever found the bug. Scheduling urgency is PRIORITY_LABELS. */
+export const BUG_SEVERITY_LABELS: Record<string, string> = {
+  BLOCKER: "مُعطِّل",
+  CRITICAL: "حرج",
+  MAJOR: "كبير",
+  MINOR: "بسيط",
+  TRIVIAL: "طفيف",
+};
+
+export const BUG_STATUS_LABELS: Record<string, string> = {
+  OPEN: "مفتوح",
+  IN_PROGRESS: "قيد الإصلاح",
+  FIXED: "تم الإصلاح",
+  VERIFIED: "تم التحقق",
+  CLOSED: "مغلق",
+  WONT_FIX: "لن يُصلَح",
+  DUPLICATE: "مكرر",
+};
+
+/** Statuses that still cost somebody work — mirrors OPEN_BUG_STATUSES on the API. */
+export const OPEN_BUG_STATUSES = ["OPEN", "IN_PROGRESS", "FIXED"] as const;
+
+/** Resolved / no longer needing attention — used for list cues and icon color. */
+export const RESOLVED_BUG_STATUSES = [
+  "FIXED",
+  "VERIFIED",
+  "CLOSED",
+  "WONT_FIX",
+  "DUPLICATE",
+] as const;
+
+/** Icon / accent colour for a bug status (list rows, link dialogs). */
+export function bugStatusColor(status: string): string {
+  switch (status) {
+    case "OPEN":
+      return "#EF4444";
+    case "IN_PROGRESS":
+      return "#F59E0B";
+    case "FIXED":
+    case "VERIFIED":
+      return "#10B981";
+    case "CLOSED":
+    case "WONT_FIX":
+      return "#94A3B8";
+    case "DUPLICATE":
+      return "#8B5CF6";
+    default:
+      return "#EF4444";
+  }
+}
+
+/** Every string on the QA surface: suites, cases, steps and bugs. */
+export const TESTING_LABELS = {
+  // nav + page chrome
+  suitesTitle: "الاختبارات",
+  suitesDescription: "مجموعات الاختبار وحالاتها",
+  bugsTitle: "الأخطاء",
+  newSuite: "مجموعة جديدة",
+  newCase: "حالة اختبار جديدة",
+  newBug: "تسجيل خطأ",
+  back: "رجوع",
+  suiteCount: "مجموعة",
+  caseCount: "حالة اختبار",
+  bugCount: "خطأ",
+  searchSuites: "بحث في المجموعات...",
+  searchBugs: "بحث في الأخطاء...",
+  searchCases: "بحث في حالات الاختبار...",
+
+  // filter rails
+  filterAll: "الكل",
+  filterState: "حالة المجموعة",
+  filterHealth: "الجاهزية",
+  filterOwner: "المالك",
+  filterCompanies: "الشركات",
+  filterSeverity: "الخطورة",
+  filterStatus: "حالة الخطأ",
+  filterLink: "الربط",
+  filterAssignee: "الإسناد",
+  filterArchived: "الأرشفة",
+  filterSystem: "المشروع",
+  filterSuite: "مجموعة الاختبارات",
+  pickSystemFirst: "اختر مشروعاً أولاً",
+  archivedOnly: "مؤرشفة فقط",
+  activeOnly: "النشطة",
+  mine: "المُسندة إليّ",
+  minePlain: "أخطائي",
+  healthFailing: "بها فشل",
+  healthOpenBugs: "بها أخطاء",
+  healthNotRun: "لم تُنفَّذ",
+  hasTicket: "لها تذكرة",
+  noTicket: "بلا تذكرة",
+
+  // suite card + workspace
+  passRate: "نسبة النجاح",
+  lastRun: "آخر تنفيذ",
+  neverRun: "لم تُنفَّذ بعد",
+  owner: "المالك",
+  linkedTickets: "التذاكر المرتبطة",
+  linkTicket: "ربط بتذكرة",
+  unlinkTicket: "إزالة الربط",
+  unlinkConfirm: "إزالة ربط هذه التذكرة؟",
+  publishSuite: "نشر المجموعة",
+  archiveSuite: "أرشفة المجموعة",
+  unarchiveSuite: "إلغاء أرشفة المجموعة",
+  archiveConfirm: "أرشفة المجموعة؟ لا تُحذف، ويبقى سجلها.",
+  suiteAttachments: "مرفقات المجموعة",
+  collapseSuiteAttachments: "طي مرفقات المجموعة",
+  expandSuiteAttachments: "توسيع مرفقات المجموعة",
+  downloadAttachment: "تحميل",
+  uploadingPercent: (n: number) => `جارٍ الرفع... ${n}%`,
+  uploading: "جارٍ الرفع...",
+  linkCaseNeedsSuite: "اربط الخطأ بمجموعة أولاً، أو اختر حالة من مجموعة النظام",
+
+  // case panel + detail
+  cases: "حالات الاختبار",
+  noCases: "لا توجد حالات اختبار بعد",
+  noCasesHint: "أضف أول حالة اختبار للمجموعة",
+  addCase: "إضافة حالة اختبار",
+  caseTitle: "عنوان حالة الاختبار",
+  description: "الوصف",
+  preconditions: "المتطلبات المسبقة",
+  steps: "خطوات التنفيذ",
+  reproSteps: "خطوات إعادة الإنتاج",
+  expectedResult: "النتيجة المتوقعة",
+  actualResult: "النتيجة الفعلية",
+  attachments: "المرفقات",
+  noAttachments: "لا توجد مرفقات",
+  assignee: "المُسند إليه",
+  assignCase: "إسناد حالة الاختبار",
+  unassigned: "غير مسندة",
+  linkedTicket: "التذكرة",
+  runBy: "نفّذها",
+  saveDraft: "حفظ ومتابعة",
+  saveDraftHint: "يحفظ الخطأ ويبقي النموذج مفتوحاً للتعديل",
+  publishCase: "تفعيل حالة الاختبار",
+  deleteCase: "حذف حالة الاختبار",
+  deleteCaseConfirm: "حذف حالة الاختبار هذه؟",
+  archiveCaseConfirm: "أرشفة حالة الاختبار هذه؟ لا تُحذف، ويبقى سجلها.",
+  recordResult: "تسجيل النتيجة",
+  selectCase: "اختر حالة لعرض تفاصيلها",
+  publishNeedsStep: "أضف خطوة تنفيذ واحدة على الأقل قبل النشر",
+
+  // ordered step list
+  addStep: "إضافة خطوة",
+  stepPlaceholder: "اكتب الخطوة…",
+  addScreenshot: "+ لقطة شاشة",
+  deleteStep: "حذف الخطوة",
+  deleteStepConfirm: "حذف الخطوة والمرفق؟",
+  removeScreenshot: "إزالة اللقطة",
+  removeScreenshotConfirm: "إزالة لقطة الشاشة من هذه الخطوة؟",
+  screenshotAdded: "تمت إضافة اللقطة",
+  uploadFailed: "تعذر رفع اللقطة",
+  detachFailed: "تعذر حذف اللقطة",
+  moveStepUp: "تحريك لأعلى",
+  moveStepDown: "تحريك لأسفل",
+  dragStep: "اسحب لإعادة الترتيب",
+  noSteps: "لا توجد خطوات بعد",
+  stepsAfterSave: "احفظ الخطأ أولاً لإضافة خطوات إعادة الإنتاج",
+
+  // bugs
+  bugs: "الأخطاء",
+  noBugs: "لا توجد أخطاء",
+  noBugsHint: "لم يُسجَّل أي خطأ بهذه الفلاتر",
+  bugTitle: "عنوان الخطأ",
+  bugDescription: "وصف الخطأ",
+  expectedBehavior: "السلوك المتوقع",
+  actualBehavior: "السلوك الفعلي",
+  environment: "البيئة",
+  severity: "الخطورة",
+  status: "حالة الخطأ",
+  reportedBy: "سجّله",
+  detectedAt: "تاريخ الرصد",
+  company: "الشركة",
+  system: "النظام",
+  fromCase: "من حالة الاختبار",
+  clearCaseContext: "إزالة الربط بحالة الاختبار",
+  promote: "إنشاء تذكرة",
+  promoting: "جارٍ الإنشاء...",
+  promoteHint: "تُنشأ التذكرة كمسودة وتمر بمسار الاعتماد المعتاد",
+  promoteTitle: "إنشاء تذكرة من الخطأ",
+  promoteTitleLabel: "عنوان التذكرة",
+  promoteConfirm: "إنشاء التذكرة",
+  promoted: "أُنشئت التذكرة",
+  promoteOpenTicket: "فتح التذكرة",
+  saveAndPromote: "حفظ وإنشاء تذكرة",
+  bugLinkedToast: "تم ربط الخطأ بالتذكرة",
+  bugCreatedToast: "تم تسجيل الخطأ",
+  suiteTicketsLinked: "تم ربط التذكرة",
+  suiteTicketUnlinked: "تم إزالة ربط التذكرة",
+  caseTicketLinked: "تم ربط حالة الاختبار بالتذكرة",
+  caseTicketCleared: "تم إزالة ربط حالة الاختبار بالتذكرة",
+  suitePublished: "تم نشر المجموعة",
+  suiteArchived: "تمت أرشفة المجموعة",
+  suiteArchivedToast: "تمت أرشفة المجموعة",
+  suiteUnarchivedToast: "تم إلغاء أرشفة المجموعة",
+  caseCreatedToast: "تم إنشاء حالة الاختبار",
+  casePublished: "تم تفعيل حالة الاختبار",
+  caseArchived: "تمت أرشفة حالة الاختبار",
+  selectSuiteTickets: "اختيار تذاكر المجموعة",
+  selectCaseTicket: "تذكرة حالة الاختبار",
+  clearCaseTicket: "بدون تذكرة",
+  linkCase: "ربط بحالة اختبار",
+  selectBugToLink: "اختر خطأً للربط",
+  searchTickets: "بحث في التذاكر...",
+  noTicketsInSystem: "لا توجد تذاكر في هذا النظام",
+  noSuiteTickets: "لا توجد تذاكر مرتبطة بالمجموعة بعد",
+  pickTicket: "اختر تذكرة",
+  archiveBug: "أرشفة الخطأ",
+  archiveBugConfirm: "أرشفة هذا الخطأ؟ لا يُحذف، ويبقى سجله.",
+  unarchiveBug: "إلغاء أرشفة الخطأ",
+  bugUnarchivedToast: "تم إلغاء أرشفة الخطأ",
+  openBugs: "أخطاء مفتوحة",
+  /** Status filter — matches the openCount stat (OPEN + IN_PROGRESS + FIXED). */
+  filterOpenBugs: "تحتاج متابعة",
+  openBugsHint: "مفتوح + قيد الإصلاح + تم الإصلاح",
+  blockers: "مُعطِّلة",
+  unpromoted: "بانتظار تذكرة",
+  total: "الإجمالي",
+
+  // ticket page section
+  ticketSection: "الاختبارات والأخطاء",
+  ticketSectionEmpty: "لا توجد اختبارات مرتبطة بهذه التذكرة",
+  linkedSuites: "المجموعات المرتبطة",
+  coveringCases: "حالات الاختبار المغطاة",
+  filedBugs: "الأخطاء المسجّلة",
+  linkSuiteFromTicket: "ربط بمجموعة اختبارات",
+  linkBugToTicket: "ربط خطأ",
+  linkBug: "ربط",
+  openBugsAttention: "أخطاء مفتوحة تحتاج متابعة",
+  failedCasesAttention: "حالات اختبار فاشلة",
+  linkedTicketLabel: "التذكرة:",
+  linkedCaseLabel: "حالة الاختبار:",
+  linkedSuiteLabel: "مجموعة الاختبارات:",
+  noSuitesInSystem: "لا توجد مجموعات اختبار في هذا النظام",
+  alreadyLinked: "مرتبطة",
+  unlinkSuite: "إزالة ربط المجموعة",
+  unlinkCase: "إزالة ربط حالة الاختبار",
+  unlinkBug: "إزالة ربط الخطأ",
+  unlinkSuiteConfirm: "إزالة ربط هذه المجموعة من التذكرة؟",
+  unlinkCaseConfirm: "إزالة ربط حالة الاختبار هذه من التذكرة؟",
+  unlinkBugConfirm: "إزالة ربط هذا الخطأ من التذكرة؟",
+  unlinkCaseFromBug: "إزالة الربط بحالة الاختبار",
+  unlinkTicketFromBug: "إزالة الربط بالتذكرة",
+  unlinkTicketFromBugConfirm: "إزالة ربط الخطأ بهذه التذكرة؟",
+  unlinkCaseFromBugConfirm: "إزالة ربط الخطأ بحالة الاختبار هذه؟",
+
+  // shared chrome
+  save: "حفظ",
+  saving: "جارٍ الحفظ...",
+  saved: "تم الحفظ",
+  cancel: "إلغاء",
+  close: "إغلاق",
+  delete: "حذف",
+  confirm: "تأكيد",
+  loading: "جارٍ التحميل...",
+  readOnly: "للعرض فقط",
+  copyCode: "نسخ الرقم",
+  copiedCode: "تم نسخ الرقم",
+  copyFailed: "تعذر نسخ الرقم",
+  filterCases: "تصفية حالات الاختبار",
+  expandBug: "توسيع الخطأ",
+  collapseBug: "طي الخطأ",
+  editBug: "تعديل الخطأ",
+  edit: "تعديل",
+  linkExistingBug: "ربط خطأ",
+  linkToCase: "ربط بحالة اختبار",
+  noBugsToLink: "لا توجد أخطاء متاحة للربط",
+  noBugsToLinkHint: "يُعرض فقط أخطاء نفس النظام غير المرتبطة بهذه التذكرة. سجّل خطأً جديداً أو انقل خطأً من نظام آخر إن لزم.",
+  bugLinkedToCase: "تم ربط الخطأ بحالة الاختبار",
+  caseLinkedToBug: "تم ربط حالة الاختبار بالخطأ",
+  archiveTitle: "أرشفة",
+  deleteTitle: "حذف",
+} as const;

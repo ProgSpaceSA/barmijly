@@ -72,22 +72,26 @@ export function TicketBlockPanel({
 export function PauseReasonField({
   value,
   onChange,
+  label = BLOCK_LABELS.reason,
+  placeholder = BLOCK_LABELS.reasonPlaceholder,
 }: {
   value: string;
   onChange: (value: string) => void;
+  label?: string;
+  placeholder?: string;
 }) {
   return (
     <label className="block">
       <span className="font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>
-        {BLOCK_LABELS.reason}
+        {label}
       </span>
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
         rows={3}
         autoFocus
-        placeholder={BLOCK_LABELS.reasonPlaceholder}
-        aria-label={BLOCK_LABELS.reason}
+        placeholder={placeholder}
+        aria-label={label}
         className="w-full mt-1.5 rounded-xl px-3 py-2 text-sm outline-none resize-none"
         style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--foreground)" }}
       />

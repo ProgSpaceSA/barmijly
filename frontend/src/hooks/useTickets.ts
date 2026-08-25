@@ -209,6 +209,7 @@ export function useTicketAction(id: string) {
     startWork: useTicketMutation(qc, id, () => api.patch(`/tickets/${id}/start`).then(r => r.data), "بدأ العمل"),
     submitForTesting: useTicketMutation(qc, id, () => api.patch(`/tickets/${id}/submit-for-testing`).then(r => r.data), "جاهز للاختبار"),
     approveCompletion: useTicketMutation(qc, id, () => api.patch(`/tickets/${id}/approve-completion`).then(r => r.data), "تم الاعتماد"),
+    requestChanges: useTicketMutation(qc, id, (data: { reason: string }) => api.patch(`/tickets/${id}/request-changes`, data).then(r => r.data), "طُلبت التعديلات"),
     close: useTicketMutation(qc, id, (data: Record<string, unknown>) => api.patch(`/tickets/${id}/close`, data).then(r => r.data), "تم الإغلاق"),
     archive: useTicketMutation(qc, id, () => api.patch(`/tickets/${id}/archive`).then(r => r.data), "تم الأرشفة"),
     unarchive: useTicketMutation(qc, id, () => api.patch(`/tickets/${id}/unarchive`).then(r => r.data), "تم إلغاء الأرشفة"),

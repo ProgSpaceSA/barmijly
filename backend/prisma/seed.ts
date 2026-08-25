@@ -722,6 +722,8 @@ async function main() {
     [NotificationType.EXECUTION_COMPLETED]: (t) => ({ title: 'اكتمل تنفيذ التذكرة', body: `انتهى تنفيذ «${t}» وبانتظار الاختبار` }),
     [NotificationType.CLOSURE_APPROVAL_REQUESTED]: (t) => ({ title: 'مطلوب اعتماد الإغلاق', body: `يُرجى اعتماد إغلاق «${t}»` }),
     [NotificationType.TASK_ASSIGNED]: (t) => ({ title: 'أُسندت مهمة لمطور', body: `مهمة جديدة على «${t}»` }),
+    [NotificationType.BUG_ASSIGNED]: (t) => ({ title: 'أُسند إليك خطأ', body: `خطأ جديد مرتبط بـ «${t}»` }),
+    [NotificationType.TEST_CASE_FAILED]: (t) => ({ title: 'فشلت حالة اختبار', body: `فشلت حالة اختبار على «${t}»` }),
   };
 
   const types = Object.values(NotificationType);

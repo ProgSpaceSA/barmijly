@@ -9,13 +9,17 @@ import {
   TASK_LABELS,
   DIFFICULTY_LABELS,
   ESTIMATE_LABELS,
+  BUG_STATUS_LABELS,
+  BUG_SEVERITY_LABELS,
+  PRIORITY_LABELS,
   ROLE_COLORS,
   ROLE_LABELS,
   COMMENT_LABELS,
+  TEST_RESULT_LABELS,
   type TimelineFilterKey,
 } from "@/lib/constants";
 import { RelativeTime } from "@/components/shared/RelativeTime";
-import { formatTicketCode } from "@/lib/utils";
+import { formatBugCode, formatTicketCode } from "@/lib/utils";
 import { useTicketTimeline } from "@/hooks/useTickets";
 import { useAuthStore } from "@/store/auth";
 
@@ -53,6 +57,15 @@ function parseBag(raw: unknown): Record<string, unknown> | null {
 
 const statusLabel = (v: unknown) =>
   typeof v === "string" ? TICKET_STATUS_LABELS[v] ?? v : undefined;
+
+const bugStatusLabel = (v: unknown) =>
+  typeof v === "string" ? BUG_STATUS_LABELS[v] ?? v : undefined;
+
+const bugSeverityLabel = (v: unknown) =>
+  typeof v === "string" ? BUG_SEVERITY_LABELS[v] ?? v : undefined;
+
+const testResultLabel = (v: unknown) =>
+  typeof v === "string" ? TEST_RESULT_LABELS[v] ?? v : undefined;
 
 const taskStatusLabel = (v: unknown) =>
   typeof v === "string" ? TASK_STATUS_LABELS[v] ?? v : undefined;
@@ -141,6 +154,119 @@ function taskUpdateDetailOf(
     planFieldChange(ESTIMATE_LABELS.difficulty, from?.difficultyLevel, to?.difficultyLevel, planDifficultyValue),
   ].filter(Boolean);
   return parts.length ? parts.join(" · ") : undefined;
+}
+
+function bugIdentityOf(
+  from?: Record<string, unknown> | null,
+  to?: Record<string, unknown> | null,
+): string | undefined {
+  const codeRaw = to?.bugNumber ?? from?.bugNumber;
+  const code =
+    typeof codeRaw === "number" || typeof codeRaw === "string"
+      ? formatBugCode(Number(codeRaw))
+      : undefined;
+  const title =
+    (typeof to?.title === "string" && to.title.trim() ? to.title.trim() : undefined) ||
+    (typeof from?.title === "string" && from.title.trim() ? from.title.trim() : undefined);
+  return [code, title].filter(Boolean).join(" · ") || undefined;
+}
+
+function bugUpdateDetailOf(
+  from?: Record<string, unknown> | null,
+  to?: Record<string, unknown> | null,
+): string | undefined {
+  if (!to && !from) return undefined;
+  const parts: (string | undefined)[] = [
+    planFieldChange("العنوان", from?.title, to?.title, planTextValue),
+    planFieldChange("الوصف", from?.description, to?.description, planTextValue),
+    planFieldChange("السلوك المتوقع", from?.expectedBehavior, to?.expectedBehavior, planTextValue),
+    planFieldChange("السلوك الفعلي", from?.actualBehavior, to?.actualBehavior, planTextValue),
+    planFieldChange("البيئة", from?.environment, to?.environment, planTextValue),
+    planFieldChange("الأولوية", from?.priority, to?.priority, (v) =>
+      typeof v === "string" ? PRIORITY_LABELS[v] ?? v : undefined,
+    ),
+    planFieldChange("الخطورة", from?.severity, to?.severity, bugSeverityLabel),
+    planFieldChange("حالة الخطأ", from?.status, to?.status, bugStatusLabel),
+  ];
+
+  const identity = bugIdentityOf(from, to);
+
+  if ((from?.ticketId ?? null) !== (to?.ticketId ?? null)) {
+    if (to?.ticketId && !from?.ticketId) {
+      parts.push(identity ? `رُبط بتذكرة (${identity})` : "رُبط بتذكرة");
+    } else if (!to?.ticketId && from?.ticketId) {
+      parts.push(identity ? `أُزيل الربط بالتذكرة (${identity})` : "أُزيل الربط بالتذكرة");
+    } else {
+      parts.push(identity ? `غُيّر ربط التذكرة (${identity})` : "غُيّر ربط التذكرة");
+    }
+  }
+  if ((from?.testCaseId ?? null) !== (to?.testCaseId ?? null)) {
+    // testCaseId moved, cleared, or set — always name the bug so the timeline is usable.
+    if (to?.testCaseId && !from?.testCaseId) {
+      parts.push(identity ? `رُبط بحالة اختبار (${identity})` : "رُبط بحالة اختبار");
+    } else if (!to?.testCaseId && from?.testCaseId) {
+      parts.push(
+        identity ? `أُزيل الربط بحالة الاختبار (${identity})` : "أُزيل الربط بحالة الاختبار",
+      );
+    } else {
+      parts.push(
+        identity
+          ? `نُقل الربط إلى حالة اختبار أخرى (${identity})`
+          : "نُقل الربط إلى حالة اختبار أخرى",
+      );
+    }
+  }
+  if ((from?.assignedToId ?? null) !== (to?.assignedToId ?? null)) {
+    parts.push(identity ? `غُيّر الإسناد (${identity})` : "غُيّر الإسناد");
+  }
+
+  const cleaned = parts.filter(Boolean);
+  if (cleaned.length) return cleaned.join(" · ");
+
+  return identity;
+}
+
+function bugCreateDetailOf(to?: Record<string, unknown> | null): string | undefined {
+  if (!to) return undefined;
+  const code =
+    typeof to.bugNumber === "number" || typeof to.bugNumber === "string"
+      ? formatBugCode(Number(to.bugNumber))
+      : undefined;
+  const title = typeof to.title === "string" && to.title.trim() ? to.title.trim() : undefined;
+  const severity = bugSeverityLabel(to.severity);
+  return [code, title, severity].filter(Boolean).join(" · ") || undefined;
+}
+
+function caseTitleOf(
+  from?: Record<string, unknown> | null,
+  to?: Record<string, unknown> | null,
+): string | undefined {
+  if (typeof to?.title === "string" && to.title.trim()) return to.title.trim();
+  if (typeof from?.title === "string" && from.title.trim()) return from.title.trim();
+  return undefined;
+}
+
+function caseUpdateDetailOf(
+  from?: Record<string, unknown> | null,
+  to?: Record<string, unknown> | null,
+): string | undefined {
+  if (!to && !from) return undefined;
+  const parts = [
+    planFieldChange("العنوان", from?.title, to?.title, planTextValue),
+    planFieldChange("الوصف", from?.description, to?.description, planTextValue),
+  ].filter(Boolean);
+  if (parts.length) return parts.join(" · ");
+  return caseTitleOf(from, to);
+}
+
+function bugPromoteDetailOf(to?: Record<string, unknown> | null): string | undefined {
+  if (!to) return undefined;
+  const code =
+    typeof to.bugNumber === "number" || typeof to.bugNumber === "string"
+      ? formatBugCode(Number(to.bugNumber))
+      : undefined;
+  const title = typeof to.title === "string" && to.title.trim() ? to.title.trim() : undefined;
+  return [code, title].filter(Boolean).join(" · ") || undefined;
 }
 
 function personName(p?: Person | null) {
@@ -296,6 +422,62 @@ function detailOf(entry: Entry): string | undefined {
     const move = before && after ? `من ${before} إلى ${after}` : after;
     const reason = typeof to?.reason === "string" ? to.reason : undefined;
     return [move, reason].filter(Boolean).join(" · ");
+  }
+
+  if (action === "BUG_STATUS_CHANGE") {
+    const before = bugStatusLabel(from?.status);
+    const after = bugStatusLabel(to?.status);
+    const move = before && after ? `من ${before} إلى ${after}` : after;
+    const note = typeof to?.note === "string" && to.note.trim() ? to.note.trim() : undefined;
+    const identity = bugIdentityOf(from, to);
+    return [identity, move, note].filter(Boolean).join(" · ");
+  }
+
+  if (action === "CASE_RESULT" || action === "TEST_CASE_RESULT") {
+    const before = testResultLabel(from?.lastResult ?? from?.result);
+    const after = testResultLabel(to?.lastResult ?? to?.result);
+    const move = before && after ? `من ${before} إلى ${after}` : after ?? before;
+    return [caseTitleOf(from, to), move].filter(Boolean).join(" · ") || undefined;
+  }
+
+  if (action === "BUG_PROMOTE") {
+    return bugPromoteDetailOf(to);
+  }
+
+  if (action === "BUG_CREATE") {
+    return bugCreateDetailOf(to);
+  }
+
+  if (action === "BUG_UPDATE") {
+    return bugUpdateDetailOf(from, to);
+  }
+
+  if (action === "CASE_CREATE") {
+    return caseTitleOf(from, to);
+  }
+
+  if (action === "CASE_UPDATE" || action === "TEST_CASE_UPDATE") {
+    return caseUpdateDetailOf(from, to);
+  }
+
+  if (action === "CASE_PUBLISH") {
+    return caseTitleOf(from, to);
+  }
+
+  if (action === "SUITE_TICKET_LINK" || action === "TEST_SUITE_LINK") {
+    const title =
+      (typeof to?.title === "string" && to.title.trim() ? to.title.trim() : undefined) ||
+      (typeof to?.suiteTitle === "string" && to.suiteTitle.trim() ? to.suiteTitle.trim() : undefined);
+    return title;
+  }
+
+  if (action === "SUITE_TICKET_UNLINK" || action === "TEST_SUITE_UNLINK") {
+    const title =
+      (typeof from?.title === "string" && from.title.trim() ? from.title.trim() : undefined) ||
+      (typeof from?.suiteTitle === "string" && from.suiteTitle.trim()
+        ? from.suiteTitle.trim()
+        : undefined);
+    return title;
   }
 
   if (action === "TASK_STATUS_CHANGE") {

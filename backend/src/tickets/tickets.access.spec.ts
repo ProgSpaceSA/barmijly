@@ -119,6 +119,12 @@ const CASES: Case[] = [
     run: (s, u) => s.approveCompletion(TICKET_ID, u),
   },
   {
+    action: 'requestChanges',
+    status: TicketStatus.AWAITING_TESTING,
+    allowed: [UserRole.QA, UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD],
+    run: (s, u) => s.requestChanges(TICKET_ID, { reason: 'فشل اختبار تسجيل الدخول' }, u),
+  },
+  {
     action: 'approveCompletion (owner sign-off)',
     status: TicketStatus.AWAITING_OWNER_APPROVAL,
     allowed: [

@@ -4,9 +4,11 @@ import * as nodemailer from 'nodemailer';
 import {
   DEFAULT_DIGEST_TIMEZONE,
   DIGEST_DUE_SOON_DAYS,
+  DigestBugAlert,
   DigestTaskRef, DigestTicketRef, UserDigest,
   formatTicketCode,
 } from '../digest/digest.types';
+import { formatBugCode } from '../testing/test-code';
 
 const STATUS_LABELS_AR: Record<string, string> = {
   DRAFT: 'مسودة',
@@ -47,6 +49,7 @@ const ACCENT = {
   unread: '#6366F1',
   mention: '#7C3AED',
   task: '#0284C7',
+  bug: '#EF4444',
   overdue: '#DC2626',
   dueSoon: '#D97706',
   success: '#059669',
@@ -100,6 +103,7 @@ const TINT: Record<Accent, { bg: string; fg: string }> = {
   '#6366F1': { bg: '#EEF2FF', fg: '#4F46E5' },
   '#7C3AED': { bg: '#F5F3FF', fg: '#7C3AED' },
   '#0284C7': { bg: '#E0F2FE', fg: '#0284C7' },
+  '#EF4444': { bg: '#FEF2F2', fg: '#DC2626' },
   '#DC2626': { bg: '#FEF2F2', fg: '#DC2626' },
   '#D97706': { bg: '#FFFBEB', fg: '#B45309' },
   '#059669': { bg: '#ECFDF5', fg: '#047857' },
@@ -239,6 +243,33 @@ export class EmailService {
     }));
   }
 
+  async sendBugFiled(
+    to: string,
+    devFirstName: string,
+    bugTitle: string,
+    bugNumber: number,
+    bugUrl: string,
+    reporterName: string,
+    scope?: MailScope,
+  ) {
+    const code = formatBugCode(bugNumber);
+    await this.send(to, `خطأ جديد: ${bugTitle}`, this.layoutEmail({
+      preheader: `${reporterName} سجّل خطأ «${bugTitle}»`,
+      body: `
+        ${this.heading(`مرحباً ${this.escapeHtml(devFirstName)}`)}
+        ${this.bodyText(
+          `<strong style="color:${INK}">${this.escapeHtml(reporterName)}</strong> سجّل خطأاً جديداً على مشروعك.`,
+        )}
+        ${this.panel(`
+          <div style="margin-bottom:8px;">${this.codeChip(code, ACCENT.overdue)}</div>
+          <p style="margin:0;font-family:${FONT};color:${INK};font-size:17px;font-weight:700;line-height:1.5;">${this.escapeHtml(bugTitle)}</p>
+          ${this.scopeLines(scope)}
+        `)}
+      `,
+      cta: { href: bugUrl, label: 'عرض الخطأ' },
+    }));
+  }
+
   async sendStatusUpdate(
     to: string,
     ticketTitle: string,
@@ -284,6 +315,7 @@ export class EmailService {
     const stats = [
       { label: 'بانتظار إجراءك', value: actionTotal, accent: ACCENT.brand },
       { label: 'تعليقات غير مقروءة', value: digest.unreadTotal, accent: ACCENT.unread },
+      { label: 'أخطاء على تذاكرك', value: digest.bugAlertTotal || digest.bugAlerts.length, accent: ACCENT.bug },
       { label: 'إشارات إليك', value: digest.mentions.length, accent: ACCENT.mention },
       { label: 'مهام مفتوحة', value: digest.openTasks.length, accent: ACCENT.task },
       { label: 'متأخرة', value: digest.overdueTotal, accent: ACCENT.overdue },
@@ -331,6 +363,16 @@ export class EmailService {
                 ),
               )
               .join(''),
+          )
+        : '',
+      digest.bugAlerts.length
+        ? this.digestSection(
+            `أخطاء على تذاكرك (${digest.bugAlertTotal || digest.bugAlerts.length})`,
+            ACCENT.bug,
+            digest.bugAlerts.map((alert) => this.digestBugAlertRow(alert)).join(''),
+            digest.bugAlertTotal > digest.bugAlerts.length
+              ? `و${digest.bugAlertTotal - digest.bugAlerts.length} خطأ آخر — ${remainder}`
+              : undefined,
           )
         : '',
       digest.openTasks.length
@@ -586,25 +628,36 @@ ${preheader}
 
   private digestStatCards(stats: Array<{ label: string; value: number; accent: Accent }>) {
     if (stats.length === 0) return '';
-    const rows: string[] = [];
-    for (let i = 0; i < stats.length; i += 2) {
-      const pair = stats.slice(i, i + 2);
-      rows.push(`
-        <tr>
-          ${pair
-            .map(
-              (s) => `
-          <td width="${pair.length === 1 ? '100%' : '50%'}" valign="top" style="padding:4px;">
-            <div style="background:${SURFACE};border:1px solid ${LINE};border-right:3px solid ${s.accent};border-radius:12px;padding:14px 16px;">
+
+    const card = (s: { label: string; value: number; accent: Accent }) => `
+            <div style="background:${SURFACE};border:1px solid ${LINE};border-right:3px solid ${s.accent};border-radius:12px;padding:14px 16px;margin-bottom:8px;">
               <div style="font-family:${FONT};color:${s.accent};font-size:22px;font-weight:700;line-height:1;">${s.value}</div>
-              <div style="font-family:${FONT};color:${MUTED};font-size:13px;margin-top:6px;">${this.escapeHtml(s.label)}</div>
-            </div>
-          </td>`,
-            )
-            .join('')}
-        </tr>`);
+              <div style="font-family:${FONT};color:${MUTED};font-size:13px;margin-top:6px;line-height:1.4;">${this.escapeHtml(s.label)}</div>
+            </div>`;
+
+    if (stats.length === 1) {
+      return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 16px;"><tr><td style="padding:4px;">${card(stats[0])}</td></tr></table>`;
     }
-    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 16px;">${rows.join('')}</table>`;
+
+    if (stats.length === 3) {
+      const cell = (s: { label: string; value: number; accent: Accent }) =>
+        `<td width="33%" valign="top" style="padding:4px;">${card(s)}</td>`;
+      return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 16px;"><tr>${stats.map(cell).join('')}</tr></table>`;
+    }
+
+    // Two independent columns so a short label (e.g. «متأخرة») is not stretched
+    // to the height of a longer neighbour in the same table row.
+    const mid = Math.ceil(stats.length / 2);
+    const left = stats.slice(0, mid);
+    const right = stats.slice(mid);
+    const column = (items: typeof stats) => items.map(card).join('');
+
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 16px;">
+      <tr>
+        <td width="50%" valign="top" style="padding:4px;">${column(left)}</td>
+        <td width="50%" valign="top" style="padding:4px;">${column(right)}</td>
+      </tr>
+    </table>`;
   }
 
   private digestRow(accent: Accent, inner: string) {
@@ -667,6 +720,16 @@ ${preheader}
           <p style="margin:8px 0 0;font-family:${FONT};color:${MUTED};font-size:12px;">${this.escapeHtml(task.ticket.title)}</p>
           ${scope.length ? `<p style="margin:4px 0 0;font-family:${FONT};color:${MUTED};font-size:12px;">${scope.map((s) => this.escapeHtml(s)).join(' · ')}</p>` : ''}
           ${due ? `<p style="margin:4px 0 0;font-family:${FONT};color:${MUTED};font-size:12px;">${this.escapeHtml(due)}</p>` : ''}`,
+    );
+  }
+
+  private digestBugAlertRow(alert: DigestBugAlert) {
+    return this.digestRow(
+      ACCENT.bug,
+      `
+          ${this.digestTicketHeading(alert.ticket, ACCENT.bug)}
+          ${alert.bugCode ? `<div style="margin-top:8px;">${this.codeChip(alert.bugCode, ACCENT.bug)}</div>` : ''}
+          <p style="margin:8px 0 0;font-family:${FONT};color:${MUTED};font-size:13px;line-height:1.6;">${this.escapeHtml(alert.summary)}</p>`,
     );
   }
 

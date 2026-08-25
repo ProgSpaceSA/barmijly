@@ -12,6 +12,7 @@ import { CloseTicketDto } from './dto/close-ticket.dto';
 import { ForceStatusDto } from './dto/force-status.dto';
 import { SetAssigneeDto } from './dto/set-assignee.dto';
 import { PauseTicketDto, ResumeTicketDto } from './dto/pause-ticket.dto';
+import { RequestChangesDto } from './dto/request-changes.dto';
 import { AddDependencyDto } from './dto/add-dependency.dto';
 import { UpdateTicketPlanDto } from './dto/update-ticket-plan.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -106,6 +107,11 @@ export class TicketsController {
   @Patch(':id/approve-completion')
   approveCompletion(@Param('id') id: string, @CurrentUser() user: any) {
     return this.ticketsService.approveCompletion(id, user);
+  }
+
+  @Patch(':id/request-changes')
+  requestChanges(@Param('id') id: string, @Body() dto: RequestChangesDto, @CurrentUser() user: any) {
+    return this.ticketsService.requestChanges(id, dto, user);
   }
 
   @Get(':id/timeline')

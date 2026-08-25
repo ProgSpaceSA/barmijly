@@ -110,7 +110,7 @@ function DeveloperPerformance({ developers }: { developers: DeveloperStat[] }) {
       <CardHeader className="border-b pb-4">
         <CardTitle className="text-base">أداء المطورين</CardTitle>
         <CardDescription className="text-[11px]">
-          نسبة الإنجاز من التذاكر المُسندة — مرتبة حسب الأداء
+          عدد المكتملة ثم نسبة الإنجاز — مرتبة حسب الأداء
         </CardDescription>
         <CardAction>
           <div

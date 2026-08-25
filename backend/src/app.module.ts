@@ -21,6 +21,8 @@ import { ReportsModule } from './reports/reports.module';
 import { SignupRequestsModule } from './signup-requests/signup-requests.module';
 import { TasksModule } from './tasks/tasks.module';
 import { DigestModule } from './digest/digest.module';
+import { TestingModule } from './testing/testing.module';
+import { BugsModule } from './bugs/bugs.module';
 
 @Module({
   imports: [
@@ -48,6 +50,8 @@ import { DigestModule } from './digest/digest.module';
     SignupRequestsModule,
     TasksModule,
     DigestModule,
+    TestingModule,
+    BugsModule,
   ],
 })
 export class AppModule {}

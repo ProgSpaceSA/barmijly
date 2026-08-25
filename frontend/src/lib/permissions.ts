@@ -34,6 +34,12 @@ export type Action =
   | "attachment:moderate"
   | "task:manage"
   | "task:create-own"
+  | "test:read"
+  | "test:author"
+  | "test:execute"
+  | "bug:create"
+  | "bug:assign"
+  | "bug:promote"
   | "user:read"
   | "user:read-directory"
   | "user:manage"
@@ -60,7 +66,8 @@ const REQUESTER: Action[] = [
   "report:read",
 ];
 
-const SYSTEM_OWNER: Action[] = [...REQUESTER];
+// Read-only on the QA surface, and only inside their own systems.
+const SYSTEM_OWNER: Action[] = [...REQUESTER, "test:read"];
 
 const DEVELOPER: Action[] = [
   "ticket:read-internal",
@@ -76,6 +83,12 @@ const DEVELOPER: Action[] = [
   "comment:internal",
   "attachment:upload",
   "task:create-own",
+  "test:read",
+  "test:author",
+  "test:execute",
+  "bug:create",
+  "bug:assign",
+  "bug:promote",
   "structure:read-all",
   "report:read",
 ];
@@ -92,6 +105,12 @@ const QA: Action[] = [
   "comment:internal",
   "attachment:upload",
   "task:create-own",
+  "test:read",
+  "test:author",
+  "test:execute",
+  "bug:create",
+  "bug:assign",
+  "bug:promote",
   "structure:read-all",
   "report:read",
 ];
@@ -118,6 +137,12 @@ const PROJECT_MANAGER: Action[] = [
   "attachment:upload",
   "attachment:moderate",
   "task:manage",
+  "test:read",
+  "test:author",
+  "test:execute",
+  "bug:create",
+  "bug:assign",
+  "bug:promote",
   "user:read-directory",
   "user:manage-membership",
   "structure:read-all",
@@ -158,6 +183,8 @@ const SENIOR_MANAGEMENT: Action[] = [
   "comment:internal",
   "attachment:upload",
   "task:manage",
+  // Read-only: senior management watches the QA board, it does not run it.
+  "test:read",
   "user:read",
   "user:manage",
   "invitation:manage",

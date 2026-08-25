@@ -69,6 +69,26 @@ export const ACTIONS = [
    */
   'task:create-own',
 
+  // ---- Testing: suites, cases, results ---------------------------------
+  /** See the QA surface at all: suites, cases, bugs. Scope still applies. */
+  'test:read',
+  /** Write the tests: create/edit/publish/archive suites and cases, link tickets. */
+  'test:author',
+  /**
+   * Record a result on a case. Developers hold this too, but only on a case
+   * whose suite or ticket they are actually on — the row check lives in
+   * `testing.access.ts`, the same split as `task:create-own`.
+   */
+  'test:execute',
+
+  // ---- Bugs -------------------------------------------------------------
+  /** File a bug. */
+  'bug:create',
+  /** Change bug status / hand-off. */
+  'bug:assign',
+  /** Turn a bug into a BUG_FIX ticket. Creates a DRAFT — never bypasses approval. */
+  'bug:promote',
+
   // ---- People -----------------------------------------------------------
   'user:read',
   /** Read the dev/QA directory without full user admin. */
@@ -139,6 +159,8 @@ const SYSTEM_OWNER_ACTIONS: Action[] = [
   'ticket:accept-delivery',
   'comment:create',
   'attachment:upload',
+  // Read-only on the QA surface, and only inside their own systems (req.md §16).
+  'test:read',
   'report:read',
 ];
 
@@ -159,6 +181,13 @@ const DEVELOPER_ACTIONS: Action[] = [
   'comment:internal',
   'attachment:upload',
   'task:create-own',
+  // Reads, authors and runs the tests covering systems they can see.
+  'test:read',
+  'test:author',
+  'test:execute',
+  'bug:create',
+  'bug:assign',
+  'bug:promote',
   'structure:read-all',
   'report:read',
 ];
@@ -176,6 +205,13 @@ const QA_ACTIONS: Action[] = [
   'attachment:upload',
   // QA writes its own test tasks rather than asking a manager to file them.
   'task:create-own',
+  // The QA surface is QA's own: they author the suites, run them, and file bugs.
+  'test:read',
+  'test:author',
+  'test:execute',
+  'bug:create',
+  'bug:assign',
+  'bug:promote',
   'structure:read-all',
   'report:read',
 ];
@@ -202,6 +238,12 @@ const PROJECT_MANAGER_ACTIONS: Action[] = [
   'attachment:upload',
   'attachment:moderate',
   'task:manage',
+  'test:read',
+  'test:author',
+  'test:execute',
+  'bug:create',
+  'bug:assign',
+  'bug:promote',
   'user:read-directory',
   'user:manage-membership',
   'structure:read-all',
@@ -246,6 +288,8 @@ const SENIOR_MANAGEMENT_ACTIONS: Action[] = [
   'comment:internal',
   'attachment:upload',
   'task:manage',
+  // Read-only: senior management watches the QA board, it does not run it.
+  'test:read',
   'user:read',
   'user:manage',
   'invitation:manage',

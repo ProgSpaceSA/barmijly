@@ -76,6 +76,8 @@ enum NotificationType {
   EXECUTION_COMPLETED
   CLOSURE_APPROVAL_REQUESTED
   TASK_ASSIGNED
+  BUG_ASSIGNED
+  TEST_CASE_FAILED
 }
 
 enum TaskStatus {
@@ -104,20 +106,59 @@ enum SignupRequestStatus {
   REJECTED
 }
 
+/// Authoring state. Separate from TestResult on purpose: "written but not yet
+/// run" and "still being drafted" are different things, and archiving a stale
+/// case must not destroy its last result.
+enum TestState {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+/// Current execution result. NOT_RUN is the default for a freshly published case.
+enum TestResult {
+  NOT_RUN
+  PASS
+  FAIL
+  BLOCKED
+  SKIPPED
+}
+
+/// Impact, judged by whoever found it. Scheduling urgency stays in `Priority`.
+enum BugSeverity {
+  BLOCKER
+  CRITICAL
+  MAJOR
+  MINOR
+  TRIVIAL
+}
+
+enum BugStatus {
+  OPEN
+  IN_PROGRESS
+  FIXED
+  VERIFIED
+  CLOSED
+  WONT_FIX
+  DUPLICATE
+}
+
 model Company {
-  id          String       @id @default(uuid())
-  name        String
-  nameAr      String?
-  domain      String?
-  logoUrl     String?
-  isActive    Boolean      @default(true)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  departments Department[]
-  systems     System[]
-  users       User[]
+  id            String        @id @default(uuid())
+  name          String
+  nameAr        String?
+  domain        String?
+  logoUrl       String?
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  departments   Department[]
+  systems       System[]
+  users         User[]
   userCompanies UserCompany[]
-  tickets     Ticket[]
+  tickets       Ticket[]
+  testSuites    TestSuite[]
+  bugs          Bug[]
 }
 
 model Department {
@@ -145,39 +186,49 @@ model System {
   updatedAt   DateTime     @updatedAt
   tickets     Ticket[]
   userSystems UserSystem[]
+  testSuites  TestSuite[]
+  bugs        Bug[]
 }
 
 model User {
-  id                 String             @id @default(uuid())
-  email              String             @unique
-  password           String?
-  firstName          String
-  lastName           String
-  role               UserRole
-  companyId          String?
-  company            Company?           @relation(fields: [companyId], references: [id])
-  departmentId       String?
-  department         Department?        @relation(fields: [departmentId], references: [id])
-  isActive           Boolean            @default(true)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-  systems            UserSystem[]
-  ticketsCreated     Ticket[]           @relation("TicketCreator")
-  ticketsOwned       Ticket[]           @relation("TicketOwner")
-  assignments        TicketAssignment[]
-  approvals          TicketApproval[]
-  comments           TicketComment[]
-  notifications      Notification[]
-  invitationsSent    EmailInvitation[]  @relation("InvitationSender")
-  invitationReceived EmailInvitation?   @relation("InvitationReceiver")
-  passwordResetTokens PasswordResetToken[]
-  companies           UserCompany[]
-  auditLogs          AuditLog[]
+  id                     String                  @id @default(uuid())
+  email                  String                  @unique
+  password               String?
+  firstName              String
+  lastName               String
+  role                   UserRole
+  companyId              String?
+  company                Company?                @relation(fields: [companyId], references: [id])
+  departmentId           String?
+  department             Department?             @relation(fields: [departmentId], references: [id])
+  isActive               Boolean                 @default(true)
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  systems                UserSystem[]
+  ticketsCreated         Ticket[]                @relation("TicketCreator")
+  ticketsOwned           Ticket[]                @relation("TicketOwner")
+  assignments            TicketAssignment[]
+  approvals              TicketApproval[]
+  comments               TicketComment[]
+  notifications          Notification[]
+  invitationsSent        EmailInvitation[]       @relation("InvitationSender")
+  invitationReceived     EmailInvitation?        @relation("InvitationReceiver")
+  passwordResetTokens    PasswordResetToken[]
+  companies              UserCompany[]
+  auditLogs              AuditLog[]
   signupRequestsReviewed SignupRequest[]
-  tasksAssigned      TicketTask[] @relation("TaskAssignee")
-  tasksCreated       TicketTask[] @relation("TaskCreator")
-  statusChanges      TicketStatusHistory[] @relation("StatusHistoryChanger")
-  dependenciesCreated TicketDependency[] @relation("DependencyCreator")
+  tasksAssigned          TicketTask[]            @relation("TaskAssignee")
+  tasksCreated           TicketTask[]            @relation("TaskCreator")
+  statusChanges          TicketStatusHistory[]   @relation("StatusHistoryChanger")
+  dependenciesCreated    TicketDependency[]      @relation("DependencyCreator")
+  suitesOwned            TestSuite[]             @relation("SuiteOwner")
+  suiteTicketLinks       TestSuiteTicket[]       @relation("SuiteTicketLinker")
+  casesAssigned          TestCase[]              @relation("CaseAssignee")
+  casesRun               TestCase[]              @relation("CaseRunner")
+  caseResultChanges      TestCaseResultHistory[] @relation("CaseResultChanger")
+  bugsReported           Bug[]                   @relation("BugReporter")
+  bugsAssigned           Bug[]                   @relation("BugAssignee")
+  bugStatusChanges       BugStatusHistory[]      @relation("BugStatusChanger")
 }
 
 model UserSystem {
@@ -256,6 +307,9 @@ model Ticket {
   tasks                TicketTask[]
   blocking             TicketDependency[]    @relation("BlockingTicket")
   blockedBy            TicketDependency[]    @relation("BlockedTicket")
+  testCases            TestCase[]
+  bugs                 Bug[]                 @relation("BugTicket")
+  suiteLinks           TestSuiteTicket[]
 }
 
 /// "This ticket cannot start until that one is done."
@@ -264,32 +318,32 @@ model Ticket {
 /// meaning, and nothing read it. Edges are checked for cycles before they are
 /// written, so the graph stays a DAG.
 model TicketDependency {
-  id               String   @id @default(uuid())
+  id               String               @id @default(uuid())
   blockingTicketId String
-  blockingTicket   Ticket   @relation("BlockingTicket", fields: [blockingTicketId], references: [id], onDelete: Cascade)
+  blockingTicket   Ticket               @relation("BlockingTicket", fields: [blockingTicketId], references: [id], onDelete: Cascade)
   blockedTicketId  String
-  blockedTicket    Ticket   @relation("BlockedTicket", fields: [blockedTicketId], references: [id], onDelete: Cascade)
+  blockedTicket    Ticket               @relation("BlockedTicket", fields: [blockedTicketId], references: [id], onDelete: Cascade)
   type             TicketDependencyType @default(BLOCKS)
   createdById      String
-  createdBy        User     @relation("DependencyCreator", fields: [createdById], references: [id])
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdBy        User                 @relation("DependencyCreator", fields: [createdById], references: [id])
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
   @@unique([blockingTicketId, blockedTicketId])
   @@index([blockedTicketId])
 }
 
 model TicketComment {
-  id          String            @id @default(uuid())
+  id          String             @id @default(uuid())
   content     String
-  visibility  CommentVisibility @default(PUBLIC)
+  visibility  CommentVisibility  @default(PUBLIC)
   ticketId    String
-  ticket      Ticket            @relation(fields: [ticketId], references: [id])
+  ticket      Ticket             @relation(fields: [ticketId], references: [id])
   authorId    String
-  author      User              @relation(fields: [authorId], references: [id])
+  author      User               @relation(fields: [authorId], references: [id])
   mentions    String[]
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
   attachments TicketAttachment[]
 }
 
@@ -305,6 +359,15 @@ model TicketAttachment {
   comment      TicketComment? @relation(fields: [commentId], references: [id])
   taskId       String?
   task         TicketTask?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  testCaseId   String?
+  testCase     TestCase?      @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  bugId        String?
+  bug          Bug?           @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  testStepId   String?
+  testStep     TestStep?      @relation(fields: [testStepId], references: [id], onDelete: Cascade)
+  /// Suite-level reference docs covering the whole suite (any file type).
+  suiteId      String?
+  suite        TestSuite?     @relation(fields: [suiteId], references: [id], onDelete: Cascade)
   uploadedById String
   createdAt    DateTime       @default(now())
 }
@@ -427,8 +490,8 @@ model PasswordResetToken {
 model UserCompany {
   userId    String
   companyId String
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 
   @@id([userId, companyId])
@@ -469,4 +532,180 @@ model TicketTask {
 
   @@index([ticketId, status])
   @@index([assignedToId, status])
+}
+
+/// A named group of test cases hanging off exactly one system, plus any number
+/// of tickets it exercises. Scope (who may see it) comes from the system and
+/// company, so the existing ticket scoping rules apply unchanged.
+model TestSuite {
+  id          String    @id @default(uuid())
+  suiteNumber Int       @unique @default(autoincrement())
+  title       String
+  description String?
+  systemId    String
+  system      System    @relation(fields: [systemId], references: [id])
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id])
+  ownerId     String
+  owner       User      @relation("SuiteOwner", fields: [ownerId], references: [id])
+  state       TestState @default(DRAFT)
+  isArchived  Boolean   @default(false)
+  /// Rollup over this suite's ACTIVE cases. Single writer: TestRollupService.
+  lastRunAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  cases       TestCase[]
+  ticketLinks TestSuiteTicket[]
+  bugs        Bug[]
+  attachments TicketAttachment[]
+
+  @@index([systemId, state])
+  @@index([companyId])
+}
+
+/// "This suite exercises that ticket." A suite covering authentication links
+/// both the backend and the frontend auth tickets.
+model TestSuiteTicket {
+  suiteId    String
+  suite      TestSuite @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+  ticketId   String
+  ticket     Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  linkedById String
+  linkedBy   User      @relation("SuiteTicketLinker", fields: [linkedById], references: [id])
+  createdAt  DateTime  @default(now())
+
+  @@id([suiteId, ticketId])
+  @@index([ticketId])
+}
+
+model TestCase {
+  id             String     @id @default(uuid())
+  caseNumber     Int        @unique @default(autoincrement())
+  suiteId        String
+  suite          TestSuite  @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+  /// The one ticket this case is primarily about. The suite may link more.
+  ticketId       String?
+  ticket         Ticket?    @relation(fields: [ticketId], references: [id])
+  assignedToId   String?
+  assignedTo     User?      @relation("CaseAssignee", fields: [assignedToId], references: [id])
+  title          String
+  description    String?
+  preconditions  String?
+  expectedResult String
+  actualResult   String?
+  state          TestState  @default(DRAFT)
+  lastResult     TestResult @default(NOT_RUN)
+  lastRunAt      DateTime?
+  lastRunById    String?
+  lastRunBy      User?      @relation("CaseRunner", fields: [lastRunById], references: [id])
+  /// Manual ordering inside the suite panel.
+  order          Int        @default(0)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  steps         TestStep[]              @relation("CaseSteps")
+  bugs          Bug[]
+  resultHistory TestCaseResultHistory[]
+  /// Case-level files only — step screenshots hang off TestStep.attachments.
+  attachments   TicketAttachment[]
+
+  @@index([suiteId, order])
+  @@index([ticketId])
+  @@index([assignedToId, lastResult])
+}
+
+/// Ordered step row — shared shape for test-case execution steps and bug repro
+/// steps. Exactly one of testCaseId / bugId is set. Attachments (typically
+/// screenshots) belong to the step, not the parent case/bug.
+model TestStep {
+  id         String    @id @default(uuid())
+  testCaseId String?
+  testCase   TestCase? @relation("CaseSteps", fields: [testCaseId], references: [id], onDelete: Cascade)
+  bugId      String?
+  bug        Bug?      @relation("BugSteps", fields: [bugId], references: [id], onDelete: Cascade)
+  order      Int       @default(0)
+  body       String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  attachments TicketAttachment[]
+
+  @@index([testCaseId, order])
+  @@index([bugId, order])
+}
+
+/// Mirrors TicketStatusHistory: every result change is auditable.
+model TestCaseResultHistory {
+  id          String      @id @default(uuid())
+  testCaseId  String
+  testCase    TestCase    @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  fromResult  TestResult?
+  toResult    TestResult
+  changedById String
+  changedBy   User        @relation("CaseResultChanger", fields: [changedById], references: [id])
+  note        String?
+  createdAt   DateTime    @default(now())
+
+  @@index([testCaseId, createdAt])
+}
+
+model Bug {
+  id               String      @id @default(uuid())
+  bugNumber        Int         @unique @default(autoincrement())
+  /// Null when the bug was filed straight from the bugs page.
+  testCaseId       String?
+  testCase         TestCase?   @relation(fields: [testCaseId], references: [id])
+  suiteId          String?
+  suite            TestSuite?  @relation(fields: [suiteId], references: [id])
+  /// Denormalised on purpose: a standalone bug has no case to inherit scope
+  /// from, and the list page filters on both constantly.
+  systemId         String
+  system           System      @relation(fields: [systemId], references: [id])
+  companyId        String
+  company          Company     @relation(fields: [companyId], references: [id])
+  /// Set by "promote to ticket".
+  ticketId         String?
+  ticket           Ticket?     @relation("BugTicket", fields: [ticketId], references: [id])
+  reportedById     String
+  reportedBy       User        @relation("BugReporter", fields: [reportedById], references: [id])
+  assignedToId     String?
+  assignedTo       User?       @relation("BugAssignee", fields: [assignedToId], references: [id])
+  title            String
+  description      String
+  expectedBehavior String?
+  actualBehavior   String?
+  environment      String?
+  severity         BugSeverity
+  priority         Priority?
+  status           BugStatus   @default(OPEN)
+  detectedAt       DateTime    @default(now())
+  resolvedAt       DateTime?
+  isArchived       Boolean     @default(false)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  steps         TestStep[]         @relation("BugSteps")
+  attachments   TicketAttachment[]
+  statusHistory BugStatusHistory[]
+
+  @@index([status, severity])
+  @@index([systemId])
+  @@index([assignedToId, status])
+  @@index([ticketId])
+  @@index([testCaseId])
+}
+
+model BugStatusHistory {
+  id          String     @id @default(uuid())
+  bugId       String
+  bug         Bug        @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  fromStatus  BugStatus?
+  toStatus    BugStatus
+  changedById String
+  changedBy   User       @relation("BugStatusChanger", fields: [changedById], references: [id])
+  note        String?
+  createdAt   DateTime   @default(now())
+
+  @@index([bugId, createdAt])
 }

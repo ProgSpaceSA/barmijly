@@ -109,13 +109,21 @@ describe("developerInitials", () => {
 });
 
 describe("rankDevelopers", () => {
-  it("puts active developers first, then completion, then fewer overdue", () => {
+  it("puts active developers first, then completed volume, then completion rate", () => {
     expect(rankDevelopers(sampleDevelopers).map((d) => d.id)).toEqual([
       "high",
       "tie",
       "low",
       "idle",
     ]);
+  });
+
+  it("ranks higher completed volume above a perfect rate on fewer tickets", () => {
+    const devs: DeveloperStat[] = [
+      { id: "one", name: "مطور أ", assigned: 1, completed: 1, overdue: 0, completionRate: 100 },
+      { id: "many", name: "مطور ب", assigned: 8, completed: 7, overdue: 1, completionRate: 88 },
+    ];
+    expect(rankDevelopers(devs).map((d) => d.id)).toEqual(["many", "one"]);
   });
 
   it("drops idle rows when hideIdle is on", () => {

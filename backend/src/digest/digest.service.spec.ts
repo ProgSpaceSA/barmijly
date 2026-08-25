@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
-import { CommentVisibility, TaskStatus, TicketStatus, UserRole } from '@prisma/client';
+import { CommentVisibility, NotificationType, TaskStatus, TicketStatus, UserRole } from '@prisma/client';
 import { DigestService, DIGEST_JOB_NAME } from './digest.service';
 import { DigestRecipient, formatTicketCode } from './digest.types';
 import { PrismaService } from '../prisma/prisma.service';
@@ -183,7 +183,8 @@ describe('DigestService', () => {
       userSystem: { findMany: jest.fn().mockResolvedValue([]) },
       ticketComment: { findMany: jest.fn().mockResolvedValue([]) },
       ticketTask: { findMany: jest.fn().mockResolvedValue([]) },
-      notification: { groupBy: jest.fn().mockResolvedValue([]) },
+      bug: { findMany: jest.fn().mockResolvedValue([]) },
+      notification: { groupBy: jest.fn().mockResolvedValue([]), findMany: jest.fn().mockResolvedValue([]) },
       ticket: {
         findMany: jest.fn().mockResolvedValue([]),
         groupBy: jest.fn().mockResolvedValue([]),
@@ -464,6 +465,82 @@ describe('DigestService', () => {
       expect(prisma.notification.groupBy.mock.calls[0][0].where.createdAt).toEqual({
         gte: expect.any(Date),
       });
+    });
+
+    it('includes bugs filed on assigned tickets in the lookback window', async () => {
+      prisma.bug.findMany.mockResolvedValue([
+        {
+          id: 'bug-1',
+          bugNumber: 5,
+          title: 'زر الحفظ لا يعمل',
+          createdAt: new Date('2026-08-18T10:00:00Z'),
+          ticket: ticketRow(),
+          reportedBy: { firstName: 'ليان', lastName: 'الغامدي' },
+        },
+      ]);
+
+      const digest = await service.buildDigest(DEVELOPER);
+
+      expect(digest.bugAlerts).toHaveLength(1);
+      expect(digest.bugAlerts[0].bugCode).toBe('BUG-0005');
+      expect(digest.bugAlerts[0].summary).toContain('زر الحفظ لا يعمل');
+      expect(digest.bugAlertTotal).toBe(1);
+      expect(digest.isEmpty).toBe(false);
+      expect(prisma.bug.findMany.mock.calls[0][0].where.createdAt).toEqual({
+        gte: expect.any(Date),
+      });
+    });
+
+    it('includes linked bugs from notifications even when already read in-app', async () => {
+      prisma.notification.findMany.mockResolvedValue([
+        {
+          id: 'note-1',
+          ticketId: 'ticket-1',
+          body: 'ليان سجّل الخطأ «زر الحفظ لا يعمل» على تذكرتك',
+          metadata: { bugId: 'bug-9', bugNumber: 9 },
+          createdAt: new Date('2026-08-18T10:00:00Z'),
+        },
+      ]);
+      prisma.ticket.findMany.mockImplementation(({ where }: any) =>
+        Promise.resolve(where.id?.in ? [ticketRow()] : []),
+      );
+
+      const digest = await service.buildDigest(DEVELOPER);
+
+      expect(prisma.notification.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: DEVELOPER.id,
+            type: NotificationType.BUG_ASSIGNED,
+            ticketId: { not: null },
+          }),
+        }),
+      );
+      expect(prisma.notification.findMany.mock.calls[0][0].where.isRead).toBeUndefined();
+      expect(digest.bugAlerts).toHaveLength(1);
+      expect(digest.bugAlerts[0].bugCode).toBe('BUG-0009');
+      expect(digest.bugAlerts[0].summary).toContain('زر الحفظ لا يعمل');
+      expect(digest.bugAlertTotal).toBe(1);
+      expect(digest.isEmpty).toBe(false);
+    });
+
+    it('drops bug alerts for tickets outside the recipient scope', async () => {
+      prisma.notification.findMany.mockResolvedValue([
+        {
+          id: 'note-1',
+          ticketId: 'out-of-scope',
+          body: 'خطأ على تذكرة لا يراها المطور',
+          metadata: { bugId: 'bug-9', bugNumber: 9 },
+          createdAt: new Date('2026-08-18T10:00:00Z'),
+        },
+      ]);
+      prisma.ticket.findMany.mockResolvedValue([]);
+
+      const digest = await service.buildDigest(DEVELOPER);
+
+      expect(digest.bugAlerts).toEqual([]);
+      expect(digest.bugAlertTotal).toBe(0);
+      expect(digest.isEmpty).toBe(true);
     });
 
     it('formats ticket codes the same way the app does', async () => {

@@ -59,7 +59,7 @@ export function EstimateChip({
 
   if (inline) {
     return (
-      <span className={`inline-flex flex-wrap items-center text-xs leading-none ${className}`} style={{ color: "var(--muted-foreground)" }}>
+      <span className={`inline-flex flex-wrap items-center gap-x-1 gap-y-1 text-xs leading-snug ${className}`} style={{ color: "var(--muted-foreground)" }}>
         {parts.map((part, i) => (
           <Fragment key={i}>
             {i > 0 && (

@@ -39,6 +39,7 @@ APPROVED → assign → SCHEDULED (with developer metadata)
 SCHEDULED/APPROVED → start → IN_PROGRESS
 IN_PROGRESS → submit-for-testing → AWAITING_TESTING
 AWAITING_TESTING → approve-completion → AWAITING_OWNER_APPROVAL
+AWAITING_TESTING → request-changes → IN_PROGRESS
 AWAITING_OWNER_APPROVAL → approve-completion → COMPLETED
 COMPLETED → close → CLOSED
 ```

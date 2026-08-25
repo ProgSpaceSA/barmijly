@@ -75,7 +75,7 @@ function preview(digest: Awaited<ReturnType<DigestService['buildDigest']>>) {
     `  ${digest.recipient.firstName} ${digest.recipient.lastName}  ${digest.recipient.role}`,
   );
   console.log(
-    `  actions=${actionTotal}  mentions=${digest.mentions.length}  unread=${digest.unreadTotal}  tasks=${digest.openTasks.length}  overdue=${digest.overdue.length}  dueSoon=${digest.dueSoon.length}`,
+    `  actions=${actionTotal}  mentions=${digest.mentions.length}  unread=${digest.unreadTotal}  bugs=${digest.bugAlertTotal}  tasks=${digest.openTasks.length}  overdue=${digest.overdue.length}  dueSoon=${digest.dueSoon.length}`,
   );
   for (const group of digest.actionGroups) {
     console.log(`    · ${group.label} (${group.total})`);
