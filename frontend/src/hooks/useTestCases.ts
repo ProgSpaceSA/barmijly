@@ -11,50 +11,71 @@ import { TESTING_LABELS } from "@/lib/constants";
  *
  * Structural writes settle through `refreshTestingWorkspace` (awaited refetch)
  * so the suite rail and case pane never sit on stale cache until a hard refresh.
+ *
+ * Field autosaves must never write the *whole* case row into the cache. A
+ * debounced title PATCH that left the wire before a result/bug/ticket write
+ * can land afterward and overwrite lastResult, bugs, or ticket until refresh.
+ * Only the keys that mutation actually changed are applied.
  */
 async function settleCaseWrite(qc: QueryClient, suiteId?: string, caseId?: string) {
   await refreshTestingWorkspace(qc, { suiteId, caseId });
 }
 
-/**
- * Case PATCH/publish/result responses embed a full `bugs` snapshot. Never let
- * that overwrite the pane — a concurrent bug link/create loses to a stale
- * field-save response and the list stays empty until a hard refresh.
- */
-function mergeCaseDetail(
-  old: Record<string, unknown> | undefined,
-  updated: Record<string, unknown>,
-): Record<string, unknown> {
-  if (!old) return updated;
-  const { bugs: _ignoreBugs, _count: nextCount, ...rest } = updated as {
-    bugs?: unknown;
-    _count?: Record<string, unknown>;
-  };
-  const oldCount = old._count as Record<string, unknown> | undefined;
-  return {
-    ...old,
-    ...rest,
-    bugs: old.bugs,
-    _count:
-      nextCount || oldCount
-        ? { ...oldCount, ...nextCount, bugs: oldCount?.bugs ?? nextCount?.bugs }
-        : undefined,
-  };
+/** Apply a narrow patch onto the case detail cache — never replace the row. */
+function applyCaseDetailPatch(
+  qc: QueryClient,
+  caseId: string,
+  patch: Record<string, unknown>,
+  fallback?: Record<string, unknown>,
+) {
+  qc.setQueryData(qk.cases.detail(caseId), (old: Record<string, unknown> | undefined) => {
+    if (!old) return fallback ? { ...fallback, ...patch } : { id: caseId, ...patch };
+    return { ...old, ...patch };
+  });
 }
 
-/** Patch the case inside the suite workspace list so the panel updates instantly. */
-function patchSuiteCase(qc: QueryClient, suiteId: string | undefined, updated: { id: string }) {
+/**
+ * Patch only the fields this mutation owns onto the suite rail row.
+ * Spreading a full CASE_INCLUDE response here races sibling writes.
+ */
+function patchSuiteCase(
+  qc: QueryClient,
+  suiteId: string | undefined,
+  caseId: string,
+  patch: Record<string, unknown>,
+) {
   if (!suiteId) return;
   qc.setQueryData(qk.suites.detail(suiteId), (old: { cases?: { id: string }[] } | undefined) => {
     if (!old?.cases) return old;
-    const exists = old.cases.some((c) => c.id === updated.id);
+    if (!old.cases.some((c) => c.id === caseId)) return old;
     return {
       ...old,
-      cases: exists
-        ? old.cases.map((c) => (c.id === updated.id ? { ...c, ...updated } : c))
-        : [updated, ...old.cases],
+      cases: old.cases.map((c) => (c.id === caseId ? { ...c, ...patch } : c)),
     };
   });
+}
+
+/** Map a PATCH body onto cache fields, including FK → relation pairs. */
+function fieldsFromCasePatch(
+  updated: Record<string, unknown>,
+  vars: Record<string, unknown>,
+): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  for (const key of Object.keys(vars)) {
+    if (key === "id") continue;
+    if (key === "ticketId") {
+      patch.ticketId = updated.ticketId ?? vars.ticketId ?? null;
+      patch.ticket = updated.ticket ?? null;
+      continue;
+    }
+    if (key === "assignedToId") {
+      patch.assignedToId = updated.assignedToId ?? vars.assignedToId ?? null;
+      patch.assignedTo = updated.assignedTo ?? null;
+      continue;
+    }
+    if (key in updated) patch[key] = updated[key];
+  }
+  return patch;
 }
 
 function removeSuiteCase(qc: QueryClient, suiteId: string | undefined, caseId: string) {
@@ -115,15 +136,14 @@ export function useCaseActions(suiteId?: string, caseId?: string) {
       mutationFn: ({ id, ...data }: { id: string } & Record<string, unknown>) =>
         api.patch(`/test-cases/${id}`, data).then((r) => r.data),
       onSuccess: async (
-        updated: { id: string },
+        updated: { id: string } & Record<string, unknown>,
         vars: { id: string } & Record<string, unknown>,
       ) => {
-        qc.setQueryData(qk.cases.detail(updated.id), (old: Record<string, unknown> | undefined) =>
-          mergeCaseDetail(old, updated as Record<string, unknown>),
-        );
-        patchSuiteCase(qc, suiteId, updated);
-        // Field autosaves must NOT invalidate the suite — that races bug links
-        // and makes every action on the workspace feel stale.
+        const patch = fieldsFromCasePatch(updated, vars);
+        applyCaseDetailPatch(qc, updated.id, patch, updated);
+        patchSuiteCase(qc, suiteId, updated.id, patch);
+        // Field autosaves must NOT refetch the suite — that races bug links.
+        // Ticket links need a settle so the chip and ticket testing section match.
         if ("ticketId" in vars) {
           toast.success(
             vars.ticketId ? TESTING_LABELS.caseTicketLinked : TESTING_LABELS.caseTicketCleared,
@@ -135,11 +155,10 @@ export function useCaseActions(suiteId?: string, caseId?: string) {
     }),
     publish: useMutation({
       mutationFn: (id: string) => api.post(`/test-cases/${id}/publish`).then((r) => r.data),
-      onSuccess: async (updated: { id: string }) => {
-        qc.setQueryData(qk.cases.detail(updated.id), (old: Record<string, unknown> | undefined) =>
-          mergeCaseDetail(old, updated as Record<string, unknown>),
-        );
-        patchSuiteCase(qc, suiteId, updated);
+      onSuccess: async (updated: { id: string; state?: string }) => {
+        const patch = { state: updated.state ?? "ACTIVE" };
+        applyCaseDetailPatch(qc, updated.id, patch, updated as Record<string, unknown>);
+        patchSuiteCase(qc, suiteId, updated.id, patch);
         await settleCaseWrite(qc, suiteId, updated.id);
         toast.success(TESTING_LABELS.casePublished);
       },
@@ -148,11 +167,25 @@ export function useCaseActions(suiteId?: string, caseId?: string) {
     recordResult: useMutation({
       mutationFn: ({ id, ...data }: { id: string } & Record<string, unknown>) =>
         api.post(`/test-cases/${id}/result`, data).then((r) => r.data),
-      onSuccess: async (updated: { id: string }) => {
-        qc.setQueryData(qk.cases.detail(updated.id), (old: Record<string, unknown> | undefined) =>
-          mergeCaseDetail(old, updated as Record<string, unknown>),
-        );
-        patchSuiteCase(qc, suiteId, updated);
+      onSuccess: async (
+        updated: {
+          id: string;
+          lastResult?: string;
+          lastRunAt?: string | null;
+          lastRunBy?: unknown;
+          lastRunById?: string | null;
+          actualResult?: string | null;
+        },
+      ) => {
+        const patch: Record<string, unknown> = {
+          lastResult: updated.lastResult,
+          lastRunAt: updated.lastRunAt,
+          lastRunBy: updated.lastRunBy,
+          lastRunById: updated.lastRunById,
+        };
+        if (updated.actualResult !== undefined) patch.actualResult = updated.actualResult;
+        applyCaseDetailPatch(qc, updated.id, patch, updated as Record<string, unknown>);
+        patchSuiteCase(qc, suiteId, updated.id, patch);
         await settleCaseWrite(qc, suiteId, updated.id);
       },
       onError: failTesting,

@@ -171,11 +171,36 @@ function bugIdentityOf(
   return [code, title].filter(Boolean).join(" · ") || undefined;
 }
 
+/** True when the only meaningful diff is ticketId (legacy BUG_UPDATE rows). */
+function isBugTicketLinkOnly(
+  from?: Record<string, unknown> | null,
+  to?: Record<string, unknown> | null,
+): boolean {
+  if ((from?.ticketId ?? null) === (to?.ticketId ?? null)) return false;
+  const keys = new Set([
+    ...Object.keys(from ?? {}),
+    ...Object.keys(to ?? {}),
+  ]);
+  for (const key of keys) {
+    if (key === "ticketId" || key === "bugNumber") continue;
+    if ((from?.[key] ?? null) !== (to?.[key] ?? null)) return false;
+  }
+  return true;
+}
+
 function bugUpdateDetailOf(
   from?: Record<string, unknown> | null,
   to?: Record<string, unknown> | null,
 ): string | undefined {
   if (!to && !from) return undefined;
+  const identity = bugIdentityOf(from, to);
+
+  // Pure ticket link/unlink — name the bug only. Saying «رُبط بتذكرة (BUG-…)»
+  // on the ticket page reads like the ticket title is the bug title.
+  if (isBugTicketLinkOnly(from, to)) {
+    return identity;
+  }
+
   const parts: (string | undefined)[] = [
     planFieldChange("العنوان", from?.title, to?.title, planTextValue),
     planFieldChange("الوصف", from?.description, to?.description, planTextValue),
@@ -189,15 +214,13 @@ function bugUpdateDetailOf(
     planFieldChange("حالة الخطأ", from?.status, to?.status, bugStatusLabel),
   ];
 
-  const identity = bugIdentityOf(from, to);
-
   if ((from?.ticketId ?? null) !== (to?.ticketId ?? null)) {
     if (to?.ticketId && !from?.ticketId) {
-      parts.push(identity ? `رُبط بتذكرة (${identity})` : "رُبط بتذكرة");
+      parts.push("رُبط بهذه التذكرة");
     } else if (!to?.ticketId && from?.ticketId) {
-      parts.push(identity ? `أُزيل الربط بالتذكرة (${identity})` : "أُزيل الربط بالتذكرة");
+      parts.push("أُزيل الربط بهذه التذكرة");
     } else {
-      parts.push(identity ? `غُيّر ربط التذكرة (${identity})` : "غُيّر ربط التذكرة");
+      parts.push("غُيّر ربط التذكرة");
     }
   }
   if ((from?.testCaseId ?? null) !== (to?.testCaseId ?? null)) {
@@ -221,7 +244,21 @@ function bugUpdateDetailOf(
   }
 
   const cleaned = parts.filter(Boolean);
-  if (cleaned.length) return cleaned.join(" · ");
+  if (cleaned.length) {
+    // Keep the bug identity visible when the diff is only about links/assignment.
+    if (
+      !cleaned.some((p) => typeof p === "string" && p.startsWith("العنوان")) &&
+      identity &&
+      cleaned.every(
+        (p) =>
+          typeof p === "string" &&
+          (p.includes("تذكرة") || p.includes("حالة اختبار") || p.includes("الإسناد")),
+      )
+    ) {
+      return [identity, ...cleaned].join(" · ");
+    }
+    return cleaned.join(" · ");
+  }
 
   return identity;
 }
@@ -448,6 +485,10 @@ function detailOf(entry: Entry): string | undefined {
     return bugCreateDetailOf(to);
   }
 
+  if (action === "BUG_TICKET_LINK" || action === "BUG_TICKET_UNLINK") {
+    return bugIdentityOf(from, to);
+  }
+
   if (action === "BUG_UPDATE") {
     return bugUpdateDetailOf(from, to);
   }
@@ -506,7 +547,15 @@ function detailOf(entry: Entry): string | undefined {
   return undefined;
 }
 
-function actionLabel(action: string): string {
+function actionLabel(action: string, entry?: Entry): string {
+  if (
+    entry?.action === "BUG_UPDATE" &&
+    isBugTicketLinkOnly(entry.from, entry.to)
+  ) {
+    return entry.to?.ticketId
+      ? TIMELINE_LABELS.BUG_TICKET_LINK
+      : TIMELINE_LABELS.BUG_TICKET_UNLINK;
+  }
   return TIMELINE_LABELS[action as keyof typeof TIMELINE_LABELS] ?? action;
 }
 
@@ -519,7 +568,7 @@ function EntryLine({
   ticketId: string;
   currentUserId?: string;
 }) {
-  const verb = actionLabel(entry.action);
+  const verb = actionLabel(entry.action, entry);
   const subjects = entry.subjects ?? [];
   const actor = entry.actor;
   const relation = resolveRelation(entry, ticketId);

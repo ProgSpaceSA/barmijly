@@ -26,6 +26,9 @@ export function settleSuiteWrite(qc: QueryClient, suiteId?: string) {
  * `invalidate` on `["suites"]` / `["cases"]` would kick parallel refetches of
  * the same detail keys we then `refetchQueries`, and the loser leaves the pane
  * stale until a hard refresh.
+ *
+ * Always `await` the targeted refetches. Fire-and-forget invalidate left the
+ * rail / pane on optimistic or raced data until a hard refresh.
  */
 export async function refreshTestingWorkspace(
   qc: QueryClient,
@@ -36,6 +39,7 @@ export async function refreshTestingWorkspace(
     qc.invalidateQueries({ queryKey: qk.suites.all, refetchType: "none" }),
     qc.invalidateQueries({ queryKey: qk.cases.all, refetchType: "none" }),
     qc.invalidateQueries({ queryKey: qk.ticket.all, refetchType: "none" }),
+    qc.invalidateQueries({ queryKey: qk.tickets.all, refetchType: "none" }),
   ]);
 
   const tasks: Promise<unknown>[] = [
@@ -53,6 +57,7 @@ export async function refreshTestingWorkspace(
   }
   if (opts.ticketId) {
     tasks.push(qc.refetchQueries({ queryKey: qk.ticket.testing(opts.ticketId) }));
+    tasks.push(qc.refetchQueries({ queryKey: qk.ticket.detail(opts.ticketId) }));
   }
   await Promise.all(tasks);
 }

@@ -236,7 +236,7 @@ export class BugsService {
     });
 
     if (ticketId) {
-      await this.notifyTicketDevelopers(ticketId, bug, user, dto.assignedToId ? [dto.assignedToId] : []);
+      await this.notifyTicketDevelopers(ticketId, bug, user, dto.assignedToId ? [dto.assignedToId] : [], 'filed');
     } else {
       await this.notifySystemDevelopers(bug, user, dto.assignedToId ? [dto.assignedToId] : []);
     }
@@ -304,12 +304,24 @@ export class BugsService {
       include: BUG_DETAIL_INCLUDE,
     });
 
+    const ticketIdChanged =
+      dto.ticketId !== undefined && (dto.ticketId || null) !== (bug.ticketId || null);
+    const dtoKeys = Object.keys(dto).filter((k) => (dto as Record<string, unknown>)[k] !== undefined);
+    const onlyTicketLink =
+      ticketIdChanged && dtoKeys.length === 1 && dtoKeys[0] === 'ticketId';
+
+    const auditAction = onlyTicketLink
+      ? dto.ticketId
+        ? 'BUG_TICKET_LINK'
+        : 'BUG_TICKET_UNLINK'
+      : 'BUG_UPDATE';
+
     await this.audit.log({
-      action: 'BUG_UPDATE',
+      action: auditAction,
       entity: 'Bug',
       entityId: id,
       userId: user.id,
-      ticketId: updated.ticketId ?? undefined,
+      ticketId: updated.ticketId ?? bug.ticketId ?? undefined,
       oldValues: {
         title: bug.title,
         description: bug.description,
@@ -348,6 +360,7 @@ export class BugsService {
         updated,
         user,
         newAssignee ? [newAssignee] : [],
+        'linked',
       );
     } else if (newAssignee) {
       await this.notifyAssignee(updated, newAssignee, user);
@@ -594,12 +607,26 @@ export class BugsService {
       company?: { name: string } | null;
     },
     reporterName: string,
+    ticket?: {
+      id: string;
+      title: string;
+      ticketNumber?: number | null;
+      kind: 'filed' | 'linked';
+    } | null,
   ) {
     const frontendUrl = this.config.get<string>('FRONTEND_URL') || 'https://barmijly.ai';
     const bugUrl = `${frontendUrl}/bugs/${bug.id}`;
     const scope = {
       companyName: bug.company?.name,
       systemName: bug.system?.name,
+      ...(ticket
+        ? {
+            ticketTitle: ticket.title,
+            ticketNumber: ticket.ticketNumber,
+            ticketUrl: `${frontendUrl}/tickets/${ticket.id}`,
+            bugLinkKind: ticket.kind,
+          }
+        : {}),
     };
     const emailed = new Set<string>();
     for (const row of recipients) {
@@ -661,6 +688,9 @@ export class BugsService {
    * Filing/linking a bug on a ticket notifies and emails every active developer
    * on that ticket (not only a personal `assignedToId`). Optional extra ids
    * cover a personal assignee who is not yet on the roster.
+   *
+   * `kind` changes the copy: «filed» for create-on-ticket, «linked» for
+   * attaching an existing bug — both name the ticket, never the whole system.
    */
   private async notifyTicketDevelopers(
     ticketId: string,
@@ -673,6 +703,7 @@ export class BugsService {
     },
     user: TestingActor & { firstName?: string; lastName?: string },
     extraUserIds: string[] = [],
+    kind: 'filed' | 'linked' = 'filed',
   ) {
     const roster = await this.prisma.ticketAssignment.findMany({
       where: { ticketId, isActive: true },
@@ -683,21 +714,42 @@ export class BugsService {
     ];
     if (!recipientIds.length) return;
 
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: { id: true, title: true, ticketNumber: true },
+    });
+
     const actor = this.actorDisplayName(user);
+    const ticketLabel = ticket?.title ? `«${ticket.title}»` : 'تذكرتك';
     await this.notifications.notifyMany(
       recipientIds,
       {
         type: NotificationType.BUG_ASSIGNED,
-        title: 'خطأ جديد على تذكرتك',
-        body: `${actor} سجّل الخطأ «${bug.title}» على تذكرتك`,
+        title: kind === 'linked' ? 'رُبط خطأ بتذكرتك' : 'خطأ جديد على تذكرتك',
+        body:
+          kind === 'linked'
+            ? `${actor} ربط الخطأ «${bug.title}» بـ ${ticketLabel}`
+            : `${actor} سجّل الخطأ «${bug.title}» على ${ticketLabel}`,
         ticketId,
-        metadata: { bugId: bug.id, bugNumber: bug.bugNumber },
+        metadata: { bugId: bug.id, bugNumber: bug.bugNumber, kind },
       },
       user.id,
     );
 
     const recipients = await this.loadMailRecipients(recipientIds);
-    this.emailBugFiled(recipients, bug, actor);
+    this.emailBugFiled(
+      recipients,
+      bug,
+      actor,
+      ticket
+        ? {
+            id: ticket.id,
+            title: ticket.title,
+            ticketNumber: ticket.ticketNumber,
+            kind,
+          }
+        : { id: ticketId, title: 'تذكرتك', kind },
+    );
   }
 
   /**

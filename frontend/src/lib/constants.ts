@@ -118,6 +118,8 @@ export const TIMELINE_LABELS = {
   BUG_STATUS_CHANGE: "غيّر حالة الخطأ",
   BUG_PROMOTE: "أنشأ تذكرة من خطأ",
   BUG_UPDATE: "عدّل خطأ",
+  BUG_TICKET_LINK: "ربط خطأ",
+  BUG_TICKET_UNLINK: "أزال ربط خطأ",
   BUG_CREATE: "سجّل خطأ",
   BUG_ARCHIVE: "أرشف خطأ",
   BUG_UNARCHIVE: "ألغى أرشفة خطأ",
@@ -180,6 +182,8 @@ export const TIMELINE_FILTERS = {
     actions: [
       "BUG_CREATE",
       "BUG_UPDATE",
+      "BUG_TICKET_LINK",
+      "BUG_TICKET_UNLINK",
       "BUG_STATUS_CHANGE",
       "BUG_PROMOTE",
       "BUG_ARCHIVE",

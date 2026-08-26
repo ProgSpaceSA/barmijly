@@ -78,7 +78,14 @@ cd backend  && npm test        # jest, *.spec.ts next to the source
 cd frontend && npm test        # vitest + RTL, *.test.tsx next to the component
 ```
 
-Git hooks (Husky) and GitHub Actions run lint, tests, and build before a push lands. After clone, `npm install` at the repo root enables the pre-push hook. `npm run check` runs the same suite locally.
+Git hooks (Husky) run on commit and push:
+
+| Hook | What runs |
+|------|-----------|
+| `pre-commit` | `lint-staged` — ESLint **only on staged** `backend/` / `frontend/` files |
+| `pre-push` | `npm run push:check` — full backend + frontend **tests and builds** |
+
+`npm run check` at the repo root still runs lint + tests + build for everything (CI / manual). After clone, `npm install` at the repo root enables the hooks.
 
 New or changed code gets a spec in the same commit. Backend services are tested with
 `Test.createTestingModule` and mocked `PrismaService` — no database required. Cover the

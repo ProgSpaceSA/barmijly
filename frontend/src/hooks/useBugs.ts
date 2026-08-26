@@ -260,11 +260,31 @@ export function useBugActions(bugId?: string, caseId?: string) {
     }),
     promote: useMutation({
       mutationFn: ({ id, title }: { id: string; title?: string }) =>
-        api.post(`/bugs/${id}/promote`, title ? { title } : {}).then((r) => r.data),
+        api
+          .post(`/bugs/${id}/promote`, title ? { title } : {})
+          .then((r) => r.data as { bug: BugWriteResult; ticket: { id: string } }),
       onSuccess: async (data, vars) => {
-        await settleBugWrite(qc, { bugId: vars.id, caseId });
+        const bug = data.bug;
+        qc.setQueryData(qk.bugs.detail(vars.id), (old: Record<string, unknown> | undefined) =>
+          old ? { ...old, ...bug } : bug,
+        );
+        const cid = bug.testCaseId ?? caseId;
+        if (cid) {
+          qc.setQueryData(qk.cases.detail(cid), (old: CaseBugsCache | undefined) => {
+            if (!old?.bugs) return old;
+            return {
+              ...old,
+              bugs: old.bugs.map((b) => (b.id === bug.id ? { ...b, ...bug } : b)),
+            };
+          });
+        }
+        await settleBugWrite(qc, {
+          bugId: vars.id,
+          caseId: bug.testCaseId ?? caseId,
+          suiteId: bug.suiteId,
+          ticketId: data.ticket.id,
+        });
         toast.success(TESTING_LABELS.promoted);
-        return data;
       },
       onError: failTesting,
     }),

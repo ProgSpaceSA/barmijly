@@ -98,6 +98,8 @@ describe('BugsService', () => {
         count: jest.fn().mockResolvedValue(1),
         findUnique: jest.fn().mockResolvedValue({
           id: 'ticket-1',
+          title: 'تذكرة الاختبار',
+          ticketNumber: 42,
           systemId: SYSTEM,
           companyId: COMPANY,
         }),
@@ -297,6 +299,7 @@ describe('BugsService', () => {
           type: NotificationType.BUG_ASSIGNED,
           ticketId: 'ticket-1',
           title: 'خطأ جديد على تذكرتك',
+          body: expect.stringContaining('على'),
         }),
         'qa-7',
       );
@@ -308,7 +311,14 @@ describe('BugsService', () => {
         114,
         'http://localhost:3000/bugs/bug-1',
         'أ ب',
-        { companyName: 'شركة 1', systemName: 'نظام 1' },
+        {
+          companyName: 'شركة 1',
+          systemName: 'نظام 1',
+          ticketTitle: 'تذكرة الاختبار',
+          ticketNumber: 42,
+          ticketUrl: 'http://localhost:3000/tickets/ticket-1',
+          bugLinkKind: 'filed',
+        },
       );
       expect(notifications.notify).not.toHaveBeenCalled();
     });
@@ -536,11 +546,28 @@ describe('BugsService', () => {
         expect.objectContaining({
           type: NotificationType.BUG_ASSIGNED,
           ticketId: 'ticket-1',
-          title: 'خطأ جديد على تذكرتك',
+          title: 'رُبط خطأ بتذكرتك',
+          body: expect.stringContaining('ربط الخطأ'),
         }),
         'qa-7',
       );
       expect(email.sendBugFiled).toHaveBeenCalledTimes(2);
+      expect(email.sendBugFiled).toHaveBeenCalledWith(
+        'dev-1@test.local',
+        'م',
+        expect.any(String),
+        expect.any(Number),
+        'http://localhost:3000/bugs/bug-1',
+        'أ ب',
+        expect.objectContaining({
+          bugLinkKind: 'linked',
+          ticketTitle: 'تذكرة الاختبار',
+          ticketUrl: 'http://localhost:3000/tickets/ticket-1',
+        }),
+      );
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'BUG_TICKET_LINK' }),
+      );
     });
 
     it('stays quiet when the assignee has not changed', async () => {
@@ -596,7 +623,7 @@ describe('BugsService', () => {
       expect(prisma.bug.update.mock.calls[0][0].data).toMatchObject({ ticketId: 'ticket-1' });
       expect(audit.log).toHaveBeenCalledWith(
         expect.objectContaining({
-          action: 'BUG_UPDATE',
+          action: 'BUG_TICKET_LINK',
           newValues: expect.objectContaining({ ticketId: 'ticket-1' }),
         }),
       );
@@ -606,6 +633,9 @@ describe('BugsService', () => {
       prisma.bug.findUnique.mockResolvedValue(bugRow({ ticketId: 'ticket-1' }));
       await service.update(BUG, { ticketId: null }, asUser(UserRole.QA));
       expect(prisma.bug.update.mock.calls[0][0].data).toMatchObject({ ticketId: null });
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'BUG_TICKET_UNLINK' }),
+      );
     });
 
     it('refuses a ticket outside the bug’s system/company', async () => {

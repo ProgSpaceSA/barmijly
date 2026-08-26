@@ -336,4 +336,134 @@ describe("useCaseActions cache", () => {
     expect(cached.bugs.map((b) => b.id)).toEqual(["bug-linked"]);
     expect(cached._count.bugs).toBe(1);
   });
+
+  it("does not let a late field save wipe a recorded result on the case or suite rail", async () => {
+    client.setQueryData(qk.cases.detail("case-1"), {
+      id: "case-1",
+      title: "حالة",
+      lastResult: "FAIL",
+      bugs: [{ id: "bug-1", title: "خطأ", severity: "MAJOR", status: "OPEN" }],
+      _count: { bugs: 1 },
+    });
+    client.setQueryData(qk.suites.detail("suite-1"), {
+      id: "suite-1",
+      cases: [
+        {
+          id: "case-1",
+          title: "حالة",
+          lastResult: "FAIL",
+          _count: { bugs: 1 },
+          bugs: [{ status: "OPEN" }],
+        },
+      ],
+    });
+    mockPatch.mockResolvedValue({
+      data: {
+        id: "case-1",
+        title: "حالة محدثة",
+        lastResult: "NOT_RUN",
+        bugs: [],
+        _count: { bugs: 0 },
+      },
+    });
+
+    const { result } = renderHook(() => useCaseActions("suite-1", "case-1"), { wrapper });
+
+    await act(async () => {
+      await result.current.update.mutateAsync({ id: "case-1", title: "حالة محدثة" });
+    });
+
+    const detail = client.getQueryData(qk.cases.detail("case-1")) as {
+      title: string;
+      lastResult: string;
+      bugs: { id: string }[];
+      _count: { bugs: number };
+    };
+    expect(detail.title).toBe("حالة محدثة");
+    expect(detail.lastResult).toBe("FAIL");
+    expect(detail.bugs.map((b) => b.id)).toEqual(["bug-1"]);
+    expect(detail._count.bugs).toBe(1);
+
+    const suite = client.getQueryData(qk.suites.detail("suite-1")) as {
+      cases: { id: string; lastResult: string; _count: { bugs: number } }[];
+    };
+    expect(suite.cases[0].lastResult).toBe("FAIL");
+    expect(suite.cases[0]._count.bugs).toBe(1);
+  });
+
+  it("patches only lastResult onto the suite rail when recording a result", async () => {
+    const suiteRow = {
+      id: "case-1",
+      title: "حالة",
+      lastResult: "NOT_RUN",
+      _count: { bugs: 2 },
+      bugs: [{ status: "OPEN" }, { status: "OPEN" }],
+    };
+    client.setQueryData(qk.suites.detail("suite-1"), {
+      id: "suite-1",
+      cases: [suiteRow],
+      rollup: { pass: 0, fail: 0, blocked: 0, skipped: 0, notRun: 1, total: 1 },
+    });
+    client.setQueryData(qk.cases.detail("case-1"), {
+      id: "case-1",
+      title: "حالة",
+      lastResult: "NOT_RUN",
+      bugs: [
+        { id: "b1", status: "OPEN" },
+        { id: "b2", status: "OPEN" },
+      ],
+      _count: { bugs: 2 },
+    });
+    mockPost.mockResolvedValue({
+      data: {
+        id: "case-1",
+        lastResult: "FAIL",
+        lastRunAt: "2026-01-01T00:00:00.000Z",
+        lastRunBy: { id: "u1", firstName: "أ", lastName: "ب" },
+        bugs: [],
+        _count: { bugs: 0 },
+      },
+    });
+    mockGet.mockImplementation((url: string) => {
+      if (String(url).includes("/test-suites/")) {
+        return Promise.resolve({
+          data: {
+            id: "suite-1",
+            cases: [{ ...suiteRow, lastResult: "FAIL" }],
+            rollup: { pass: 0, fail: 1, blocked: 0, skipped: 0, notRun: 0, total: 1 },
+          },
+        });
+      }
+      return Promise.resolve({
+        data: {
+          id: "case-1",
+          lastResult: "FAIL",
+          bugs: [
+            { id: "b1", status: "OPEN" },
+            { id: "b2", status: "OPEN" },
+          ],
+          _count: { bugs: 2 },
+        },
+      });
+    });
+
+    const { result } = renderHook(() => useCaseActions("suite-1", "case-1"), { wrapper });
+
+    await act(async () => {
+      await result.current.recordResult.mutateAsync({ id: "case-1", result: "FAIL" });
+    });
+
+    const suite = client.getQueryData(qk.suites.detail("suite-1")) as {
+      cases: { lastResult: string; _count: { bugs: number }; bugs: unknown[] }[];
+    };
+    expect(suite.cases[0].lastResult).toBe("FAIL");
+    expect(suite.cases[0]._count.bugs).toBe(2);
+
+    const detail = client.getQueryData(qk.cases.detail("case-1")) as {
+      lastResult: string;
+      bugs: { id: string }[];
+    };
+    expect(detail.lastResult).toBe("FAIL");
+    expect(detail.bugs.map((b) => b.id)).toEqual(["b1", "b2"]);
+  });
 });

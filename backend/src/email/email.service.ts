@@ -96,6 +96,12 @@ const PERSONAL_QUOTE_EN = 'Because you are different, you lead.';
 export type MailScope = {
   companyName?: string | null;
   systemName?: string | null;
+  /** When set, bug mail is about this ticket — not the whole system. */
+  ticketTitle?: string | null;
+  ticketNumber?: number | null;
+  ticketUrl?: string | null;
+  /** Linking an existing bug vs filing a new one on the ticket. */
+  bugLinkKind?: 'filed' | 'linked';
 };
 
 const TINT: Record<Accent, { bg: string; fg: string }> = {
@@ -253,20 +259,52 @@ export class EmailService {
     scope?: MailScope,
   ) {
     const code = formatBugCode(bugNumber);
-    await this.send(to, `خطأ جديد: ${bugTitle}`, this.layoutEmail({
-      preheader: `${reporterName} سجّل خطأ «${bugTitle}»`,
+    const onTicket = Boolean(scope?.ticketTitle?.trim() || scope?.ticketUrl);
+    const linked = scope?.bugLinkKind === 'linked';
+    const ticketTitle = scope?.ticketTitle?.trim();
+    const subject = linked
+      ? `خطأ رُبط بتذكرتك: ${bugTitle}`
+      : onTicket
+        ? `خطأ على تذكرتك: ${bugTitle}`
+        : `خطأ جديد: ${bugTitle}`;
+    const lead = linked
+      ? ticketTitle
+        ? `<strong style="color:${INK}">${this.escapeHtml(reporterName)}</strong> ربط الخطأ «${this.escapeHtml(bugTitle)}» بتذكرتك «${this.escapeHtml(ticketTitle)}».`
+        : `<strong style="color:${INK}">${this.escapeHtml(reporterName)}</strong> ربط الخطأ «${this.escapeHtml(bugTitle)}» بتذكرتك.`
+      : onTicket
+        ? ticketTitle
+          ? `<strong style="color:${INK}">${this.escapeHtml(reporterName)}</strong> سجّل خطأاً جديداً على تذكرتك «${this.escapeHtml(ticketTitle)}».`
+          : `<strong style="color:${INK}">${this.escapeHtml(reporterName)}</strong> سجّل خطأاً جديداً على تذكرتك.`
+        : `<strong style="color:${INK}">${this.escapeHtml(reporterName)}</strong> سجّل خطأاً جديداً على مشروعك.`;
+    const ctaHref = scope?.ticketUrl || bugUrl;
+    const ctaLabel = onTicket ? 'فتح التذكرة' : 'عرض الخطأ';
+    const preheader = linked
+      ? `${reporterName} ربط «${bugTitle}» بتذكرتك`
+      : onTicket
+        ? `${reporterName} سجّل خطأ «${bugTitle}» على تذكرتك`
+        : `${reporterName} سجّل خطأ «${bugTitle}»`;
+
+    await this.send(to, subject, this.layoutEmail({
+      preheader,
       body: `
         ${this.heading(`مرحباً ${this.escapeHtml(devFirstName)}`)}
-        ${this.bodyText(
-          `<strong style="color:${INK}">${this.escapeHtml(reporterName)}</strong> سجّل خطأاً جديداً على مشروعك.`,
-        )}
+        ${this.bodyText(lead)}
         ${this.panel(`
           <div style="margin-bottom:8px;">${this.codeChip(code, ACCENT.overdue)}</div>
           <p style="margin:0;font-family:${FONT};color:${INK};font-size:17px;font-weight:700;line-height:1.5;">${this.escapeHtml(bugTitle)}</p>
-          ${this.scopeLines(scope)}
+          ${ticketTitle ? `
+          <p style="margin:12px 0 0;font-family:${FONT};color:${MUTED};font-size:13px;line-height:1.6;">
+            <span style="font-weight:600;">التذكرة:</span>
+            ${typeof scope?.ticketNumber === 'number' ? `<span style="margin-inline-start:6px;">${this.codeChip(formatTicketCode(scope.ticketNumber), ACCENT.brand)}</span> ` : ''}
+            <span style="color:${INK};font-weight:600;">${this.escapeHtml(ticketTitle)}</span>
+          </p>` : ''}
+          ${this.scopeLines({
+            companyName: scope?.companyName,
+            systemName: scope?.systemName,
+          })}
         `)}
       `,
-      cta: { href: bugUrl, label: 'عرض الخطأ' },
+      cta: { href: ctaHref, label: ctaLabel },
     }));
   }
 

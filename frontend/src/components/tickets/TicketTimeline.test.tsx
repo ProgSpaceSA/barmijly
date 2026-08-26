@@ -281,7 +281,39 @@ describe('TicketTimeline', () => {
     await waitFor(() => expect(screen.getByText(TIMELINE_LABELS.BUG_UPDATE)).toBeInTheDocument());
     expect(screen.getByText(/العنوان: من قديم إلى جديد/)).toBeInTheDocument();
     expect(screen.getByText(/الخطورة: من بسيط إلى كبير/)).toBeInTheDocument();
-    expect(screen.getByText(/رُبط بتذكرة \(BUG-0011/)).toBeInTheDocument();
+    expect(screen.getByText(/رُبط بهذه التذكرة/)).toBeInTheDocument();
+  });
+
+  it('shows «ربط خطأ» with the bug identity when linking to this ticket', async () => {
+    mockGet.mockResolvedValue({
+      data: [entry({
+        action: 'BUG_TICKET_LINK',
+        entity: 'Bug',
+        from: { title: 'Yet another bug report mail', ticketId: null, bugNumber: 3 },
+        to: { title: 'Yet another bug report mail', ticketId: 'ticket-1', bugNumber: 3 },
+      })],
+    });
+    show();
+
+    await waitFor(() => expect(screen.getByText(TIMELINE_LABELS.BUG_TICKET_LINK)).toBeInTheDocument());
+    expect(screen.getByText(/BUG-0003 · Yet another bug report mail/)).toBeInTheDocument();
+    expect(screen.queryByText(/رُبط بتذكرة/)).not.toBeInTheDocument();
+  });
+
+  it('rewrites legacy BUG_UPDATE link-only rows as «ربط خطأ»', async () => {
+    mockGet.mockResolvedValue({
+      data: [entry({
+        action: 'BUG_UPDATE',
+        entity: 'Bug',
+        from: { title: 'Yet another bug report mail', ticketId: null, bugNumber: 3 },
+        to: { title: 'Yet another bug report mail', ticketId: 'ticket-1', bugNumber: 3 },
+      })],
+    });
+    show();
+
+    await waitFor(() => expect(screen.getByText(TIMELINE_LABELS.BUG_TICKET_LINK)).toBeInTheDocument());
+    expect(screen.getByText(/BUG-0003 · Yet another bug report mail/)).toBeInTheDocument();
+    expect(screen.queryByText(TIMELINE_LABELS.BUG_UPDATE)).not.toBeInTheDocument();
   });
 
   it('shows bug code, title, and severity on create', async () => {
