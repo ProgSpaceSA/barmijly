@@ -22,7 +22,7 @@ Load the matching skill before coding. Skills live in `.cursor/skills/` (also `.
 
 Uncommitted work: keep a numbered Feature/Update/Removal list in `.cursor/uncommitted.md` (rule `session-tracking`). Clear it after commit.
 
-Post-deploy work: append checkboxes to `to_migrate.md` (rule `to-migrate`) for commands and `.env` vars the deployer must run after the code is live.
+Post-deploy / backward-compat: append checkboxes to `to_migrate.md` (rule `to-migrate`) for migrate commands, `.env` vars, deploy order, backfills, or any breaking change production will not absorb from a plain code deploy.
 
 Do not paste skill bodies into chat. Read `SKILL.md`, then linked reference files only as needed.
 

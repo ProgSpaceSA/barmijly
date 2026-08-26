@@ -28,6 +28,9 @@ const WORD_CHAR = /[\p{L}\p{N}_]/u;
  */
 const EMAIL_LOCAL_CHAR = /[A-Za-z0-9._%+-]/;
 
+/** Any Unicode space — NBSP, narrow NBSP, etc. Typed names rarely match the chip's NBSP. */
+const SPACE = /\s/u;
+
 /** Invisible marks — isolates (U+2066–2069) show up as ⁦/⁧; these do not. */
 const LRM = "\u200E";
 const RLM = "\u200F";
@@ -93,18 +96,39 @@ function handleVariants(user: MentionUser): string[] {
   return [...new Set([full, glued, `${first}${last}`, `${first}_${last}`].filter((v) => v.length > 0))];
 }
 
-type HandleEntry = { handle: string; lower: string; user: MentionUser };
+type HandleEntry = { handle: string; user: MentionUser };
 
 function handleTable(users: MentionUser[]): HandleEntry[] {
   const table: HandleEntry[] = [];
   for (const user of users) {
     if (!user?.id) continue;
     for (const handle of handleVariants(user)) {
-      table.push({ handle, lower: handle.toLowerCase(), user });
+      table.push({ handle, user });
     }
   }
   // Longest first, so "@أحمد علي" wins over a colleague spelled "@أحمد".
   return table.sort((a, b) => b.handle.length - a.handle.length);
+}
+
+/**
+ * How many characters of `rest` spell `handle`, treating every Unicode space as
+ * equal (regular space ↔ NBSP ↔ narrow NBSP). Returns null when they diverge.
+ */
+function matchHandleLength(rest: string, handle: string): number | null {
+  let ri = 0;
+  for (let hi = 0; hi < handle.length; hi++) {
+    const h = handle[hi]!;
+    const r = rest[ri];
+    if (r === undefined) return null;
+    if (SPACE.test(h)) {
+      if (!SPACE.test(r)) return null;
+      ri += 1;
+      continue;
+    }
+    if (r.toLowerCase() !== h.toLowerCase()) return null;
+    ri += 1;
+  }
+  return ri;
 }
 
 /**
@@ -125,22 +149,22 @@ export function splitMentions(content: string, users: MentionUser[]): MentionSeg
   while (i < body.length) {
     if (body[i] === "@" && !EMAIL_LOCAL_CHAR.test(body[i - 1] ?? "")) {
       const rest = body.slice(i + 1);
-      const lowerRest = rest.toLowerCase();
-      const hit = table.find(
-        (entry) =>
-          lowerRest.startsWith(entry.lower) && !WORD_CHAR.test(rest[entry.handle.length] ?? ""),
-      );
+      const hit = table.find((entry) => {
+        const len = matchHandleLength(rest, entry.handle);
+        return len !== null && !WORD_CHAR.test(rest[len] ?? "");
+      });
       if (hit) {
+        const len = matchHandleLength(rest, hit.handle)!;
         if (buffer) {
           segments.push({ type: "text", value: buffer });
           buffer = "";
         }
         segments.push({
           type: "mention",
-          value: `@${rest.slice(0, hit.handle.length)}`,
+          value: `@${rest.slice(0, len)}`,
           user: hit.user,
         });
-        i += 1 + hit.handle.length;
+        i += 1 + len;
         continue;
       }
     }
@@ -161,7 +185,12 @@ export function mentionedIdsIn(content: string, users: MentionUser[]): string[] 
   return [...ids];
 }
 
-/** The `@…` word the caret is sitting in, or null when the caret is elsewhere. */
+/**
+ * The `@…` fragment the caret is sitting in, or null when the caret is elsewhere.
+ *
+ * Spaces are allowed so Arabic/Latin full names (`@محمد مجدي`) keep the picker
+ * open; a blank line or a double space ends the query.
+ */
 export function findMentionQuery(
   content: string,
   caret: number,
@@ -171,7 +200,7 @@ export function findMentionQuery(
   if (at === -1) return null;
   if (EMAIL_LOCAL_CHAR.test(before[at - 1] ?? "")) return null;
   const query = before.slice(at + 1);
-  if (/\s/.test(query) || query.length > 40) return null;
+  if (query.length > 40 || /\n/.test(query) || /  /.test(query)) return null;
   return { query, start: at };
 }
 
@@ -192,10 +221,22 @@ export function applyMention(
 }
 
 export function matchesMentionQuery(user: MentionUser, query: string): boolean {
-  if (!query) return true;
-  const needle = query.toLowerCase();
+  const needle = query.replace(/\s+/gu, " ").trim().toLowerCase();
+  if (!needle) return true;
   return (
     mentionName(user).toLowerCase().includes(needle) ||
     (user.email ?? "").toLowerCase().includes(needle)
   );
+}
+
+/** Merge mentionable + already-mentioned people so saved chips keep their colour. */
+export function mergeMentionUsers(
+  mentionable: MentionUser[],
+  extra: Array<MentionUser | null | undefined> = [],
+): MentionUser[] {
+  const byId = new Map<string, MentionUser>();
+  for (const user of [...mentionable, ...extra]) {
+    if (user?.id) byId.set(user.id, user);
+  }
+  return [...byId.values()];
 }

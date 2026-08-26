@@ -116,6 +116,17 @@ describe('BugsService', () => {
             firstName: 'م',
           }),
         ),
+        findMany: jest.fn().mockImplementation(({ where }: any) => {
+          const ids: string[] = where?.id?.in ?? [];
+          if (!ids.length) return Promise.resolve([]);
+          return Promise.resolve(
+            ids.map((id) => ({
+              id,
+              email: `${id}@test.local`,
+              firstName: 'م',
+            })),
+          );
+        }),
       },
       system: {
         findUnique: jest.fn().mockResolvedValue({ id: SYSTEM, companyId: COMPANY, isActive: true }),
@@ -274,7 +285,7 @@ describe('BugsService', () => {
       expect(notifications.notify).not.toHaveBeenCalled();
     });
 
-    it('notifies every active ticket developer when the bug is linked to a ticket', async () => {
+    it('notifies and emails every active ticket developer when the bug is linked to a ticket', async () => {
       prisma.ticketAssignment.findMany.mockResolvedValue([
         { developerId: 'dev-1' },
         { developerId: 'dev-2' },
@@ -289,10 +300,20 @@ describe('BugsService', () => {
         }),
         'qa-7',
       );
+      expect(email.sendBugFiled).toHaveBeenCalledTimes(2);
+      expect(email.sendBugFiled).toHaveBeenCalledWith(
+        'dev-1@test.local',
+        'م',
+        dto.title,
+        114,
+        'http://localhost:3000/bugs/bug-1',
+        'أ ب',
+        { companyName: 'شركة 1', systemName: 'نظام 1' },
+      );
       expect(notifications.notify).not.toHaveBeenCalled();
     });
 
-    it('includes a personal assignee when notifying ticket developers', async () => {
+    it('includes a personal assignee when notifying and emailing ticket developers', async () => {
       prisma.ticketAssignment.findMany.mockResolvedValue([{ developerId: 'dev-1' }]);
       await service.create(
         { ...dto, ticketId: 'ticket-1', assignedToId: 'dev-extra' },
@@ -302,6 +323,41 @@ describe('BugsService', () => {
         ['dev-1', 'dev-extra'],
         expect.objectContaining({ type: NotificationType.BUG_ASSIGNED, ticketId: 'ticket-1' }),
         'qa-7',
+      );
+      expect(email.sendBugFiled).toHaveBeenCalledTimes(2);
+    });
+
+    it('emails company developers when the system UserSystem roster is empty', async () => {
+      prisma.user.findMany.mockImplementation(({ where }: any) => {
+        if (where?.id?.in) {
+          return Promise.resolve(
+            where.id.in.map((id: string) => ({
+              id,
+              email: `${id}@test.local`,
+              firstName: 'م',
+            })),
+          );
+        }
+        return Promise.resolve([
+          { id: 'dev-co-1', email: 'c1@test.local', firstName: 'ش1' },
+          { id: 'dev-co-2', email: 'c2@test.local', firstName: 'ش2' },
+        ]);
+      });
+      await service.create(dto, asUser(UserRole.QA, 'qa-7'));
+      expect(notifications.notifyMany).toHaveBeenCalledWith(
+        ['dev-co-1', 'dev-co-2'],
+        expect.objectContaining({ title: 'خطأ جديد على مشروعك' }),
+        'qa-7',
+      );
+      expect(email.sendBugFiled).toHaveBeenCalledTimes(2);
+      expect(email.sendBugFiled).toHaveBeenCalledWith(
+        'c1@test.local',
+        'ش1',
+        dto.title,
+        114,
+        'http://localhost:3000/bugs/bug-1',
+        'أ ب',
+        { companyName: 'شركة 1', systemName: 'نظام 1' },
       );
     });
 
@@ -469,7 +525,7 @@ describe('BugsService', () => {
       );
     });
 
-    it('notifies ticket developers when a bug is newly linked to a ticket', async () => {
+    it('notifies and emails ticket developers when a bug is newly linked to a ticket', async () => {
       prisma.ticketAssignment.findMany.mockResolvedValue([
         { developerId: 'dev-1' },
         { developerId: 'dev-2' },
@@ -484,6 +540,7 @@ describe('BugsService', () => {
         }),
         'qa-7',
       );
+      expect(email.sendBugFiled).toHaveBeenCalledTimes(2);
     });
 
     it('stays quiet when the assignee has not changed', async () => {

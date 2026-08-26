@@ -354,6 +354,14 @@ export function CommentComposer({
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (handleDirectionKeys(e)) return;
 
+      // Ctrl/Cmd+Enter always sends — even while the mention picker is open.
+      // Plain Enter (below) still picks the highlighted option.
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        void submit();
+        return;
+      }
+
       if (menu && options.length) {
         if (e.key === "ArrowDown") {
           e.preventDefault();
@@ -382,12 +390,6 @@ export function CommentComposer({
           e.preventDefault();
           onCancel();
         }
-        return;
-      }
-
-      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        void submit();
       }
     },
     [handleDirectionKeys, menu, menuIndex, onCancel, options, pickMention, submit],

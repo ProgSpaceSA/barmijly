@@ -579,14 +579,98 @@ export class BugsService {
     if (!assignee || !assignee.isActive) throw new NotFoundException('Assignee not found');
   }
 
+  private actorDisplayName(user: TestingActor & { firstName?: string; lastName?: string }) {
+    return [user.firstName, user.lastName].filter(Boolean).join(' ');
+  }
+
+  /** Fire-and-forget bug-filed mail; skips blanks and duplicate ids. */
+  private emailBugFiled(
+    recipients: Array<{ id: string; email: string | null; firstName: string }>,
+    bug: {
+      id: string;
+      title: string;
+      bugNumber: number;
+      system?: { name: string } | null;
+      company?: { name: string } | null;
+    },
+    reporterName: string,
+  ) {
+    const frontendUrl = this.config.get<string>('FRONTEND_URL') || 'https://barmijly.ai';
+    const bugUrl = `${frontendUrl}/bugs/${bug.id}`;
+    const scope = {
+      companyName: bug.company?.name,
+      systemName: bug.system?.name,
+    };
+    const emailed = new Set<string>();
+    for (const row of recipients) {
+      if (!row.email || emailed.has(row.id)) continue;
+      emailed.add(row.id);
+      void this.email.sendBugFiled(
+        row.email,
+        row.firstName,
+        bug.title,
+        bug.bugNumber,
+        bugUrl,
+        reporterName,
+        scope,
+      );
+    }
+  }
+
+  private async loadMailRecipients(userIds: string[]) {
+    const ids = [...new Set(userIds.filter(Boolean))];
+    if (!ids.length) return [];
+    return this.prisma.user.findMany({
+      where: { id: { in: ids }, isActive: true },
+      select: { id: true, email: true, firstName: true },
+    });
+  }
+
   /**
-   * Filing/linking a bug on a ticket notifies every active developer on that
-   * ticket (not only a personal `assignedToId`). Optional extra ids cover a
-   * personal assignee who is not yet on the roster.
+   * Developers who should hear about a standalone bug on this system/company.
+   * Prefers explicit `UserSystem` grants; when none exist (common when staffing
+   * is ticket-only), falls back to active developers tied to the company.
+   */
+  private async standaloneBugRecipients(systemId: string, companyId: string) {
+    const roster = await this.prisma.userSystem.findMany({
+      where: {
+        systemId,
+        user: { role: UserRole.DEVELOPER, isActive: true },
+      },
+      select: {
+        user: { select: { id: true, email: true, firstName: true } },
+      },
+    });
+    if (roster.length) return roster.map((r) => r.user);
+
+    return this.prisma.user.findMany({
+      where: {
+        role: UserRole.DEVELOPER,
+        isActive: true,
+        OR: [
+          { systems: { some: { systemId } } },
+          { companyId },
+          { companies: { some: { companyId } } },
+        ],
+      },
+      select: { id: true, email: true, firstName: true },
+    });
+  }
+
+  /**
+   * Filing/linking a bug on a ticket notifies and emails every active developer
+   * on that ticket (not only a personal `assignedToId`). Optional extra ids
+   * cover a personal assignee who is not yet on the roster.
    */
   private async notifyTicketDevelopers(
     ticketId: string,
-    bug: { id: string; title: string; bugNumber: number },
+    bug: {
+      id: string;
+      title: string;
+      bugNumber: number;
+      system?: { name: string } | null;
+      company?: { name: string } | null;
+    },
     user: TestingActor & { firstName?: string; lastName?: string },
     extraUserIds: string[] = [],
   ) {
@@ -594,9 +678,14 @@ export class BugsService {
       where: { ticketId, isActive: true },
       select: { developerId: true },
     });
-    const actor = [user.firstName, user.lastName].filter(Boolean).join(' ');
+    const recipientIds = [
+      ...new Set([...roster.map((r) => r.developerId), ...extraUserIds]),
+    ];
+    if (!recipientIds.length) return;
+
+    const actor = this.actorDisplayName(user);
     await this.notifications.notifyMany(
-      [...roster.map((r) => r.developerId), ...extraUserIds],
+      recipientIds,
       {
         type: NotificationType.BUG_ASSIGNED,
         title: 'خطأ جديد على تذكرتك',
@@ -606,12 +695,14 @@ export class BugsService {
       },
       user.id,
     );
+
+    const recipients = await this.loadMailRecipients(recipientIds);
+    this.emailBugFiled(recipients, bug, actor);
   }
 
   /**
-   * Standalone bugs (no ticket link) notify every active developer on the
-   * system roster, plus any personal assignee. Email includes company/system
-   * so recipients know which project the bug belongs to.
+   * Standalone bugs (no ticket link) notify and email every active developer on
+   * the system (or company fallback), plus any personal assignee.
    */
   private async notifySystemDevelopers(
     bug: {
@@ -619,34 +710,35 @@ export class BugsService {
       title: string;
       bugNumber: number;
       systemId: string;
+      companyId: string;
       system?: { name: string } | null;
       company?: { name: string } | null;
     },
     user: TestingActor & { firstName?: string; lastName?: string },
     extraUserIds: string[] = [],
   ) {
-    const roster = await this.prisma.userSystem.findMany({
-      where: {
-        systemId: bug.systemId,
-        user: { role: UserRole.DEVELOPER, isActive: true },
-      },
-      select: {
-        user: { select: { id: true, email: true, firstName: true } },
-      },
-    });
+    const roster = await this.standaloneBugRecipients(bug.systemId, bug.companyId);
+    const byId = new Map(roster.map((r) => [r.id, r]));
+    for (const extraId of extraUserIds) {
+      if (byId.has(extraId)) continue;
+      const extra = await this.prisma.user.findUnique({
+        where: { id: extraId },
+        select: { id: true, email: true, firstName: true, isActive: true },
+      });
+      if (extra?.isActive) byId.set(extra.id, extra);
+    }
 
-    const devIds = roster.map((r) => r.user.id);
-    const recipientIds = [...new Set([...devIds, ...extraUserIds])];
-    if (!recipientIds.length) return;
+    const recipients = [...byId.values()];
+    if (!recipients.length) return;
 
-    const actor = [user.firstName, user.lastName].filter(Boolean).join(' ');
+    const actor = this.actorDisplayName(user);
     const scopeLine =
       bug.company?.name && bug.system?.name
         ? `${bug.company.name} · ${bug.system.name}`
         : (bug.system?.name ?? '');
 
     await this.notifications.notifyMany(
-      recipientIds,
+      recipients.map((r) => r.id),
       {
         type: NotificationType.BUG_ASSIGNED,
         title: 'خطأ جديد على مشروعك',
@@ -660,46 +752,7 @@ export class BugsService {
       user.id,
     );
 
-    const frontendUrl = this.config.get<string>('FRONTEND_URL') || 'https://barmijly.ai';
-    const bugUrl = `${frontendUrl}/bugs/${bug.id}`;
-    const scope = {
-      companyName: bug.company?.name,
-      systemName: bug.system?.name,
-    };
-
-    const emailed = new Set<string>();
-    for (const row of roster) {
-      if (!row.user.email || emailed.has(row.user.id)) continue;
-      emailed.add(row.user.id);
-      void this.email.sendBugFiled(
-        row.user.email,
-        row.user.firstName,
-        bug.title,
-        bug.bugNumber,
-        bugUrl,
-        actor,
-        scope,
-      );
-    }
-
-    for (const extraId of extraUserIds) {
-      if (emailed.has(extraId)) continue;
-      const dev = await this.prisma.user.findUnique({
-        where: { id: extraId },
-        select: { id: true, email: true, firstName: true },
-      });
-      if (!dev?.email) continue;
-      emailed.add(extraId);
-      void this.email.sendBugFiled(
-        dev.email,
-        dev.firstName,
-        bug.title,
-        bug.bugNumber,
-        bugUrl,
-        actor,
-        scope,
-      );
-    }
+    this.emailBugFiled(recipients, bug, actor);
   }
 
   private async notifyAssignee(
@@ -707,7 +760,7 @@ export class BugsService {
     assigneeId: string,
     user: TestingActor & { firstName?: string; lastName?: string },
   ) {
-    const actor = [user.firstName, user.lastName].filter(Boolean).join(' ');
+    const actor = this.actorDisplayName(user);
     await this.notifications.notify(
       assigneeId,
       {

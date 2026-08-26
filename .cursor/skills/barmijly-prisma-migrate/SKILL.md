@@ -45,6 +45,8 @@ cd backend
 npx prisma migrate deploy
 ```
 
+After creating a migration (or any schema/data change that needs a sequenced cutover), append a checkbox to repo-root `to_migrate.md` (rule `to-migrate`) — including backfills and deploy-order notes for backward compatibility.
+
 ## Prisma client usage
 
 Runtime uses `@prisma/adapter-pg`:

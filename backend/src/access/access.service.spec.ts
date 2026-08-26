@@ -310,6 +310,45 @@ describe('AccessService', () => {
       expect(await service.filterMentionable(TICKET, ['qa-1'])).toEqual(['qa-1']);
     });
 
+    it('keeps a portfolio QA on a company they were granted', async () => {
+      withCandidates([
+        candidate({
+          id: 'qa-2',
+          role: UserRole.QA,
+          companies: [{ companyId: 'company-1' }],
+          _count: { systems: 0, companies: 1 },
+        }),
+      ]);
+      expect(await service.filterMentionable(TICKET, ['qa-2'])).toEqual(['qa-2']);
+    });
+
+    it('keeps a portfolio QA on a system they were granted', async () => {
+      withCandidates([
+        candidate({
+          id: 'qa-3',
+          role: UserRole.QA,
+          systems: [{ systemId: 'system-1' }],
+          _count: { systems: 1, companies: 0 },
+        }),
+      ]);
+      expect(await service.filterMentionable(TICKET, ['qa-3'])).toEqual(['qa-3']);
+    });
+
+    it('drops a portfolio QA whose grants miss this ticket', async () => {
+      // Prisma already narrowed `systems`/`companies` to this ticket; a miss
+      // arrives as empty arrays while `_count` still shows they have a portfolio.
+      withCandidates([
+        candidate({
+          id: 'qa-4',
+          role: UserRole.QA,
+          systems: [],
+          companies: [],
+          _count: { systems: 1, companies: 0 },
+        }),
+      ]);
+      expect(await service.filterMentionable(TICKET, ['qa-4'])).toEqual([]);
+    });
+
     it('keeps the creator and the system owner', async () => {
       withCandidates([
         candidate({ id: 'creator-1' }),

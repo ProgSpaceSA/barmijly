@@ -208,8 +208,30 @@ export class TicketsService {
         ? Math.round(taskDifficulty._avg.difficultyLevel)
         : ticket.difficultyLevel;
 
+    // Mention chips resolve by name against a user list. People already stored
+    // on `mentions` must stay resolvable even if they later leave the picker.
+    const rawComments = ticket.comments ?? [];
+    const mentionIds = [
+      ...new Set(rawComments.flatMap((c) => c.mentions ?? [])),
+    ];
+    const mentionedRows =
+      mentionIds.length === 0
+        ? []
+        : await this.prisma.user.findMany({
+            where: { id: { in: mentionIds } },
+            select: { id: true, firstName: true, lastName: true, role: true, email: true },
+          });
+    const mentionedById = new Map(mentionedRows.map((u) => [u.id, u]));
+    const comments = rawComments.map((c) => ({
+      ...c,
+      mentionedUsers: (c.mentions ?? [])
+        .map((mid) => mentionedById.get(mid))
+        .filter((u): u is (typeof mentionedRows)[number] => !!u),
+    }));
+
     return {
       ...ticket,
+      comments,
       // Tasks are the finer-grained truth once they exist; the ticket-level
       // number is what leadership planned before the work was broken down.
       effectiveEstimatedHours: ticket.tasksEstimatedHours ?? ticket.estimatedHours,

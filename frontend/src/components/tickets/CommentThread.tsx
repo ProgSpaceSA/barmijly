@@ -11,7 +11,7 @@ import { useAddComment, useDeleteComment, useUpdateComment } from "@/hooks/useTi
 import { CommentItem } from "@/components/tickets/CommentItem";
 import { CommentComposer, type CommentSubmit } from "@/components/tickets/CommentComposer";
 import { COMMENT_LABELS } from "@/lib/constants";
-import type { MentionUser } from "@/lib/mentions";
+import { mergeMentionUsers, type MentionUser } from "@/lib/mentions";
 
 /** Isolates a Latin/number run so it keeps its order inside Arabic status copy. */
 const ltr = (value: string) => `⁦${value}⁩`;
@@ -164,6 +164,16 @@ export function CommentThread({
     [deleteComment, refresh],
   );
 
+  /** Picker list + anyone already named on a comment, so chips stay painted. */
+  const resolveUsers = useMemo(
+    () =>
+      mergeMentionUsers(
+        users,
+        comments.flatMap((c) => (c.mentionedUsers ?? []) as MentionUser[]),
+      ),
+    [users, comments],
+  );
+
   const counts = useMemo(
     () => ({
       all: comments.length,
@@ -282,7 +292,7 @@ export function CommentThread({
               )}
               <CommentItem
                 comment={comment}
-                users={users}
+                users={resolveUsers}
                 currentUserId={currentUserId}
                 currentUserName={currentUserName}
                 editing={editingId === comment.id}

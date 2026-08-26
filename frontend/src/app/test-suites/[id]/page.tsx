@@ -443,16 +443,15 @@ function SuiteWorkspaceContent({ id }: { id: string }) {
 
       {/*
         Case rail is first track = inline-start = right in RTL.
-        Sticky + viewport height for the expected rail, with a negative
-        margin-bottom so that height does NOT inflate the grid row (which was
-        the empty scroll band under short details / closed bug forms).
+        Sticky + max-height only — short lists stay content-sized; long lists
+        scroll inside the viewport cap without stretching empty space.
       */}
       <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-[340px_minmax(0,1fr)] lg:items-start">
         <aside
           className={
             detailOpen
-              ? "hidden lg:sticky lg:top-4 lg:flex lg:h-[calc(100vh-6rem)] lg:flex-col lg:overflow-hidden lg:[margin-bottom:calc(6rem-100vh)]"
-              : "lg:sticky lg:top-4 lg:flex lg:h-[calc(100vh-6rem)] lg:flex-col lg:overflow-hidden lg:[margin-bottom:calc(6rem-100vh)]"
+              ? "hidden lg:sticky lg:top-4 lg:flex lg:max-h-[calc(100vh-6rem)] lg:flex-col lg:overflow-hidden"
+              : "lg:sticky lg:top-4 lg:flex lg:max-h-[calc(100vh-6rem)] lg:flex-col lg:overflow-hidden"
           }
         >
           <TestCasePanel

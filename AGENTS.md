@@ -125,3 +125,4 @@ Requires `DATABASE_URL` in `backend/.env`. Enable **barmijly-postgres** in Curso
 - Do not hard-delete tickets or bypass approval workflow.
 - Do not add English-only UI without Arabic labels in `constants.ts`.
 - Do not create markdown docs unless explicitly requested.
+- Do not ship breaking / backward-compat changes without a checkbox in `to_migrate.md` (rule `to-migrate`).

@@ -1,32 +1,42 @@
 ---
-description: Log post-deploy commands and env vars as checkboxes in to_migrate.md.
+description: Log post-deploy and backward-compat steps as checkboxes in to_migrate.md.
 alwaysApply: true
 ---
 
-# Post-deploy checklist
+# Post-deploy & backward-compat checklist
 
-Maintain `to_migrate.md` at the repo root for work the deployer must do **after** the code is live.
+Maintain `to_migrate.md` at the repo root for work the deployer must do **after** (or in a specific order with) the code going live.
+
+**Non-negotiable:** If a change needs backward compatibility handling, a coordinated deploy order, or anything production will not pick up from a plain code deploy — append it to `to_migrate.md` in the same turn as the code change. Do not leave it only in chat or commit messages.
 
 ## Format
 
-Checkboxes only. One line each: the command or env var, then a short dash description.
+Checkboxes only. One line each: the command, env var, or deploy note, then a short dash description.
 
 ```
 # To migrate
 
 - [ ] `cd backend && npx prisma migrate deploy` — Apply pending Prisma migrations
 - [ ] Set `DIGEST_CRON` in backend `.env` — Daily digest schedule (cron)
+- [ ] Deploy backend before frontend — API field `foo` required by new UI
 ```
 
 No essays, file lists, or implementation notes.
 
 ## When to append
 
-After a change that production will not pick up from the deploy alone:
+After a change that production will not pick up from the deploy alone, **or** that breaks / risks breaking an older client, older server, or existing data:
 
 - A Prisma migration that needs `migrate deploy`
-- A new or renamed `.env` variable
+- A new, renamed, or removed `.env` variable
 - A one-off command (seed, backfill, restart a worker)
+- **Backward compatibility / breaking change**, including:
+  - Deploy order (e.g. migrate DB before code, backend before frontend)
+  - Backfill or data rewrite so old rows keep working
+  - Dual-read / dual-write period that ops must enable or tear down
+  - API or payload shape change that old clients cannot ignore
+  - Enum / column rename or drop that needs a sequenced migration
+  - Storage path, upload, or cache invalidation step after cutover
 
 Skip if the same unchecked item is already on the list. Do not log local-only steps (`migrate dev`, `prisma generate`, `npm install`).
 

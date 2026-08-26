@@ -69,11 +69,11 @@ export function TestCasePanel({
 
   return (
     /*
-     * Fills the sticky rail (parent sets the height). Title / filters / add
-     * stay put; only the case rows scroll. Parent cancels the rail height in
-     * document flow so opening a bug form cannot leave an empty page band.
+     * Sizes to content inside the sticky rail (parent caps with max-height).
+     * Title / filters / add stay put; the case list grows with rows and only
+     * scrolls once it hits the remaining space under that cap.
      */
-    <div className="flex w-full flex-col lg:h-full lg:min-h-0">
+    <div className="flex w-full flex-col lg:min-h-0 lg:max-h-full">
       <div className="mb-3 shrink-0">
         <h2 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
           {TESTING_LABELS.cases}

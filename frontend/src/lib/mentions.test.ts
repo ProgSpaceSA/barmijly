@@ -50,6 +50,18 @@ describe('splitMentions', () => {
     expect(segments[1]).toEqual({ type: 'mention', value: '@أحمد\u00A0علي', user: ahmad });
   });
 
+  it('resolves a typed regular-space name against the chip NBSP spelling', () => {
+    // People often type `@محمد مجدي` instead of picking from the menu — the
+    // stored chip uses NBSP between first and last name.
+    expect(mentionedIdsIn('@أحمد علي today', users)).toEqual(['u1']);
+    expect(mentionedIdsIn(mentionToken(ahmad), users)).toEqual(['u1']);
+  });
+
+  it('treats narrow no-break spaces like a normal space in the name', () => {
+    const segments = splitMentions('راجع @أحمد\u202Fعلي', users);
+    expect(segments[1]).toMatchObject({ type: 'mention', user: ahmad });
+  });
+
   it('keeps two neighbouring Arabic mentions as separate chips', () => {
     const body = `hello ${mentionToken(ahmad)} ${mentionToken(ahmad)}`;
     const mentions = splitMentions(body, users).filter((s) => s.type === 'mention');
@@ -95,8 +107,13 @@ describe('findMentionQuery', () => {
     expect(findMentionQuery('مرحباً @sar', 11)).toEqual({ query: 'sar', start: 7 });
   });
 
-  it('closes once a space is typed', () => {
-    expect(findMentionQuery('مرحباً @sar ', 12)).toBeNull();
+  it('keeps the picker open across a space so Arabic full names can be typed', () => {
+    expect(findMentionQuery('مرحباً @محمد م', 14)).toEqual({ query: 'محمد م', start: 7 });
+  });
+
+  it('closes on a double space or a newline', () => {
+    expect(findMentionQuery('مرحباً @محمد  ', 14)).toBeNull();
+    expect(findMentionQuery('مرحباً @محمد\n', 13)).toBeNull();
   });
 
   it('ignores an @ inside an email address', () => {
@@ -117,6 +134,10 @@ describe('matchesMentionQuery', () => {
     expect(matchesMentionQuery(sara, 'kha')).toBe(true);
     expect(matchesMentionQuery(sara, 'sara@')).toBe(true);
     expect(matchesMentionQuery(sara, 'zzz')).toBe(false);
+  });
+
+  it('matches a multi-word Arabic query', () => {
+    expect(matchesMentionQuery(ahmad, 'أحمد ع')).toBe(true);
   });
 });
 
