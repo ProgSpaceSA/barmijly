@@ -83,7 +83,7 @@ export function StepRow({
 
   useEffect(() => {
     if (dirtyRef.current) {
-      if (draftRef.current.trim() === step.body) dirtyRef.current = false;
+      if (draftRef.current === step.body) dirtyRef.current = false;
       else return;
     }
     if (debounceRef.current) return;
@@ -95,12 +95,13 @@ export function StepRow({
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
-    const next = draftRef.current.trim();
+    // Do not trim — a trailing space mid-edit would snap away after debounce.
+    const next = draftRef.current;
     if (liveUpdate) {
       // Keep dirty until props catch up — clearing early lets the sync effect
       // wipe the input with a still-empty `step.body`.
       if (next !== bodyRef.current) {
-        onBodyChangeRef.current?.(stepIdRef.current, draftRef.current);
+        onBodyChangeRef.current?.(stepIdRef.current, next);
       }
       return;
     }
@@ -118,7 +119,7 @@ export function StepRow({
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
         debounceRef.current = null;
-        const next = draftRef.current.trim();
+        const next = draftRef.current;
         if (next !== bodyRef.current) {
           onBodyChangeRef.current?.(stepIdRef.current, next);
         }
@@ -182,7 +183,7 @@ export function StepRow({
             value={draft}
             aria-label={stepLabel}
             placeholder={TESTING_LABELS.stepPlaceholder}
-            className="h-9 text-sm"
+            className="brm-step-input text-sm"
             onChange={(e) => scheduleSave(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -200,8 +201,7 @@ export function StepRow({
                 draftRef.current = step.body;
               }
             }}
-          />
-        )}
+          />        )}
       </div>
 
       {hasShot ? (

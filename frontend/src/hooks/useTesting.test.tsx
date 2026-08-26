@@ -235,6 +235,12 @@ describe("useOpenBugCount", () => {
 
 describe("useBugActions", () => {
   it("promotes through the bug's own route", async () => {
+    mockPost.mockResolvedValue({
+      data: {
+        bug: { id: "bug-1", testCaseId: null, suiteId: null, ticketId: "ticket-9" },
+        ticket: { id: "ticket-9" },
+      },
+    });
     const { result } = renderHook(() => useBugActions("bug-1"), { wrapper });
 
     await act(async () => {
@@ -247,6 +253,12 @@ describe("useBugActions", () => {
   });
 
   it("refreshes the suites and the tickets after a promote, not only the bug list", async () => {
+    mockPost.mockResolvedValue({
+      data: {
+        bug: { id: "bug-1", testCaseId: null, suiteId: null, ticketId: "ticket-9" },
+        ticket: { id: "ticket-9" },
+      },
+    });
     const spy = vi.spyOn(client, "invalidateQueries");
     const { result } = renderHook(() => useBugActions("bug-1"), { wrapper });
 

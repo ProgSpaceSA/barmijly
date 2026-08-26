@@ -90,6 +90,22 @@ describe("OrderedStepList — editing", () => {
     vi.useRealTimers();
   });
 
+  it("keeps a trailing space when the debounced step save fires", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const onBodyChange = vi.fn();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<OrderedStepList steps={steps} onBodyChange={onBodyChange} />);
+
+    const input = screen.getByDisplayValue("اضغط دخول");
+    await user.clear(input);
+    await user.type(input, "this is testing ");
+    await vi.advanceTimersByTimeAsync(650);
+
+    expect(onBodyChange).toHaveBeenCalledExactlyOnceWith("s3", "this is testing ");
+    expect(input).toHaveValue("this is testing ");
+    vi.useRealTimers();
+  });
+
   it("saves a cleared step body so blanking is intentional", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const onBodyChange = vi.fn();

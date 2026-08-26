@@ -181,13 +181,13 @@ export function TicketPlanPanel({
   if (!canEdit) return null;
 
   return (
-    <div className="space-y-2 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
-      <div className="flex items-center justify-between gap-2 min-h-[1rem]">
+    <div className="min-w-0 space-y-2 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
+      <div className="flex min-h-[1rem] min-w-0 items-center justify-between gap-2">
         <p className="font-brm text-xs" style={{ color: "var(--muted-foreground)" }}>
           {estimateOnly ? ASSIGNEE_LABELS.estimateSection : ASSIGNEE_LABELS.planSection}
         </p>
         {statusHint && (
-          <p className="text-xs shrink-0" style={{ color: "var(--muted-foreground)" }} aria-live="polite">
+          <p className="shrink-0 text-xs" style={{ color: "var(--muted-foreground)" }} aria-live="polite">
             {statusHint}
           </p>
         )}
@@ -195,8 +195,8 @@ export function TicketPlanPanel({
 
       {!estimateOnly && (
         <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1">
-          <div className="min-w-0">
-            <p className="font-brm text-xs mb-1" style={{ color: "var(--muted-foreground)" }}>تاريخ البدء</p>
+          <div className="min-w-0 overflow-x-clip">
+            <p className="font-brm mb-1 text-xs" style={{ color: "var(--muted-foreground)" }}>تاريخ البدء</p>
             <input
               type="date"
               aria-label="تاريخ البدء"
@@ -207,8 +207,8 @@ export function TicketPlanPanel({
             />
           </div>
 
-          <div className="min-w-0">
-            <p className="font-brm text-xs mb-1" style={{ color: "var(--muted-foreground)" }}>
+          <div className="min-w-0 overflow-x-clip">
+            <p className="font-brm mb-1 text-xs" style={{ color: "var(--muted-foreground)" }}>
               تاريخ التسليم المتوقع <span style={{ color: "#EF4444" }}>*</span>
             </p>
             <input
@@ -223,8 +223,8 @@ export function TicketPlanPanel({
         </div>
       )}
 
-      <div>
-        <p className="font-brm text-xs mb-1" style={{ color: "var(--muted-foreground)" }}>{ESTIMATE_LABELS.hours}</p>
+      <div className="min-w-0">
+        <p className="font-brm mb-1 text-xs" style={{ color: "var(--muted-foreground)" }}>{ESTIMATE_LABELS.hours}</p>
         <input
           type="number"
           min="1"
@@ -237,8 +237,8 @@ export function TicketPlanPanel({
         />
       </div>
 
-      <div>
-        <p className="font-brm text-xs mb-1" style={{ color: "var(--muted-foreground)" }}>{ESTIMATE_LABELS.difficulty}</p>
+      <div className="min-w-0">
+        <p className="font-brm mb-1 text-xs" style={{ color: "var(--muted-foreground)" }}>{ESTIMATE_LABELS.difficulty}</p>
         <ThemeSelect
           value={draft.difficultyLevel}
           onChange={(value) => updateDraft({ difficultyLevel: value })}

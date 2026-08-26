@@ -264,7 +264,9 @@ export function useBugActions(bugId?: string, caseId?: string) {
           .post(`/bugs/${id}/promote`, title ? { title } : {})
           .then((r) => r.data as { bug: BugWriteResult; ticket: { id: string } }),
       onSuccess: async (data, vars) => {
-        const bug = data.bug;
+        // API returns `{ bug, ticket }` — never the bare bug row.
+        const bug = data.bug ?? { id: vars.id };
+        const ticketId = data.ticket?.id;
         qc.setQueryData(qk.bugs.detail(vars.id), (old: Record<string, unknown> | undefined) =>
           old ? { ...old, ...bug } : bug,
         );
@@ -282,7 +284,7 @@ export function useBugActions(bugId?: string, caseId?: string) {
           bugId: vars.id,
           caseId: bug.testCaseId ?? caseId,
           suiteId: bug.suiteId,
-          ticketId: data.ticket.id,
+          ticketId,
         });
         toast.success(TESTING_LABELS.promoted);
       },

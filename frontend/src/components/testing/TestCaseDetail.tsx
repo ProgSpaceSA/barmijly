@@ -131,13 +131,15 @@ export function TestCaseDetail({
       delete debounceRefs.current[key];
     }
     syncDebounceFlag();
-    const value = draftRef.current[key].trim();
+    // Keep trailing spaces while typing — trimming mid-debounce yanks the caret
+    // and the space the user just typed. Emptiness still uses trim for titles.
+    const value = draftRef.current[key];
     const current = (caseRef.current[key as keyof TestCaseDetailData] as string | null) ?? "";
     if (value === current) {
       if (draftMatches(draftRef.current, caseRef.current)) dirtyRef.current = false;
       return;
     }
-    if (key === "title" && !value) {
+    if (key === "title" && !value.trim()) {
       // Keep the blank draft visible — silently restoring feels like a bug.
       return;
     }

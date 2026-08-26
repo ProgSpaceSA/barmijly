@@ -208,15 +208,21 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl overflow-visible" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+    <div className="min-w-0 rounded-xl overflow-visible" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+      {/* Stack title + actions on narrow screens — long RTL action rows must not
+          squeeze the section label (ticket testing buttons are the worst case). */}
       <div
-        className="flex items-center justify-between gap-2 px-4 py-3 sm:px-5 sm:py-3.5"
+        className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-3 sm:gap-y-2 sm:px-5 sm:py-3.5"
         style={{ borderBottom: "1px solid var(--border)" }}
       >
-        <h3 className="font-semibold text-sm" style={{ color: "var(--foreground)" }}>{title}</h3>
-        {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
+        <h3 className="min-w-0 font-semibold text-sm" style={{ color: "var(--foreground)" }}>{title}</h3>
+        {actions ? (
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+            {actions}
+          </div>
+        ) : null}
       </div>
-      <div className="p-4 sm:p-5">{children}</div>
+      <div className="min-w-0 p-4 sm:p-5">{children}</div>
     </div>
   );
 }
@@ -1652,7 +1658,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
           </div>
 
           {/* ── Sidebar ── */}
-          <div>
+          <div className="min-w-0">
 
             {/* Mobile toggle */}
             <button
@@ -1685,10 +1691,10 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
             {/* Collapsible content: hidden on mobile by default, toggled on desktop */}
             <div
               id="ticket-sidebar"
-              className={`space-y-4 ${mobileSidebarOpen ? "block" : "hidden"} ${desktopSidebarClosed ? "lg:hidden" : "lg:block"}`}>
+              className={`min-w-0 space-y-4 ${mobileSidebarOpen ? "block" : "hidden"} ${desktopSidebarClosed ? "lg:hidden" : "lg:block"}`}>
 
             {/* Ticket info */}
-            <div className="rounded-xl p-4 space-y-3" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+            <div className="min-w-0 rounded-xl p-4 space-y-3 overflow-x-clip" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
               {ticket.company && (
                 <SidebarMeta field="الشركة" icon={<CompanyLogo company={ticket.company} size="xs" />}>
                   {ticket.company.name}

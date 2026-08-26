@@ -692,7 +692,7 @@ select optgroup {
 .brm-step-grip { cursor: grab; touch-action: none; }
 .brm-step-grip:active { cursor: grabbing; }
 
-/* Screenshot control — same height as the step input (h-9 / 36px). */
+/* Screenshot control — shared height with `.brm-step-input`. */
 .brm-step-shot {
   display: inline-flex;
   align-items: center;
@@ -717,12 +717,20 @@ select optgroup {
   border-style: solid;
   padding: 0;
 }
+/* Step text field — same height as the screenshot tile at every breakpoint. */
+.brm-step-input {
+  height: 36px;
+  min-height: 36px;
+  border-radius: 8px;
+}
 @media (min-width: 1024px) {
   .brm-step-shot { width: 40px; height: 40px; }
   .brm-step-btn { width: 40px; height: 40px; }
+  .brm-step-input { height: 40px; min-height: 40px; }
 }
 @media (pointer: coarse) {
   .brm-step-shot { width: 44px; height: 44px; }
+  .brm-step-input { height: 44px; min-height: 44px; }
 }
 .brm-step-thumb {
   width: 100%;
@@ -1961,16 +1969,20 @@ kbd.brm-kbd {
 
 .brm-shell {
   /* A stray wide child must not hand the whole page a sideways scrollbar.
-     `clip` rather than `hidden`: it does not become a scroll container, so the
-     sticky top bar still resolves against the viewport. */
+     `clip` rather than `hidden`: it does not become a scroll container, so a
+     sticky/fixed top bar still resolves against the viewport. */
   overflow-x: clip;
 }
 
 /* ── Top bar (below `lg` only) ──────────────────────────────────────────── */
 
 .brm-topbar {
-  position: sticky;
+  /* Fixed (not sticky): sticky fails when any ancestor overflows or when a
+     wide child pans the page sideways — which felt like “scrolling moves the
+     header” on bug/ticket detail on phones. */
+  position: fixed;
   top: 0;
+  inset-inline: 0;
   z-index: 30;
   display: flex;
   align-items: center;
@@ -2062,13 +2074,14 @@ kbd.brm-kbd {
      `margin-left` negative — which hangs the whole page off the left edge.
      Do not force `min-height: 100vh` here — that left a huge empty band under
      short pages (suite workspace, bug detail). The shell already fills the
-     viewport. */
+     viewport.
+     Top padding clears the fixed mobile top bar (56px). */
   max-width: 1400px;
-  padding: 16px 16px 40px;
+  padding: calc(16px + 56px) 16px 40px;
 }
 
 @media (min-width: 640px) {
-  .brm-main { padding: 20px 24px 40px; }
+  .brm-main { padding: calc(20px + 56px) 24px 40px; }
 }
 
 @media (min-width: 1024px) {
@@ -2084,7 +2097,8 @@ kbd.brm-kbd {
     transition: none;
   }
   .brm-main {
-    /* The historical layout: 16rem of clearance for the rail, 2rem gutters. */
+    /* The historical layout: 16rem of clearance for the rail, 2rem gutters.
+       No top-bar clearance — the bar is `display: none` from here up. */
     margin-right: 16rem;
     padding: 24px 32px;
   }
@@ -2327,6 +2341,23 @@ kbd.brm-kbd {
    of wrapping. Headings are never the item that should win that fight. */
 .brm-main :where(h1, h2, h3, h4),
 .brm-row-title { min-width: 0; }
+
+/* Native date inputs keep a large intrinsic min-width (especially with an LTR
+   value inside an RTL page). Without this they spill past the ticket sidebar. */
+.brm-main input[type="date"] {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.brm-main input[type="date"]::-webkit-datetime-edit {
+  min-width: 0;
+  overflow: hidden;
+}
+.brm-main input[type="date"]::-webkit-calendar-picker-indicator {
+  flex-shrink: 0;
+}
 
 /* ══ Ticket work UI ═════════════════════════════════════════════════════════
    Roster, stop/resume and prerequisites. Every colour below is declared twice —

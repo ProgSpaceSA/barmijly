@@ -135,10 +135,29 @@ describe("TestCaseDetail — editing", () => {
     await user.type(title, "عنوان أدق");
     expect(mockPatch).not.toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(450);
+    await vi.advanceTimersByTimeAsync(650);
     await waitFor(() =>
       expect(mockPatch).toHaveBeenCalledWith("/test-cases/case-1", { title: "عنوان أدق" }),
     );
+    vi.useRealTimers();
+  });
+
+  it("keeps a trailing space through the debounce save", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderDetail({ canAuthor: true });
+
+    const title = screen.getByLabelText(TESTING_LABELS.caseTitle);
+    await user.clear(title);
+    await user.type(title, "this is testing ");
+    await vi.advanceTimersByTimeAsync(650);
+
+    await waitFor(() =>
+      expect(mockPatch).toHaveBeenCalledWith("/test-cases/case-1", {
+        title: "this is testing ",
+      }),
+    );
+    expect(title).toHaveValue("this is testing ");
     vi.useRealTimers();
   });
 
