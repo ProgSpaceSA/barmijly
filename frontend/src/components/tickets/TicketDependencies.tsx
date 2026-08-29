@@ -12,6 +12,7 @@ import {
   TICKET_STATUS_COLORS,
   TICKET_STATUS_LABELS,
 } from "@/lib/constants";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useDependencyActions, useTicketDependencies, useTickets } from "@/hooks/useTickets";
 import { formatTicketCode } from "@/lib/utils";
 import { toast } from "sonner";
@@ -158,6 +159,7 @@ export function TicketDependencies({
   const actions = useDependencyActions(ticketId);
   const [picking, setPicking] = useState(false);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search.trim());
   const [relation, setRelation] = useState<string>(RELATION_OPTIONS[0].value);
   const [confirmRemove, setConfirmRemove] = useState<TicketSummary | null>(null);
   const chosen = RELATION_OPTIONS.find((o) => o.value === relation) ?? RELATION_OPTIONS[0];
@@ -166,9 +168,9 @@ export function TicketDependencies({
   const pickerFilters = useMemo(() => {
     if (!picking || !systemId) return {};
     const filters: Record<string, string> = { systemId, limit: "100" };
-    if (search.trim()) filters.search = search.trim();
+    if (debouncedSearch) filters.search = debouncedSearch;
     return filters;
-  }, [picking, systemId, search]);
+  }, [picking, systemId, debouncedSearch]);
 
   const { data: candidates, isLoading: candidatesLoading } = useTickets(pickerFilters);
 

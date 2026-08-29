@@ -63,7 +63,7 @@ After a successful commit of that work, reset the file to:
 (none)
 ```
 
-Use skill `barmijly-commit` when the user asks to commit — it includes this reset.
+Use skill `barmijly-prepare-commit` then `barmijly-commit` when the user asks to commit — commit includes this reset.
 
 ## Chat
 

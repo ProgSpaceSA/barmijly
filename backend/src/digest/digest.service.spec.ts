@@ -2,9 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
-import { CommentVisibility, NotificationType, TaskStatus, TicketStatus, UserRole } from '@prisma/client';
+import { CommentVisibility, MeetingStatus, MeetingType, NotificationType, TaskStatus, TicketStatus, UserRole } from '@prisma/client';
 import { DigestService, DIGEST_JOB_NAME } from './digest.service';
-import { DigestRecipient, formatTicketCode } from './digest.types';
+import { DigestRecipient, formatTicketCode, zonedDayBounds } from './digest.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccessService } from '../access/access.service';
 import { EmailService } from '../email/email.service';
@@ -166,6 +166,24 @@ describe('formatTicketCode', () => {
   });
 });
 
+describe('zonedDayBounds', () => {
+  it('starts Asia/Riyadh at 21:00 UTC the previous calendar day', () => {
+    const now = new Date('2026-08-29T06:00:00.000Z'); // 09:00 Riyadh
+    expect(zonedDayBounds(now, 'Asia/Riyadh')).toEqual({
+      start: new Date('2026-08-28T21:00:00.000Z'),
+      end: new Date('2026-08-29T21:00:00.000Z'),
+    });
+  });
+
+  it('keeps a late-evening Riyadh meeting on the same local day', () => {
+    const now = new Date('2026-08-29T20:30:00.000Z'); // 23:30 Riyadh
+    const { start, end } = zonedDayBounds(now, 'Asia/Riyadh');
+    const meeting = new Date('2026-08-29T20:00:00.000Z'); // 23:00 Riyadh
+    expect(meeting.getTime()).toBeGreaterThanOrEqual(start.getTime());
+    expect(meeting.getTime()).toBeLessThan(end.getTime());
+  });
+});
+
 describe('DigestService', () => {
   let service: DigestService;
   let prisma: any;
@@ -185,6 +203,10 @@ describe('DigestService', () => {
       ticketTask: { findMany: jest.fn().mockResolvedValue([]) },
       bug: { findMany: jest.fn().mockResolvedValue([]) },
       notification: { groupBy: jest.fn().mockResolvedValue([]), findMany: jest.fn().mockResolvedValue([]) },
+      meeting: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
       ticket: {
         findMany: jest.fn().mockResolvedValue([]),
         groupBy: jest.fn().mockResolvedValue([]),
@@ -676,6 +698,71 @@ describe('DigestService', () => {
 
       expect(digest.isEmpty).toBe(true);
       expect(digest.windowHours).toBe(24);
+    });
+
+    it('lists today\'s meetings the recipient is attending', async () => {
+      const heldAt = new Date('2026-08-29T10:00:00.000Z');
+      prisma.meeting.findMany.mockResolvedValue([
+        {
+          id: 'mtg-1',
+          meetingNumber: 7,
+          title: 'متابعة الفواتير',
+          type: MeetingType.FOLLOW_UP,
+          status: MeetingStatus.SCHEDULED,
+          heldAt,
+          durationMins: 45,
+          location: 'قاعة الاجتماعات',
+          company: { name: 'شركة سنم' },
+        },
+      ]);
+      prisma.meeting.count.mockResolvedValue(1);
+
+      const digest = await service.buildDigest(DEVELOPER);
+
+      expect(digest.todayMeetings).toHaveLength(1);
+      expect(digest.todayMeetings[0]).toMatchObject({
+        meetingCode: 'MTG-0007',
+        title: 'متابعة الفواتير',
+        url: 'https://barmijly.test/meetings/mtg-1',
+        companyName: 'شركة سنم',
+        location: 'قاعة الاجتماعات',
+        durationMins: 45,
+      });
+      expect(digest.todayMeetingTotal).toBe(1);
+      expect(digest.isEmpty).toBe(false);
+
+      const where = prisma.meeting.findMany.mock.calls[0][0].where;
+      expect(where.attendees).toEqual({ some: { userId: DEVELOPER.id } });
+      expect(where.isArchived).toBe(false);
+      expect(where.status).toEqual({ not: MeetingStatus.CANCELLED });
+      expect(where.heldAt.gte).toEqual(expect.any(Date));
+      expect(where.heldAt.lt).toEqual(expect.any(Date));
+      expect(where.heldAt.lt.getTime() - where.heldAt.gte.getTime()).toBe(24 * 60 * 60 * 1000);
+    });
+
+    it('does not send an empty digest when the only news is a meeting today', async () => {
+      prisma.meeting.findMany.mockResolvedValue([
+        {
+          id: 'mtg-2',
+          meetingNumber: 8,
+          title: 'انطلاق المشروع',
+          type: MeetingType.KICKOFF,
+          status: MeetingStatus.SCHEDULED,
+          heldAt: new Date(),
+          durationMins: null,
+          location: null,
+          company: { name: 'شركة سنم' },
+        },
+      ]);
+      prisma.meeting.count.mockResolvedValue(1);
+
+      const digest = await service.buildDigest(REQUESTER);
+
+      expect(digest.isEmpty).toBe(false);
+      expect(digest.todayMeetings[0].meetingCode).toBe('MTG-0008');
+      expect(prisma.meeting.findMany.mock.calls[0][0].where.attendees).toEqual({
+        some: { userId: REQUESTER.id },
+      });
     });
 
     it('never echoes back fields beyond the recipient identity', async () => {

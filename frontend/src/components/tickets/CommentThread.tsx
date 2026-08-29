@@ -1,13 +1,15 @@
 "use client";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
 import { AtSign, Globe, Lock, MessageSquare } from "lucide-react";
 import { format, isSameDay, isToday, isYesterday } from "date-fns";
 import { ar } from "date-fns/locale";
 import api from "@/lib/api";
-import { qk } from "@/lib/query-keys";
-import { useAddComment, useDeleteComment, useUpdateComment } from "@/hooks/useTickets";
+import {
+  commentAttachmentOwner,
+  useComments,
+  type CommentParent,
+} from "@/hooks/useComments";
 import { CommentItem } from "@/components/tickets/CommentItem";
 import { CommentComposer, type CommentSubmit } from "@/components/tickets/CommentComposer";
 import { COMMENT_LABELS } from "@/lib/constants";
@@ -30,16 +32,24 @@ function dayLabel(date: Date) {
   return format(date, "d MMMM yyyy", { locale: ar });
 }
 
+/**
+ * One thread, two parents: a ticket or a requirement.
+ *
+ * Everything visible here — grouping, day separators, the INTERNAL toggle, the
+ * mention picker — is the same on both, so the only thing the parent changes is
+ * which endpoint the writes go to and which cache entry the refresh settles.
+ * `useComments` owns that split; nothing below this line names a ticket.
+ */
 export function CommentThread({
-  ticketId,
-  comments,
+  parent,
+  comments: serverComments,
   users,
   currentUserId,
   currentUserName,
   canPostInternal,
   onOpenImage,
 }: {
-  ticketId: string;
+  parent: CommentParent;
   comments: any[];
   users: MentionUser[];
   currentUserId?: string;
@@ -47,22 +57,22 @@ export function CommentThread({
   canPostInternal: boolean;
   onOpenImage: (url: string) => void;
 }) {
-  const qc = useQueryClient();
-  const { mutateAsync: addComment } = useAddComment(ticketId);
-  const { mutateAsync: updateComment } = useUpdateComment(ticketId);
-  const { mutateAsync: deleteComment } = useDeleteComment(ticketId);
+  const { add, update, remove, refresh } = useComments(parent);
+  const { mutateAsync: addComment } = add;
+  const { mutateAsync: updateComment } = update;
+  const { mutateAsync: deleteComment } = remove;
 
   const [visibility, setVisibility] = useState("PUBLIC");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("ALL");
-
-  const refresh = useCallback(() => {
-    // Prefix, so the activity log picks the comment up in the same pass as the
-    // thread — they are two views of the write that just landed.
-    qc.invalidateQueries({ queryKey: qk.ticket.detail(ticketId) });
-    // A comment also shows on its author's profile.
-    qc.invalidateQueries({ queryKey: qk.users.all });
-  }, [qc, ticketId]);
+  const [createdComments, setCreatedComments] = useState<typeof serverComments>([]);
+  const comments = useMemo(() => {
+    const serverIds = new Set(serverComments.map((comment) => comment.id));
+    return [
+      ...serverComments,
+      ...createdComments.filter((comment) => !serverIds.has(comment.id)),
+    ];
+  }, [createdComments, serverComments]);
 
   /**
    * Uploads run before the thread refreshes, so the comment and its media land
@@ -78,8 +88,11 @@ export function CommentThread({
         payload.setStatus(
           `${COMMENT_LABELS.uploading} ${ltr(`${i + 1}/${files.length}`)}`,
         );
+        const owner = new URLSearchParams(
+          commentAttachmentOwner(parent, commentId) as Record<string, string>,
+        ).toString();
         try {
-          await api.post(`/attachments/upload?ticketId=${ticketId}&commentId=${commentId}`, form, {
+          await api.post(`/attachments/upload?${owner}`, form, {
             headers: { "Content-Type": "multipart/form-data" },
             onUploadProgress: (event) => {
               const percent = event.total ? Math.round((event.loaded / event.total) * 100) : 0;
@@ -93,7 +106,7 @@ export function CommentThread({
       }
       return failed;
     },
-    [ticketId],
+    [parent],
   );
 
   const handleCreate = useCallback(
@@ -107,6 +120,11 @@ export function CommentThread({
           visibility,
           mentions: payload.mentions,
         });
+        setCreatedComments((previous) =>
+          previous.some((comment) => comment.id === created.id)
+            ? previous
+            : [...previous, created],
+        );
       } catch (error) {
         // Nothing reached the server, so the draft has to survive — rethrowing
         // is what tells the composer to keep it.
@@ -297,6 +315,7 @@ export function CommentThread({
                 currentUserName={currentUserName}
                 editing={editingId === comment.id}
                 grouped={grouped}
+                readOnly={Boolean(comment.fromRequirement)}
                 onStartEdit={() => setEditingId(comment.id)}
                 onCancelEdit={() => setEditingId(null)}
                 onSubmitEdit={handleEdit(comment.id)}
@@ -309,7 +328,7 @@ export function CommentThread({
       </div>
 
       <CommentComposer
-        users={users}
+        users={resolveUsers}
         currentUserId={currentUserId}
         currentUserName={currentUserName}
         onSubmit={handleCreate}

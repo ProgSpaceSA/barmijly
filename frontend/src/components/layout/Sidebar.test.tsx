@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { TESTING_LABELS } from "@/lib/constants";
+import { MEETING_LABELS, TESTING_LABELS } from "@/lib/constants";
 
 const mockGet = vi.fn();
 let currentRole = "QA";
 let openBugs = 3;
+let openRequirements = 5;
 
 vi.mock("@/lib/api", () => ({
   default: { get: (...args: unknown[]) => mockGet(...args), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
@@ -55,11 +56,16 @@ function renderSidebar(role = "QA") {
 beforeEach(() => {
   vi.clearAllMocks();
   openBugs = 3;
-  // The two badges read different shapes: notifications answers with a bare
-  // number, open-count with `{ count }`.
-  mockGet.mockImplementation((url: string) =>
-    Promise.resolve({ data: url === "/bugs/open-count" ? { count: openBugs } : 0 }),
-  );
+  openRequirements = 5;
+  // The badges read different shapes: notifications answers with a bare
+  // number, the two open-counts with `{ count }`.
+  mockGet.mockImplementation((url: string) => {
+    if (url === "/bugs/open-count") return Promise.resolve({ data: { count: openBugs } });
+    if (url === "/requirements/open-count") {
+      return Promise.resolve({ data: { count: openRequirements } });
+    }
+    return Promise.resolve({ data: 0 });
+  });
 });
 
 describe("Sidebar — the QA entries", () => {
@@ -110,5 +116,51 @@ describe("Sidebar — the open-bug badge", () => {
   it("never asks for the count when the user has no QA surface", () => {
     renderSidebar("TICKET_REQUESTER");
     expect(mockGet).not.toHaveBeenCalledWith("/bugs/open-count");
+  });
+});
+
+describe("Sidebar — the meetings entries", () => {
+  it.each(["PROGRAMMING_HEAD", "PROJECT_MANAGER", "SENIOR_MANAGEMENT"])(
+    "shows meetings and requirements to %s",
+    (role) => {
+      renderSidebar(role);
+      expect(navLink(MEETING_LABELS.meetingsTitle)).toHaveAttribute("href", "/meetings");
+      expect(navLink(MEETING_LABELS.requirementsTitle)).toHaveAttribute(
+        "href",
+        "/requirements",
+      );
+    },
+  );
+
+  it.each(["DEVELOPER", "QA", "SYSTEM_OWNER"])(
+    "gives %s the backlog but not the minutes",
+    (role) => {
+      renderSidebar(role);
+      expect(queryNavLink(MEETING_LABELS.meetingsTitle)).toBeNull();
+      expect(navLink(MEETING_LABELS.requirementsTitle)).toHaveAttribute(
+        "href",
+        "/requirements",
+      );
+    },
+  );
+
+  it("hides both from TICKET_REQUESTER", () => {
+    renderSidebar("TICKET_REQUESTER");
+    expect(queryNavLink(MEETING_LABELS.meetingsTitle)).toBeNull();
+    expect(queryNavLink(MEETING_LABELS.requirementsTitle)).toBeNull();
+  });
+
+  it("counts open requirements on the /requirements entry", async () => {
+    renderSidebar("PROGRAMMING_HEAD");
+    await waitFor(() =>
+      expect(navLink(MEETING_LABELS.requirementsTitle)).toHaveAccessibleName(
+        new RegExp(`5 ${MEETING_LABELS.openRequirements}`),
+      ),
+    );
+  });
+
+  it("never asks for the count when the user has no backlog", () => {
+    renderSidebar("TICKET_REQUESTER");
+    expect(mockGet).not.toHaveBeenCalledWith("/requirements/open-count");
   });
 });

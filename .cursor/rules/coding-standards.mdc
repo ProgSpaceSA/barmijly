@@ -27,7 +27,7 @@ alwaysApply: true
 
 - Do not commit unless explicitly asked
 - Never commit `.env`, credentials, or upload directories
-- Use skill `barmijly-commit` when asked to commit
+- Use skill `barmijly-prepare-commit` then `barmijly-commit` when asked to commit
 
 ## Testing changes
 

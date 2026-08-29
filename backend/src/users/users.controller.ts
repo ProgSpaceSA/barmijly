@@ -28,10 +28,14 @@ export class UsersController {
 
   @Get('mentionable')
   @ApiOperation({
-    summary: 'People the caller may mention; pass ticketId to match what the API accepts',
+    summary: 'People the caller may mention; pass ticketId or requirementId to match what the API accepts',
   })
-  findMentionable(@CurrentUser() user: any, @Query('ticketId') ticketId?: string) {
-    return this.usersService.findMentionable(user, ticketId);
+  findMentionable(
+    @CurrentUser() user: any,
+    @Query('ticketId') ticketId?: string,
+    @Query('requirementId') requirementId?: string,
+  ) {
+    return this.usersService.findMentionable(user, ticketId, requirementId);
   }
 
   @Get()
@@ -55,14 +59,16 @@ export class UsersController {
   @Get('developers')
   @ApiOperation({
     summary:
-      'Active developers for filters and pickers. Default is the caller\'s portfolio. Pass pool=roster for the full staffing pool (PM/head). Pass ticketId to match ticket assignability.',
+      'Active developers for filters and pickers. Default is the caller\'s portfolio. Pass pool=roster for the full staffing pool (PM/head). Pass ticketId to match ticket assignability. Pass systemId+companyId to scope a requirement triage picker.',
   })
   getDevelopers(
     @CurrentUser() user: any,
     @Query('ticketId') ticketId?: string,
     @Query('pool') pool?: 'roster',
+    @Query('systemId') systemId?: string,
+    @Query('companyId') companyId?: string,
   ) {
-    return this.usersService.getDevelopers(user, ticketId, { pool });
+    return this.usersService.getDevelopers(user, ticketId, { pool, systemId, companyId });
   }
 
   @Get(':id/comments')

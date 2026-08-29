@@ -24,6 +24,10 @@ export const formatSuiteCode = (n: number | null | undefined) => padCode("TS", n
 export const formatCaseCode = (n: number | null | undefined) => padCode("TC", n);
 export const formatBugCode = (n: number | null | undefined) => padCode("BUG", n);
 
+/** Meetings surface — mirrors `backend/src/meetings/meeting-code.ts`. */
+export const formatMeetingCode = (n: number | null | undefined) => padCode("MTG", n);
+export const formatRequirementCode = (n: number | null | undefined) => padCode("REQ", n);
+
 /** Human file size for attachment chips (`1.4 MB`). */
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

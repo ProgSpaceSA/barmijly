@@ -78,6 +78,8 @@ enum NotificationType {
   TASK_ASSIGNED
   BUG_ASSIGNED
   TEST_CASE_FAILED
+  REQUIREMENT_RAISED
+  REQUIREMENT_ASSIGNED
 }
 
 enum TaskStatus {
@@ -159,6 +161,8 @@ model Company {
   tickets       Ticket[]
   testSuites    TestSuite[]
   bugs          Bug[]
+  meetings      Meeting[]
+  requirements  Requirement[]
 }
 
 model Department {
@@ -174,61 +178,71 @@ model Department {
 }
 
 model System {
-  id          String       @id @default(uuid())
-  name        String
-  nameAr      String?
-  domain      String?
-  description String?
-  companyId   String
-  company     Company      @relation(fields: [companyId], references: [id])
-  isActive    Boolean      @default(true)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  tickets     Ticket[]
-  userSystems UserSystem[]
-  testSuites  TestSuite[]
-  bugs        Bug[]
+  id           String          @id @default(uuid())
+  name         String
+  nameAr       String?
+  domain       String?
+  description  String?
+  companyId    String
+  company      Company         @relation(fields: [companyId], references: [id])
+  isActive     Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  tickets      Ticket[]
+  userSystems  UserSystem[]
+  testSuites   TestSuite[]
+  bugs         Bug[]
+  meetingLinks MeetingSystem[]
+  requirements Requirement[]
 }
 
 model User {
-  id                     String                  @id @default(uuid())
-  email                  String                  @unique
-  password               String?
-  firstName              String
-  lastName               String
-  role                   UserRole
-  companyId              String?
-  company                Company?                @relation(fields: [companyId], references: [id])
-  departmentId           String?
-  department             Department?             @relation(fields: [departmentId], references: [id])
-  isActive               Boolean                 @default(true)
-  createdAt              DateTime                @default(now())
-  updatedAt              DateTime                @updatedAt
-  systems                UserSystem[]
-  ticketsCreated         Ticket[]                @relation("TicketCreator")
-  ticketsOwned           Ticket[]                @relation("TicketOwner")
-  assignments            TicketAssignment[]
-  approvals              TicketApproval[]
-  comments               TicketComment[]
-  notifications          Notification[]
-  invitationsSent        EmailInvitation[]       @relation("InvitationSender")
-  invitationReceived     EmailInvitation?        @relation("InvitationReceiver")
-  passwordResetTokens    PasswordResetToken[]
-  companies              UserCompany[]
-  auditLogs              AuditLog[]
-  signupRequestsReviewed SignupRequest[]
-  tasksAssigned          TicketTask[]            @relation("TaskAssignee")
-  tasksCreated           TicketTask[]            @relation("TaskCreator")
-  statusChanges          TicketStatusHistory[]   @relation("StatusHistoryChanger")
-  dependenciesCreated    TicketDependency[]      @relation("DependencyCreator")
-  suitesOwned            TestSuite[]             @relation("SuiteOwner")
-  suiteTicketLinks       TestSuiteTicket[]       @relation("SuiteTicketLinker")
-  casesAssigned          TestCase[]              @relation("CaseAssignee")
-  casesRun               TestCase[]              @relation("CaseRunner")
-  caseResultChanges      TestCaseResultHistory[] @relation("CaseResultChanger")
-  bugsReported           Bug[]                   @relation("BugReporter")
-  bugsAssigned           Bug[]                   @relation("BugAssignee")
-  bugStatusChanges       BugStatusHistory[]      @relation("BugStatusChanger")
+  id                       String                     @id @default(uuid())
+  email                    String                     @unique
+  password                 String?
+  firstName                String
+  lastName                 String
+  role                     UserRole
+  companyId                String?
+  company                  Company?                   @relation(fields: [companyId], references: [id])
+  departmentId             String?
+  department               Department?                @relation(fields: [departmentId], references: [id])
+  isActive                 Boolean                    @default(true)
+  createdAt                DateTime                   @default(now())
+  updatedAt                DateTime                   @updatedAt
+  systems                  UserSystem[]
+  ticketsCreated           Ticket[]                   @relation("TicketCreator")
+  ticketsOwned             Ticket[]                   @relation("TicketOwner")
+  assignments              TicketAssignment[]
+  approvals                TicketApproval[]
+  comments                 TicketComment[]
+  notifications            Notification[]
+  invitationsSent          EmailInvitation[]          @relation("InvitationSender")
+  invitationReceived       EmailInvitation?           @relation("InvitationReceiver")
+  passwordResetTokens      PasswordResetToken[]
+  companies                UserCompany[]
+  auditLogs                AuditLog[]
+  signupRequestsReviewed   SignupRequest[]
+  tasksAssigned            TicketTask[]               @relation("TaskAssignee")
+  tasksCreated             TicketTask[]               @relation("TaskCreator")
+  statusChanges            TicketStatusHistory[]      @relation("StatusHistoryChanger")
+  dependenciesCreated      TicketDependency[]         @relation("DependencyCreator")
+  suitesOwned              TestSuite[]                @relation("SuiteOwner")
+  suiteTicketLinks         TestSuiteTicket[]          @relation("SuiteTicketLinker")
+  casesAssigned            TestCase[]                 @relation("CaseAssignee")
+  casesRun                 TestCase[]                 @relation("CaseRunner")
+  caseResultChanges        TestCaseResultHistory[]    @relation("CaseResultChanger")
+  bugsReported             Bug[]                      @relation("BugReporter")
+  bugsAssigned             Bug[]                      @relation("BugAssignee")
+  bugStatusChanges         BugStatusHistory[]         @relation("BugStatusChanger")
+  meetingsOrganized        Meeting[]                  @relation("MeetingOrganizer")
+  meetingsAttended         MeetingAttendee[]          @relation("MeetingAttendeeUser")
+  pointsRaised             MeetingPoint[]             @relation("PointRaiser")
+  requirementsCreated      Requirement[]              @relation("RequirementCreator")
+  requirementsRequested    Requirement[]              @relation("RequirementRequester")
+  requirementsOwned        Requirement[]              @relation("RequirementOwner")
+  requirementsDecided      Requirement[]              @relation("RequirementDecider")
+  requirementStatusChanges RequirementStatusHistory[] @relation("RequirementStatusChanger")
 }
 
 model UserSystem {
@@ -294,6 +308,10 @@ model Ticket {
   blockedByTicketId    String?
   blockedByTicket      Ticket?               @relation("BlockedBy", fields: [blockedByTicketId], references: [id])
   blockedTickets       Ticket[]              @relation("BlockedBy")
+  /// The requirement this ticket implements, set by "promote". One requirement
+  /// may produce several tickets; the requirement itself moves to CONVERTED.
+  requirementId        String?
+  requirement          Requirement?          @relation("RequirementTickets", fields: [requirementId], references: [id])
   templateId           String?
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
@@ -333,43 +351,52 @@ model TicketDependency {
   @@index([blockedTicketId])
 }
 
+/// One thread shape for two parents: a ticket or a requirement. Exactly one of
+/// ticketId / requirementId is ever set — `CommentParentRef` resolves which.
 model TicketComment {
-  id          String             @id @default(uuid())
-  content     String
-  visibility  CommentVisibility  @default(PUBLIC)
-  ticketId    String
-  ticket      Ticket             @relation(fields: [ticketId], references: [id])
-  authorId    String
-  author      User               @relation(fields: [authorId], references: [id])
-  mentions    String[]
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  attachments TicketAttachment[]
+  id            String             @id @default(uuid())
+  content       String
+  visibility    CommentVisibility  @default(PUBLIC)
+  ticketId      String?
+  ticket        Ticket?            @relation(fields: [ticketId], references: [id])
+  requirementId String?
+  requirement   Requirement?       @relation(fields: [requirementId], references: [id])
+  authorId      String
+  author        User               @relation(fields: [authorId], references: [id])
+  mentions      String[]
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  attachments   TicketAttachment[]
 }
 
 model TicketAttachment {
-  id           String         @id @default(uuid())
-  fileName     String
-  fileSize     Int
-  mimeType     String
-  url          String
-  ticketId     String?
-  ticket       Ticket?        @relation(fields: [ticketId], references: [id])
-  commentId    String?
-  comment      TicketComment? @relation(fields: [commentId], references: [id])
-  taskId       String?
-  task         TicketTask?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  testCaseId   String?
-  testCase     TestCase?      @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
-  bugId        String?
-  bug          Bug?           @relation(fields: [bugId], references: [id], onDelete: Cascade)
-  testStepId   String?
-  testStep     TestStep?      @relation(fields: [testStepId], references: [id], onDelete: Cascade)
+  id            String         @id @default(uuid())
+  fileName      String
+  fileSize      Int
+  mimeType      String
+  url           String
+  ticketId      String?
+  ticket        Ticket?        @relation(fields: [ticketId], references: [id])
+  commentId     String?
+  comment       TicketComment? @relation(fields: [commentId], references: [id])
+  taskId        String?
+  task          TicketTask?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  testCaseId    String?
+  testCase      TestCase?      @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  bugId         String?
+  bug           Bug?           @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  testStepId    String?
+  testStep      TestStep?      @relation(fields: [testStepId], references: [id], onDelete: Cascade)
   /// Suite-level reference docs covering the whole suite (any file type).
-  suiteId      String?
-  suite        TestSuite?     @relation(fields: [suiteId], references: [id], onDelete: Cascade)
-  uploadedById String
-  createdAt    DateTime       @default(now())
+  suiteId       String?
+  suite         TestSuite?     @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+  /// Meeting-level files — the agenda deck, a signed minutes PDF.
+  meetingId     String?
+  meeting       Meeting?       @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  requirementId String?
+  requirement   Requirement?   @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  uploadedById  String
+  createdAt     DateTime       @default(now())
 }
 
 model TicketStatusHistory {
@@ -435,17 +462,19 @@ model EmailInvitation {
 }
 
 model Notification {
-  id        String           @id @default(uuid())
-  type      NotificationType
-  title     String
-  body      String
-  isRead    Boolean          @default(false)
-  userId    String
-  user      User             @relation(fields: [userId], references: [id])
-  ticketId  String?
-  ticket    Ticket?          @relation(fields: [ticketId], references: [id])
-  metadata  Json?
-  createdAt DateTime         @default(now())
+  id            String           @id @default(uuid())
+  type          NotificationType
+  title         String
+  body          String
+  isRead        Boolean          @default(false)
+  userId        String
+  user          User             @relation(fields: [userId], references: [id])
+  ticketId      String?
+  ticket        Ticket?          @relation(fields: [ticketId], references: [id])
+  requirementId String?
+  requirement   Requirement?     @relation(fields: [requirementId], references: [id])
+  metadata      Json?
+  createdAt     DateTime         @default(now())
 }
 
 model AuditLog {
@@ -708,4 +737,212 @@ model BugStatusHistory {
   createdAt   DateTime   @default(now())
 
   @@index([bugId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Meetings, minutes and requirements (MEETINGS_PLAN.md)
+//
+// A meeting is the event; its minutes are ordered MeetingPoint rows. A line
+// that has to be *tracked* is captured as a Requirement, which is the backlog —
+// there is deliberately no BACKLOG ticket status. Promoting a requirement
+// creates a DRAFT ticket, so PROGRAMMING_HEAD approval is still the only door
+// into development (req.md §8, §21).
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum MeetingType {
+  CEO_REVIEW
+  KICKOFF
+  FOLLOW_UP
+  /// req.md §8 «تحويل لاجتماع نقاش» — a ticket sent to a discussion meeting.
+  DISCUSSION
+  RETROSPECTIVE
+  OTHER
+}
+
+enum MeetingStatus {
+  SCHEDULED
+  HELD
+  CANCELLED
+}
+
+/// What a minutes line *is*. Only REQUEST is normally captured, but the kind is
+/// descriptive rather than a gate — a RISK worth tracking can be captured too.
+enum PointKind {
+  NOTE
+  DECISION
+  RISK
+  REQUEST
+}
+
+/// Where the ask came in. MEETING is set by capture and carries meetingPointId;
+/// everything else is a standalone requirement with a `sourceNote`.
+enum RequirementSource {
+  MEETING
+  WHATSAPP
+  EMAIL
+  DOCUMENT
+  CALL
+  OTHER
+}
+
+enum RequirementStatus {
+  NEW
+  UNDER_REVIEW
+  ACCEPTED
+  /// Terminal: a ticket now carries the work. Set by promote, never by hand.
+  CONVERTED
+  DECLINED
+}
+
+/// One meeting, scoped to exactly one company and any number of its systems.
+/// Minutes live in `points`; there is no free-text `minutes` column on purpose.
+model Meeting {
+  id            String        @id @default(uuid())
+  meetingNumber Int           @unique @default(autoincrement())
+  title         String
+  /// The agenda, written before the meeting.
+  description   String?
+  type          MeetingType   @default(FOLLOW_UP)
+  status        MeetingStatus @default(SCHEDULED)
+  /// When it is (SCHEDULED) or was (HELD) held. Stamped on hold if still empty.
+  heldAt        DateTime?
+  durationMins  Int?
+  location      String?
+  companyId     String
+  company       Company       @relation(fields: [companyId], references: [id])
+  organizerId   String
+  organizer     User          @relation("MeetingOrganizer", fields: [organizerId], references: [id])
+  isArchived    Boolean       @default(false)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  attendees   MeetingAttendee[]
+  systems     MeetingSystem[]
+  points      MeetingPoint[]
+  attachments TicketAttachment[]
+
+  @@index([companyId, status])
+  @@index([heldAt])
+}
+
+/// Who was in the room. `userId` for an internal account; the free-text trio for
+/// an external guest (a group CEO has no login and should not need one).
+model MeetingAttendee {
+  id           String   @id @default(uuid())
+  meetingId    String
+  meeting      Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  userId       String?
+  user         User?    @relation("MeetingAttendeeUser", fields: [userId], references: [id])
+  name         String?
+  jobTitle     String?
+  organization String?
+  createdAt    DateTime @default(now())
+
+  /// Postgres allows repeated NULLs, so this blocks a duplicate internal
+  /// attendee without limiting how many externals a meeting may have.
+  @@unique([meetingId, userId])
+  @@index([meetingId])
+}
+
+/// "This meeting covered that system." Scope stays on the company; the systems
+/// are what the discussion was about.
+model MeetingSystem {
+  meetingId String
+  meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  systemId  String
+  system    System   @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([meetingId, systemId])
+  @@index([systemId])
+}
+
+/// One numbered line of the minutes. Deliberately thin — no status, no number of
+/// its own, no comment thread. A line that needs any of those is captured as a
+/// Requirement instead.
+model MeetingPoint {
+  id           String    @id @default(uuid())
+  meetingId    String
+  meeting      Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  /// Contiguous from 0, rebalanced on reorder and delete (mirrors TestStep).
+  order        Int       @default(0)
+  kind         PointKind @default(NOTE)
+  body         String
+  raisedById   String?
+  raisedBy     User?     @relation("PointRaiser", fields: [raisedById], references: [id])
+  /// Whoever raised it has no account — «الرئيس التنفيذي».
+  raisedByName String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  requirements Requirement[]
+
+  @@index([meetingId, order])
+}
+
+/// A tracked ask, from a meeting line or from anywhere else. This is the
+/// backlog: it lives here until leadership pins it to a system and promotes it
+/// into a DRAFT ticket.
+model Requirement {
+  id                String            @id @default(uuid())
+  requirementNumber Int               @unique @default(autoincrement())
+  title             String
+  description       String?
+  source            RequirementSource @default(MEETING)
+  /// Where it came in, when there is no meeting point — «واتساب من م. أحمد».
+  sourceNote        String?
+  meetingPointId    String?
+  meetingPoint      MeetingPoint?     @relation(fields: [meetingPointId], references: [id])
+  status            RequirementStatus @default(NEW)
+  priority          Priority?
+  /// Who asked. `requestedByName` covers an external requester with no account.
+  requestedById     String?
+  requestedBy       User?             @relation("RequirementRequester", fields: [requestedById], references: [id])
+  requestedByName   String?
+  /// Who is chasing it inside the programming team.
+  ownerId           String?
+  owner             User?             @relation("RequirementOwner", fields: [ownerId], references: [id])
+  dueDate           DateTime?
+  /// Null until triage pins it. Promote refuses while it is null, and an
+  /// unpinned requirement is invisible to non-leadership.
+  systemId          String?
+  system            System?           @relation(fields: [systemId], references: [id])
+  companyId         String
+  company           Company           @relation(fields: [companyId], references: [id])
+  /// Who filed it here — not necessarily who asked for it.
+  createdById       String
+  createdBy         User              @relation("RequirementCreator", fields: [createdById], references: [id])
+  decidedById       String?
+  decidedBy         User?             @relation("RequirementDecider", fields: [decidedById], references: [id])
+  decidedAt         DateTime?
+  decisionNote      String?
+  isArchived        Boolean           @default(false)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  tickets       Ticket[]                   @relation("RequirementTickets")
+  comments      TicketComment[]
+  attachments   TicketAttachment[]
+  statusHistory RequirementStatusHistory[]
+  notifications Notification[]
+
+  @@index([companyId, status])
+  @@index([systemId, status])
+  @@index([meetingPointId])
+  @@index([ownerId, status])
+}
+
+/// Mirrors BugStatusHistory: every status move on a requirement is auditable.
+model RequirementStatusHistory {
+  id            String             @id @default(uuid())
+  requirementId String
+  requirement   Requirement        @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  fromStatus    RequirementStatus?
+  toStatus      RequirementStatus
+  changedById   String
+  changedBy     User               @relation("RequirementStatusChanger", fields: [changedById], references: [id])
+  note          String?
+  createdAt     DateTime           @default(now())
+
+  @@index([requirementId, createdAt])
 }

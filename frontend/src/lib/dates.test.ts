@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { formatAbsoluteTime, formatRelativeTime, parseTimestamp } from "./dates";
+import {
+  formatAbsoluteTime,
+  formatRelativeTime,
+  meetingDateRange,
+  parseTimestamp,
+} from "./dates";
 
 const NOW = new Date("2026-08-20T18:20:00.000Z");
 
@@ -53,5 +58,53 @@ describe("formatAbsoluteTime", () => {
     const label = formatAbsoluteTime("2026-08-19T22:28:30.348Z");
     expect(label === "" || /[صم]/.test(label)).toBe(true);
     expect(label).not.toMatch(/\d{2}:\d{2}$/);
+  });
+});
+
+describe("meetingDateRange", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 7, 29, 15, 30, 0));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("keeps this month open through the last local day, not today", () => {
+    const { heldFrom, heldTo } = meetingDateRange("month");
+    const from = new Date(heldFrom!);
+    const to = new Date(heldTo!);
+
+    expect(from.getFullYear()).toBe(2026);
+    expect(from.getMonth()).toBe(7);
+    expect(from.getDate()).toBe(1);
+    expect(to.getFullYear()).toBe(2026);
+    expect(to.getMonth()).toBe(7);
+    expect(to.getDate()).toBe(31);
+  });
+
+  it("keeps this year open through 31 Dec, not today", () => {
+    const { heldFrom, heldTo } = meetingDateRange("year");
+    const from = new Date(heldFrom!);
+    const to = new Date(heldTo!);
+
+    expect(from.getFullYear()).toBe(2026);
+    expect(from.getMonth()).toBe(0);
+    expect(from.getDate()).toBe(1);
+    expect(to.getFullYear()).toBe(2026);
+    expect(to.getMonth()).toBe(11);
+    expect(to.getDate()).toBe(31);
+  });
+
+  it("keeps this week open through Sunday, not today", () => {
+    const { heldFrom, heldTo } = meetingDateRange("week");
+    const from = new Date(heldFrom!);
+    const to = new Date(heldTo!);
+
+    expect(from.getDay()).toBe(1);
+    expect(from.getDate()).toBe(24);
+    expect(to.getDay()).toBe(0);
+    expect(to.getDate()).toBe(30);
   });
 });

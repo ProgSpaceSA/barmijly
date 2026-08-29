@@ -19,7 +19,7 @@ import {
   type TimelineFilterKey,
 } from "@/lib/constants";
 import { RelativeTime } from "@/components/shared/RelativeTime";
-import { formatBugCode, formatTicketCode } from "@/lib/utils";
+import { formatBugCode, formatRequirementCode, formatTicketCode } from "@/lib/utils";
 import { useTicketTimeline } from "@/hooks/useTickets";
 import { useAuthStore } from "@/store/auth";
 
@@ -306,6 +306,17 @@ function bugPromoteDetailOf(to?: Record<string, unknown> | null): string | undef
   return [code, title].filter(Boolean).join(" · ") || undefined;
 }
 
+function ticketCreatedDetailOf(to?: Record<string, unknown> | null): string | undefined {
+  if (!to) return undefined;
+  const reqNum = to.requirementNumber;
+  if (typeof reqNum === "number" || (typeof reqNum === "string" && reqNum.length > 0)) {
+    const code = formatRequirementCode(Number(reqNum));
+    if (code) return `أُنشئت من المتطلب ${code}`;
+  }
+  const title = typeof to.title === "string" && to.title.trim() ? to.title.trim() : undefined;
+  return title;
+}
+
 function personName(p?: Person | null) {
   if (!p) return "";
   return `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim();
@@ -479,6 +490,14 @@ function detailOf(entry: Entry): string | undefined {
 
   if (action === "BUG_PROMOTE") {
     return bugPromoteDetailOf(to);
+  }
+
+  if (action === "TICKET_CREATED" || action === "CREATE") {
+    return ticketCreatedDetailOf(to);
+  }
+
+  if (action === "REQUIREMENT_PROMOTE") {
+    return ticketCreatedDetailOf(to);
   }
 
   if (action === "BUG_CREATE") {

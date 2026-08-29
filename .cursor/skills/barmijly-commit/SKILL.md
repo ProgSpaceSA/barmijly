@@ -31,8 +31,9 @@ Examples:
 
 ## Steps
 
-1. `git status` + `git diff` + `git log -5 --oneline` (match existing style)
-2. Stage only relevant files
-3. Commit with a HEREDOC/`-m` message (no `-i`, no `--no-verify` unless asked)
-4. Do not push unless asked
-5. After a successful commit, reset `.cursor/uncommitted.md` to `# Uncommitted\n\n(none)\n`
+1. Run skill `barmijly-prepare-commit` first — Husky `lint-staged` must be clean (no `--no-verify` unless asked)
+2. `git status` + `git diff` + `git log -5 --oneline` (match existing style)
+3. Stage only relevant files
+4. Commit with a HEREDOC/`-m` message (no `-i`, no `--no-verify` unless asked)
+5. Do not push unless asked
+6. After a successful commit, reset `.cursor/uncommitted.md` to `# Uncommitted\n\n(none)\n`

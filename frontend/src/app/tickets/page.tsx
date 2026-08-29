@@ -8,6 +8,7 @@ import { SkeletonList } from "@/components/shared/LoadingSpinner";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { TicketListCard } from "@/components/shared/TicketListCard";
 import { useTickets } from "@/hooks/useTickets";
+import { useDebouncedSearch } from "@/hooks/useDebouncedValue";
 import { useAuthStore, type UserRole } from "@/store/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -104,6 +105,10 @@ function TicketsPageContent() {
     );
   };
 
+  const { search, onSearchChange } = useDebouncedSearch((value) =>
+    setFilter("search", value),
+  );
+
   const setStatusFilter = (status: string) => {
     setActiveStatus(status);
     setFilters(prev => {
@@ -165,7 +170,8 @@ function TicketsPageContent() {
         <Input
           placeholder="بحث في التذاكر... (أو Ctrl+K)"
           className="pr-9"
-          onChange={e => setFilter("search", e.target.value)}
+          value={search}
+          onChange={onSearchChange}
         />
       </div>
 

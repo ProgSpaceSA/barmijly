@@ -173,6 +173,55 @@ describe('CommentComposer — mentions', () => {
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
   });
 
+  it('keeps typing normally after a mention without reopening the picker', async () => {
+    const user = userEvent.setup();
+    const { textarea } = setup();
+
+    await user.type(textarea, '@sar');
+    await user.click(await screen.findByRole('option', { name: /Sara Khan/ }));
+    await waitFor(() => expect(screen.queryByRole('listbox')).not.toBeInTheDocument());
+
+    await user.type(textarea, ' follow up');
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(textarea.value).toBe(`${mentionToken(sara)}  follow up`);
+  });
+
+  it('closes an empty picker when the writer types a space after a dead-end query', async () => {
+    const user = userEvent.setup();
+    const { textarea } = setup();
+
+    await user.type(textarea, '@zzz ');
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(textarea.value).toBe('@zzz ');
+  });
+
+  it('stays responsive after picking a latin developer name', async () => {
+    const dev: MentionUser = {
+      id: 'u3',
+      firstName: 'ahmed',
+      lastName: 'mohamed',
+      email: 'ahmed@brm.sa',
+      role: 'DEVELOPER',
+    };
+    const user = userEvent.setup();
+    render(
+      <CommentComposer users={[dev, ...users]} currentUserId="me" onSubmit={noop} />,
+    );
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+
+    await user.type(textarea, '@ahmed');
+    await user.click(await screen.findByRole('option', { name: /ahmed mohamed/i }));
+
+    await waitFor(() =>
+      expect(textarea.value).toBe(`${mentionToken(dev)} `),
+    );
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+
+    await user.type(textarea, 'please review');
+    expect(textarea.value).toBe(`${mentionToken(dev)} please review`);
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  });
+
   it('paints the mirror without isolating, so the caret and the colour agree', async () => {
     const user = userEvent.setup();
     const { textarea, container } = setup();
@@ -264,14 +313,46 @@ describe('CommentComposer — sending', () => {
     await user.type(textarea, 'مع مرفق');
     await user.keyboard('{Control>}{Enter}{/Control}');
 
-    // The comment is not "posted" from the writer's side until this resolves.
-    await waitFor(() => expect(textarea).toBeDisabled());
+    // Disabling the box would dump the caret; read-only keeps it so the next
+    // comment is ready to type, and a click outside can still move focus away.
+    await waitFor(() => expect(textarea).toHaveProperty('readOnly', true));
     expect(screen.getByRole('button', { name: /إرسال/ })).toBeDisabled();
     expect(screen.queryByText('جارٍ رفع المرفقات')).not.toBeInTheDocument();
     expect(screen.queryByText(COMMENT_LABELS.posting)).not.toBeInTheDocument();
+    expect(textarea).toHaveFocus();
 
     release();
     await waitFor(() => expect(textarea.value).toBe(''));
+    expect(textarea).toHaveFocus();
+    expect(textarea).toHaveProperty('readOnly', false);
+  });
+
+  it('keeps the caret after sending from the button', async () => {
+    const user = userEvent.setup();
+    const { textarea } = setup(async () => {});
+
+    await user.type(textarea, 'hello');
+    await user.click(screen.getByRole('button', { name: /إرسال/ }));
+
+    await waitFor(() => expect(textarea.value).toBe(''));
+    expect(textarea).toHaveFocus();
+  });
+
+  it('moves focus away when the click lands outside the field', async () => {
+    const user = userEvent.setup();
+    render(
+      <div>
+        <CommentComposer users={users} currentUserId="me" onSubmit={noop} />
+        <button type="button">خارج</button>
+      </div>,
+    );
+    const textarea = screen.getByRole('textbox');
+
+    await user.click(textarea);
+    expect(textarea).toHaveFocus();
+
+    await user.click(screen.getByRole('button', { name: 'خارج' }));
+    expect(textarea).not.toHaveFocus();
   });
 
   it('keeps the draft when the send fails', async () => {

@@ -54,16 +54,17 @@ Useful queries:
 
 ## Step 5 — QA accounts
 
-From `QA_TESTING.md` — password `QATest@2026`:
+From `QA_TESTING.md` — password `asdfasdf0!`. Company1 daily drivers:
 
 | Role | Email |
 |------|-------|
-| Requester | `qa.requester@barmijly.ai` |
-| Head | `qa.head@barmijly.ai` |
-| Developer | `qa.dev@barmijly.ai` |
-| PM | `qa.pm@barmijly.ai` |
+| Requester | `anas.hagras1999+rc1@gmail.com` |
+| System Owner | `anas.hagras1999+oc1@gmail.com` |
+| Head | `anas.hagras1999+hc1@gmail.com` |
+| Developer | `anas.hagras1999+dc1@gmail.com` |
+| PM | `anas.hagras1999+pmc1@gmail.com` |
 
-Reproduce with the **correct role** for the action.
+Reproduce with the **correct role** for the action. Full matrix: `backend/prisma/seed-matrix.ts`.
 
 ## Ticket transition debug
 

@@ -29,7 +29,11 @@ src/
 ├── systems/          # System management + user-system access
 ├── tickets/          # Core ticket workflow (14 endpoints)
 │   └── dto/          # create, update, approve, assign, filter, close
-├── comments/         # Public & internal ticket comments
+├── comments/         # Public & internal comments — tickets and requirements
+├── meetings/         # Meetings, attendees, systems, ordered minutes, capture
+│   └── dto/          # meeting, points, attendees, systems, capture
+├── requirements/     # The backlog + promote-to-DRAFT-ticket
+│   └── dto/          # create, update, status, promote, filter
 ├── attachments/      # File upload (multer) + delete
 ├── notifications/    # In-app notifications
 ├── email/            # Nodemailer service (invitations, status updates)
@@ -221,15 +225,83 @@ task takes you back off, unless you are the lead. Task estimates roll up into
 `effectiveEstimatedHours` (the rollup, falling back to the planned figure),
 `openTaskCount` and `actualHours`.
 
+### Meetings
+
+Leadership-only (`meeting:read` / `meeting:manage`: `PROGRAMMING_HEAD`,
+`PROJECT_MANAGER`, `SENIOR_MANAGEMENT`). A meeting belongs to exactly one
+company and covers any number of its systems. Minutes are ordered
+`MeetingPoint` rows — there is no free-text `minutes` field.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/meetings` | List — filters: `search`, `companyId`, `systemId`, `status`, `type`, `mine`, `isArchived`, `page`, `limit` |
+| POST | `/meetings` | Schedule one; the organiser is seated automatically |
+| GET | `/meetings/:id` | Detail — attendees, systems, ordered points, attachments |
+| PATCH | `/meetings/:id` | Title, agenda, type, date, duration, location |
+| POST | `/meetings/:id/hold` | SCHEDULED → HELD; stamps `heldAt` when empty |
+| POST | `/meetings/:id/cancel` | SCHEDULED → CANCELLED |
+| POST | `/meetings/:id/archive` | Archive — meetings are never hard-deleted |
+| POST | `/meetings/:id/unarchive` | Restore |
+| POST | `/meetings/:id/attendees` | Internal (`userId`) or external (`name`, `jobTitle`, `organization`) |
+| DELETE | `/meetings/:id/attendees/:attendeeId` | Remove one |
+| PUT | `/meetings/:id/systems` | Replace the whole `MeetingSystem` set |
+| POST | `/meetings/:id/points` | Append a minutes line |
+| PATCH | `/meetings/:id/points/:pointId` | Edit body, kind, who raised it |
+| POST | `/meetings/:id/points/reorder` | `{ pointId, order }` — siblings rebalance to contiguous order |
+| DELETE | `/meetings/:id/points/:pointId` | Delete a line; captured requirements survive, unlinked |
+| POST | `/meetings/:id/points/:pointId/capture` | Create a Requirement (`source = MEETING`) from the line — needs `requirement:create` |
+
+A cancelled or archived meeting refuses every write. Every mutation writes an
+`AuditLog` row (`entity: 'Meeting' | 'MeetingPoint'`).
+
+### Requirements
+
+The backlog. There is **no `BACKLOG` ticket status** — an ask lives here until
+leadership pins it to a system and promotes it.
+
+`requirement:read` also reaches `DEVELOPER`, `QA` and `SYSTEM_OWNER`, but only
+for requirements already pinned to a system they can see; an unpinned
+requirement (`systemId: null`) is leadership-only. `TICKET_REQUESTER` gets 403
+on every endpoint here.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/requirements` | List — filters: `search`, `status`, `open`, `source`, `companyId`, `systemId`, `ownerId`, `meetingId`, `mine`, `unpinned`, `isArchived`, `page`, `limit` |
+| GET | `/requirements/open-count` | Sidebar badge — NEW + UNDER_REVIEW + ACCEPTED |
+| POST | `/requirements` | File a standalone ask. `source = MEETING` is refused — that path is capture |
+| GET | `/requirements/:id` | Detail — origin, comments (visibility-filtered), attachments, status history, linked tickets |
+| PATCH | `/requirements/:id` | Triage: owner, system, priority, due date, wording (`requirement:triage`) |
+| POST | `/requirements/:id/status` | Change status — writes `RequirementStatusHistory`. `CONVERTED` is refused; promote owns it |
+| POST | `/requirements/:id/promote` | Create the linked ticket (`requirement:promote`) |
+| POST | `/requirements/:id/archive` | Archive — never hard-deleted |
+| POST | `/requirements/:id/unarchive` | Restore |
+| POST | `/requirements/:id/comments` | Same thread as tickets — see Comments below |
+
+**Promote** refuses a requirement with no `systemId`, one that is archived, and
+one already DECLINED. The ticket it creates lands at **DRAFT** and goes through
+DRAFT → NEW → AWAITING_APPROVAL like any other, so `PROGRAMMING_HEAD` approval
+is still the only door into development (req.md §8, §21). The requirement moves
+to `CONVERTED`, `Ticket.requirementId` is set, and both sides get an audit row.
+
 ### Comments
+
+One thread implementation, two parents: a ticket or a requirement. Exactly one
+of `TicketComment.ticketId` / `requirementId` is ever set.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/tickets/:ticketId/comments` | Add comment (PUBLIC or INTERNAL) |
 | PATCH | `/tickets/:ticketId/comments/:id` | Edit own comment; sending `mentions` replaces the mention list |
 | DELETE | `/tickets/:ticketId/comments/:id` | Delete own comment — authors only, no override |
+| POST | `/requirements/:requirementId/comments` | Same, on a requirement |
+| PATCH | `/requirements/:requirementId/comments/:id` | Edit own comment |
+| DELETE | `/requirements/:requirementId/comments/:id` | Delete own comment |
 
-`INTERNAL` comments are hidden from `TICKET_REQUESTER` role.
+`INTERNAL` comments are hidden from `TICKET_REQUESTER` and `SYSTEM_OWNER`.
+Mentions are filtered against the parent's scope before they are stored, since
+a mention is a read grant. Both parents notify in-app and email: a ticket
+mention sends «تم ذكرك في تذكرة» with a `BRM-` chip, a requirement mention
+«تم ذكرك في متطلب» with a `REQ-` chip.
 
 Deleting a comment removes its attachments (rows and files) first — the
 attachment foreign key would otherwise block the delete and strand the uploads.
@@ -240,6 +312,10 @@ attachment foreign key would otherwise block the delete and strand the uploads.
 |--------|----------|-------------|
 | POST | `/attachments/upload?ticketId=&commentId=` | Upload file (multipart/form-data, max 10 MB) |
 | DELETE | `/attachments/:id` | Delete attachment |
+
+Owner query params: `ticketId`, `commentId`, `taskId`, `testCaseId`, `bugId`,
+`testStepId`, `suiteId`, `meetingId`, `requirementId`. Exactly one is set, and
+it decides which scope check the caller has to pass.
 
 Allowed types: images, PDF, Excel/Word, video, zip.  
 Files stored at `./uploads/` and served at `/uploads/`.
@@ -284,6 +360,7 @@ Each digest contains, scoped to what that user may see:
 
 | Section | Source |
 |---------|--------|
+| اجتماعاتك اليوم | Meetings the user is listed as attending whose `heldAt` falls on today's calendar date in the digest timezone. Cancelled and archived meetings are omitted. Attendee membership is the gate — not ticket/company scope. |
 | بانتظار إجراءك | Tickets that *entered* a status that role can move, in the lookback window. The chip is the full queue. |
 | تمت الإشارة إليك | Comments from the lookback window mentioning the user |
 | تعليقات لم تقرأها | Unread `COMMENT_ADDED` notifications from the lookback window, grouped by ticket |
@@ -329,13 +406,13 @@ Accessible to: `PROGRAMMING_HEAD`, `PROJECT_MANAGER`, `SENIOR_MANAGEMENT`.
 
 | Role | Key Permissions |
 |------|----------------|
-| `TICKET_REQUESTER` | Create/submit own tickets, view own tickets, add public comments |
-| `SYSTEM_OWNER` | View company tickets, add comments |
-| `PROGRAMMING_HEAD` | Approve/reject tickets, manage users and roles, invitations, signup requests, org structure, full reports |
-| `PROJECT_MANAGER` | Assign tickets, close/reopen/archive, tasks, full reports — no user, invitation, signup or org-structure administration |
-| `DEVELOPER` | View assigned tickets, start work, submit for testing |
-| `QA` | Approve completion after testing |
-| `SENIOR_MANAGEMENT` | Co-admin: users, invitations, signup requests, org structure, full reports |
+| `TICKET_REQUESTER` | Create/submit own tickets, view own tickets, add public comments — no meetings, no requirements |
+| `SYSTEM_OWNER` | View company tickets, add comments, read requirements pinned to their systems |
+| `PROGRAMMING_HEAD` | Approve/reject tickets, manage users and roles, invitations, signup requests, org structure, full reports, meetings and requirements |
+| `PROJECT_MANAGER` | Assign tickets, close/reopen/archive, tasks, full reports, meetings and requirements — no user, invitation, signup or org-structure administration |
+| `DEVELOPER` | View assigned tickets, start work, submit for testing, read scoped requirements |
+| `QA` | Approve completion after testing, read scoped requirements |
+| `SENIOR_MANAGEMENT` | Co-admin: users, invitations, signup requests, org structure, full reports, meetings and requirements |
 
 ---
 
@@ -356,8 +433,14 @@ Accessible to: `PROGRAMMING_HEAD`, `PROJECT_MANAGER`, `SENIOR_MANAGEMENT`.
 | `TicketApproval` | Approval decisions with notes |
 | `TicketTemplate` | Reusable ticket templates |
 | `EmailInvitation` | Invitation tokens with expiry |
-| `Notification` | In-app notifications |
+| `Notification` | In-app notifications — carries `ticketId` or `requirementId` |
 | `AuditLog` | General audit log for all entity changes |
+| `Meeting` | One meeting: company, organiser, type, status, when and where |
+| `MeetingAttendee` | Who was in the room — an account, or a named external guest |
+| `MeetingSystem` | Which systems the meeting covered |
+| `MeetingPoint` | One numbered minutes line (`order`, `kind`, `body`) |
+| `Requirement` | A tracked ask — the backlog; promoted into a DRAFT ticket |
+| `RequirementStatusHistory` | Full audit trail of requirement status changes |
 
 ---
 

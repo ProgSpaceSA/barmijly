@@ -40,6 +40,12 @@ export type Action =
   | "bug:create"
   | "bug:assign"
   | "bug:promote"
+  | "meeting:read"
+  | "meeting:manage"
+  | "requirement:read"
+  | "requirement:create"
+  | "requirement:triage"
+  | "requirement:promote"
   | "user:read"
   | "user:read-directory"
   | "user:manage"
@@ -66,8 +72,9 @@ const REQUESTER: Action[] = [
   "report:read",
 ];
 
-// Read-only on the QA surface, and only inside their own systems.
-const SYSTEM_OWNER: Action[] = [...REQUESTER, "test:read"];
+// Read-only on the QA surface and the backlog, and only inside their own
+// systems. Requirements are read, never filed — an owner files a ticket.
+const SYSTEM_OWNER: Action[] = [...REQUESTER, "test:read", "requirement:read"];
 
 const DEVELOPER: Action[] = [
   "ticket:read-internal",
@@ -89,6 +96,7 @@ const DEVELOPER: Action[] = [
   "bug:create",
   "bug:assign",
   "bug:promote",
+  "requirement:read",
   "structure:read-all",
   "report:read",
 ];
@@ -111,6 +119,7 @@ const QA: Action[] = [
   "bug:create",
   "bug:assign",
   "bug:promote",
+  "requirement:read",
   "structure:read-all",
   "report:read",
 ];
@@ -148,6 +157,12 @@ const PROJECT_MANAGER: Action[] = [
   "structure:read-all",
   "structure:manage-roster",
   "structure:create-system",
+  "meeting:read",
+  "meeting:manage",
+  "requirement:read",
+  "requirement:create",
+  "requirement:triage",
+  "requirement:promote",
   "report:read",
   "report:read-team",
 ];
@@ -194,6 +209,13 @@ const SENIOR_MANAGEMENT: Action[] = [
   "structure:manage-roster",
   "structure:create-system",
   "structure:deactivate",
+  // Leadership on this surface: senior management runs the CEO reviews.
+  "meeting:read",
+  "meeting:manage",
+  "requirement:read",
+  "requirement:create",
+  "requirement:triage",
+  "requirement:promote",
   "report:read",
   "report:read-team",
 ];

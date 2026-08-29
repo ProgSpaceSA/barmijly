@@ -38,7 +38,15 @@ export async function downloadAttachment(attachmentId: string, fileName: string)
 
 export type AttachmentOwner = Partial<
   Record<
-    "ticketId" | "commentId" | "taskId" | "testCaseId" | "bugId" | "testStepId" | "suiteId",
+    | "ticketId"
+    | "commentId"
+    | "taskId"
+    | "testCaseId"
+    | "bugId"
+    | "testStepId"
+    | "suiteId"
+    | "meetingId"
+    | "requirementId",
     string
   >
 >;

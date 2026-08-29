@@ -15,6 +15,7 @@ jest.mock('fs', () => ({
 import { AttachmentsService } from './attachments.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccessService } from '../access/access.service';
+import { MeetingAccessService } from '../meetings/meetings.access';
 
 const SYSTEM = 'system-1';
 const STEP = 'step-1';
@@ -50,7 +51,11 @@ describe('AttachmentsService', () => {
         delete: jest.fn().mockResolvedValue({}),
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
-      ticketComment: { findUnique: jest.fn().mockResolvedValue({ ticketId: 'ticket-1' }) },
+      ticketComment: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ ticketId: 'ticket-1', requirementId: null }),
+      },
       ticketTask: { findUnique: jest.fn().mockResolvedValue({ ticketId: 'ticket-1' }) },
       testCase: {
         findUnique: jest.fn().mockResolvedValue({ suite: { systemId: SYSTEM } }),
@@ -63,6 +68,12 @@ describe('AttachmentsService', () => {
         }),
       },
       ticket: { count: jest.fn().mockResolvedValue(1) },
+      meeting: { findUnique: jest.fn().mockResolvedValue({ companyId: 'company-1' }) },
+      requirement: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ companyId: 'company-1', systemId: SYSTEM }),
+      },
       system: { findMany: jest.fn().mockResolvedValue([]) },
       userCompany: { findMany: jest.fn().mockResolvedValue([]) },
       userSystem: { findMany: jest.fn().mockResolvedValue([]) },
@@ -72,6 +83,7 @@ describe('AttachmentsService', () => {
       providers: [
         AttachmentsService,
         AccessService,
+        MeetingAccessService,
         { provide: PrismaService, useValue: prisma },
         { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('./uploads') } },
       ],

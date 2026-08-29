@@ -9,7 +9,11 @@ const TREND_READER = { id: 'head-1', role: UserRole.PROGRAMMING_HEAD };
 
 describe('ReportsService', () => {
   let service: ReportsService;
-  let prisma: { ticket: { findMany: jest.Mock } };
+  let prisma: {
+    ticket: { findMany: jest.Mock };
+    userCompany: { findMany: jest.Mock };
+    userSystem: { findMany: jest.Mock };
+  };
 
   beforeEach(async () => {
     jest.useFakeTimers();

@@ -1,0 +1,44 @@
+---
+description: Quality bar for every user-facing feature — responsive, tested, bug-free, all actions work. Living document; agents may update when the user sets a new recurring expectation.
+alwaysApply: true
+---
+
+# Feature standards (living)
+
+Applies to **every new or changed user-facing feature** (API + UI). Ship only when every checkbox below passes.
+
+## Ship gate
+
+- [ ] **Plan followed** — read the feature's `*_PLAN.md` (e.g. `MEETINGS_PLAN.md`) and execute phases in order; do not skip RBAC, audit, or history steps listed there.
+- [ ] **All actions work** — every button, form submit, reorder, capture, promote, archive, and filter hits a working endpoint; happy path and validation errors verified (Swagger + UI).
+- [ ] **RBAC** — wrong role gets 403; scoped user cannot see out-of-scope rows (404 vs 403 per existing pattern); UI hides actions the role cannot perform.
+- [ ] **Tests** — backend `*.spec.ts` next to each new/changed service (role gate + main guard, not only happy path); frontend `*.test.tsx` next to each new route and non-trivial component; `npm run check` passes.
+- [ ] **Responsive** — usable at **~360px** and at **`lg`**; no horizontal page overflow; skeletons fill the same width as the page (`w-full` of the main column), not a narrower `max-w-*` cap; see `responsive-ui.mdc`.
+- [ ] **RTL & Arabic** — labels in `frontend/src/lib/constants.ts`; logical spacing (`ps`/`pe`); see `rtl-arabic-ui.mdc`.
+- [ ] **UX** — loading skeleton (not spinner on page load), empty state, error toast on API failure, disabled/submitting state on async actions; no dead clicks or silent failures.
+- [ ] **Performance** — list endpoints paginated or filtered; React Query keys invalidated on mutation; no N+1 in Prisma `include`; avoid refetch storms.
+- [ ] **API sync** — hooks/DTOs match controllers; see `barmijly-api-sync` skill.
+- [ ] **Quick access** — if the feature is a frequent destination (list and/or create), add a Ctrl+K shortcut in `CommandPalette.tsx`, gated by the same action as the sidebar. Open create in the existing dialog when that is how the page already files it. Skip one-off admin screens and anything the role cannot open.
+- [ ] **Post-deploy** — if schema or deploy order matters, checkbox in `to_migrate.md`; session note in `.cursor/uncommitted.md` when uncommitted.
+
+## Workflow
+
+1. Load skill `barmijly-full-stack-feature` and the feature plan (`MEETINGS_PLAN.md`, etc.).
+2. Load domain rule if present (`meetings-domain.mdc`, `testing-domain.mdc`, …).
+3. Implement backend → frontend → tests in the same turn when possible.
+4. Walk the ship gate above before calling the feature done.
+
+## Updating this rule
+
+**Agents may edit this file** when the user establishes a **recurring** expectation that should apply to future features (e.g. "always test dark mode", "no modal without focus trap", "every list must support keyboard nav").
+
+When updating:
+
+1. Add a short bullet under **Ship gate** or a new **Standing expectations** subsection — one line, actionable.
+2. Do not remove existing gates unless the user explicitly reverses them.
+3. If the expectation is feature-specific only, put it in that feature's `*_PLAN.md` or `*-domain.mdc` instead.
+
+## Standing expectations
+
+- Loading skeletons fill the same width as the loaded page (`w-full` of `.brm-main`). Do not cap a shared skeleton with `max-w-4xl` (or similar) unless that page itself wraps both states in the same constraint.
+- When a user-facing list or create flow is a logical quick-access destination (tickets, bugs, meetings, requirements, …), add it to `CommandPalette` `QUICK_LINKS` in the same change — same RBAC as the sidebar; dialog for in-place create.

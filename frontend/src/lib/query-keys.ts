@@ -87,11 +87,34 @@ export const qk = {
     openCount: () => ["bugs", "open-count"] as const,
   },
 
+  /** Meetings. A meeting write invalidates `all`, which covers its minutes. */
+  meetings: {
+    all: ["meetings"] as const,
+    list: (filters: Record<string, string>) => ["meetings", "list", filters] as const,
+    detail: (id: string) => ["meetings", "detail", id] as const,
+  },
+
+  /**
+   * The requirements backlog. Capture and promote both cross families, so the
+   * hooks settle `meetings.all` / `tickets.all` alongside these.
+   */
+  requirements: {
+    all: ["requirements"] as const,
+    list: (filters: Record<string, string>) => ["requirements", "list", filters] as const,
+    detail: (id: string) => ["requirements", "detail", id] as const,
+    openCount: () => ["requirements", "open-count"] as const,
+  },
+
   users: {
     all: ["users"] as const,
     list: () => ["users", "list"] as const,
-    developers: (pool?: "roster") =>
-      (pool ? (["users", "developers", pool] as const) : (["users", "developers"] as const)),
+    developers: (opts?: { pool?: "roster"; systemId?: string; companyId?: string }) =>
+      opts
+        ? (["users", "developers", opts] as const)
+        : (["users", "developers"] as const),
+    /** People the caller may @-mention. Pass ticketId or requirementId for scoped lists. */
+    mentionable: (scope?: { ticketId?: string; requirementId?: string }) =>
+      scope ? (["users", "mentionable", scope] as const) : (["users", "mentionable"] as const),
     detail: (id: string) => ["users", "detail", id] as const,
     comments: (id: string) => ["users", "comments", id] as const,
   },

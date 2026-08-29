@@ -5,10 +5,12 @@ import {
   DEFAULT_DIGEST_TIMEZONE,
   DIGEST_DUE_SOON_DAYS,
   DigestBugAlert,
+  DigestMeetingRef,
   DigestTaskRef, DigestTicketRef, UserDigest,
   formatTicketCode,
 } from '../digest/digest.types';
 import { formatBugCode } from '../testing/test-code';
+import { formatRequirementCode } from '../meetings/meeting-code';
 
 const STATUS_LABELS_AR: Record<string, string> = {
   DRAFT: 'مسودة',
@@ -44,6 +46,21 @@ const ROLE_LABELS_AR: Record<string, string> = {
   SENIOR_MANAGEMENT: 'الإدارة العليا',
 };
 
+const MEETING_TYPE_LABELS_AR: Record<string, string> = {
+  CEO_REVIEW: 'مراجعة الرئيس التنفيذي',
+  KICKOFF: 'اجتماع انطلاق',
+  FOLLOW_UP: 'متابعة',
+  DISCUSSION: 'نقاش',
+  RETROSPECTIVE: 'مراجعة بعدية',
+  OTHER: 'أخرى',
+};
+
+const MEETING_STATUS_LABELS_AR: Record<string, string> = {
+  SCHEDULED: 'مجدول',
+  HELD: 'انعقد',
+  CANCELLED: 'ملغى',
+};
+
 const ACCENT = {
   brand: '#4338CA',
   unread: '#6366F1',
@@ -52,6 +69,7 @@ const ACCENT = {
   bug: '#EF4444',
   overdue: '#DC2626',
   dueSoon: '#D97706',
+  meeting: '#0EA5E9',
   success: '#059669',
   muted: '#64748B',
 } as const;
@@ -112,6 +130,7 @@ const TINT: Record<Accent, { bg: string; fg: string }> = {
   '#EF4444': { bg: '#FEF2F2', fg: '#DC2626' },
   '#DC2626': { bg: '#FEF2F2', fg: '#DC2626' },
   '#D97706': { bg: '#FFFBEB', fg: '#B45309' },
+  '#0EA5E9': { bg: '#F0F9FF', fg: '#0369A1' },
   '#059669': { bg: '#ECFDF5', fg: '#047857' },
   '#64748B': { bg: '#F1F5F9', fg: '#475569' },
 };
@@ -193,6 +212,41 @@ export class EmailService {
         ${this.ticketPanel({ title: ticketTitle, url: ticketUrl, ticketNumber, accent: ACCENT.mention, scope })}
       `,
       cta: { href: ticketUrl, label: 'فتح التذكرة' },
+    }));
+  }
+
+  /**
+   * A mention on a requirement.
+   *
+   * Separate from `sendMentionEmail` because the subject line and the CTA name
+   * what the reader is being sent to, and a requirement is not a ticket — it is
+   * an ask that may never become one. Same chrome, same accent; only the noun
+   * and the code chip differ.
+   */
+  async sendRequirementMention(
+    to: string,
+    mentionerName: string,
+    requirementTitle: string,
+    requirementUrl: string,
+    requirementNumber?: number,
+    scope?: MailScope,
+  ) {
+    await this.send(to, `تم ذكرك في متطلب: ${requirementTitle}`, this.layoutEmail({
+      preheader: `${mentionerName} أشار إليك في «${requirementTitle}»`,
+      body: `
+        ${this.heading('أشار إليك أحدهم')}
+        ${this.bodyText(
+          `<strong style="color:${INK}">${this.escapeHtml(mentionerName)}</strong> ذكرك في تعليق على متطلب.`,
+        )}
+        ${this.entityPanel({
+          title: requirementTitle,
+          url: requirementUrl,
+          accent: ACCENT.mention,
+          code: requirementNumber != null ? formatRequirementCode(requirementNumber) : null,
+          scope,
+        })}
+      `,
+      cta: { href: requirementUrl, label: 'فتح المتطلب' },
     }));
   }
 
@@ -351,6 +405,7 @@ export class EmailService {
 
     const actionTotal = digest.actionTotal || digest.actionGroups.reduce((sum, g) => sum + g.total, 0);
     const stats = [
+      { label: 'اجتماعات اليوم', value: digest.todayMeetingTotal || digest.todayMeetings.length, accent: ACCENT.meeting },
       { label: 'بانتظار إجراءك', value: actionTotal, accent: ACCENT.brand },
       { label: 'تعليقات غير مقروءة', value: digest.unreadTotal, accent: ACCENT.unread },
       { label: 'أخطاء على تذاكرك', value: digest.bugAlertTotal || digest.bugAlerts.length, accent: ACCENT.bug },
@@ -361,6 +416,16 @@ export class EmailService {
     ].filter((s) => s.value > 0);
 
     const sections = [
+      digest.todayMeetings.length
+        ? this.digestSection(
+            `اجتماعاتك اليوم (${digest.todayMeetingTotal || digest.todayMeetings.length})`,
+            ACCENT.meeting,
+            digest.todayMeetings.map((m) => this.digestMeetingRow(m, timeZone)).join(''),
+            digest.todayMeetingTotal > digest.todayMeetings.length
+              ? `و${digest.todayMeetingTotal - digest.todayMeetings.length} اجتماع آخر — ${remainder}`
+              : undefined,
+          )
+        : '',
       ...digest.actionGroups.map((group) =>
         this.digestSection(
           `${this.escapeHtml(group.label)} (${group.tickets.length})`,
@@ -607,9 +672,25 @@ ${preheader}
     ticketNumber?: number;
     scope?: MailScope;
   }) {
-    const code = opts.ticketNumber != null ? formatTicketCode(opts.ticketNumber) : null;
+    return this.entityPanel({
+      ...opts,
+      code: opts.ticketNumber != null ? formatTicketCode(opts.ticketNumber) : null,
+    });
+  }
+
+  /**
+   * A linked card for any coded row — a ticket, a requirement. The caller
+   * formats the code, because only it knows which prefix the row wears.
+   */
+  private entityPanel(opts: {
+    title: string;
+    url: string;
+    accent: Accent;
+    code?: string | null;
+    scope?: MailScope;
+  }) {
     return this.panel(`
-          ${code ? `<div style="margin-bottom:10px;">${this.codeChip(code, opts.accent)}</div>` : ''}
+          ${opts.code ? `<div style="margin-bottom:10px;">${this.codeChip(opts.code, opts.accent)}</div>` : ''}
           <a href="${this.escapeHtml(opts.url)}" style="display:block;font-family:${FONT};color:${INK};font-size:16px;font-weight:700;text-decoration:none;line-height:1.55;">${this.escapeHtml(opts.title)}</a>
           ${this.scopeLines(opts.scope)}`);
   }
@@ -771,6 +852,25 @@ ${preheader}
     );
   }
 
+  private digestMeetingRow(meeting: DigestMeetingRef, timeZone: string) {
+    const meta = [
+      MEETING_TYPE_LABELS_AR[meeting.type] || meeting.type,
+      MEETING_STATUS_LABELS_AR[meeting.status] || meeting.status,
+      `الساعة ${this.formatDigestTime(meeting.heldAt, timeZone)}`,
+      meeting.durationMins ? `${meeting.durationMins} دقيقة` : null,
+      meeting.location?.trim() || null,
+    ].filter(Boolean) as string[];
+
+    return this.digestRow(
+      ACCENT.meeting,
+      `
+          <div style="margin-bottom:6px;">${this.codeChip(meeting.meetingCode, ACCENT.meeting)}</div>
+          <a href="${meeting.url}" style="font-family:${FONT};color:${INK};font-size:14px;font-weight:700;text-decoration:none;display:block;line-height:1.5;">${this.escapeHtml(meeting.title)}</a>
+          ${meeting.companyName ? `<p style="margin:6px 0 0;font-family:${FONT};color:${MUTED};font-size:12px;">${this.escapeHtml(meeting.companyName)}</p>` : ''}
+          <p style="margin:8px 0 0;font-family:${FONT};color:${MUTED};font-size:12px;">${meta.map((m) => this.escapeHtml(m)).join(' · ')}</p>`,
+    );
+  }
+
   private formatDigestDate(date: Date, timeZone: string) {
     try {
       return new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-latn', {
@@ -781,6 +881,18 @@ ${preheader}
       }).format(date);
     } catch {
       return date.toISOString().slice(0, 10);
+    }
+  }
+
+  private formatDigestTime(date: Date, timeZone: string) {
+    try {
+      return new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-latn', {
+        timeZone,
+        hour: 'numeric',
+        minute: '2-digit',
+      }).format(date);
+    } catch {
+      return date.toISOString().slice(11, 16);
     }
   }
 

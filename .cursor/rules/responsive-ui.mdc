@@ -22,7 +22,7 @@ Designs are **mobile-first**. A layout that only works at desktop width is unfin
 - Grids collapse: `grid-cols-1 sm:grid-cols-2 lg:grid-cols-4`
 - Text and rows wrap: `min-w-0`, `flex-wrap`, `truncate` / `break-words`
 - Horizontal scroll only inside a named region (tables: `brm-table-scroll`)
-- Skeletons use `%` / `max-w-full` / `w-3/4` — never a fixed `w-64` that overflows a phone
+- Skeletons fill the same width as the loaded page (`w-full` of the main column). Inner bones use `%` / `max-w-full` / `w-3/4` — never a fixed `w-64` that overflows a phone, and never a `max-w-4xl` cap on the skeleton unless the page itself is capped the same way
 - Page loads use the matching skeleton in `LoadingSpinner.tsx`, not a spinner
 - Test at ~360px and at `lg` before shipping a screen
 

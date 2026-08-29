@@ -44,3 +44,77 @@ export function formatAbsoluteTime(value: string | Date): string {
   if (Number.isNaN(date.getTime())) return "";
   return format(date, "d MMMM yyyy، h:mm a", { locale: ar });
 }
+
+export type MeetingDatePreset = "all" | "today" | "week" | "month" | "year";
+
+function startOfLocalDay(date: Date): Date {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function endOfLocalDay(date: Date): Date {
+  const next = new Date(date);
+  next.setHours(23, 59, 59, 999);
+  return next;
+}
+
+function isoRange(from: Date, to: Date): { heldFrom: string; heldTo: string } {
+  return { heldFrom: from.toISOString(), heldTo: to.toISOString() };
+}
+
+/** Local-day bounds for the meetings list date tabs. */
+export function meetingDateRange(
+  preset: MeetingDatePreset,
+): { heldFrom?: string; heldTo?: string } {
+  if (preset === "all") return {};
+
+  const now = new Date();
+  const start = startOfLocalDay(now);
+
+  if (preset === "today") {
+    return isoRange(start, endOfLocalDay(now));
+  }
+  if (preset === "week") {
+    start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+    const sunday = new Date(start);
+    sunday.setDate(start.getDate() + 6);
+    return isoRange(start, endOfLocalDay(sunday));
+  }
+  if (preset === "month") {
+    const from = new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return isoRange(startOfLocalDay(from), endOfLocalDay(to));
+  }
+  if (preset === "year") {
+    const from = new Date(now.getFullYear(), 0, 1);
+    const to = new Date(now.getFullYear(), 11, 31);
+    return isoRange(startOfLocalDay(from), endOfLocalDay(to));
+  }
+  return {};
+}
+
+/** `YYYY-MM-DD` for a date input's `value` / `min` / `max`. */
+export function toDateInputValue(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/** Inclusive local-day range for custom from/to pickers. */
+export function customMeetingDateRange(
+  from: string,
+  to: string,
+): { heldFrom?: string; heldTo?: string } {
+  const range: { heldFrom?: string; heldTo?: string } = {};
+  if (from) {
+    const [y, m, d] = from.split("-").map(Number);
+    range.heldFrom = new Date(y, m - 1, d, 0, 0, 0, 0).toISOString();
+  }
+  if (to) {
+    const [y, m, d] = to.split("-").map(Number);
+    range.heldTo = new Date(y, m - 1, d, 23, 59, 59, 999).toISOString();
+  }
+  return range;
+}

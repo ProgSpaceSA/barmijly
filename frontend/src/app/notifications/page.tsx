@@ -53,8 +53,14 @@ interface NotificationItem {
   body: string;
   isRead: boolean;
   ticketId: string | null;
+  requirementId?: string | null;
   createdAt: string;
   ticket?: NotificationTicket | null;
+  requirement?: {
+    id: string;
+    title: string;
+    requirementNumber?: number | null;
+  } | null;
 }
 
 const DONE_STATUSES = new Set(["CLOSED", "COMPLETED", "REJECTED"]);
@@ -72,6 +78,17 @@ function ticketLabel(ticket?: NotificationTicket | null) {
 function companySystemLabel(ticket: NotificationTicket) {
   const parts = [ticket.company?.name, ticket.system?.name].filter(Boolean);
   return parts.length ? parts.join(" - ") : null;
+}
+
+function requirementLabel(requirement?: NotificationItem["requirement"]) {
+  if (!requirement?.title) return null;
+  return requirement.title;
+}
+
+function notificationHref(n: NotificationItem): string | null {
+  if (n.ticketId) return `/tickets/${n.ticketId}`;
+  if (n.requirementId) return `/requirements/${n.requirementId}`;
+  return null;
 }
 
 const TYPE_META: Record<string, { color: string; icon: LucideIcon }> = {
@@ -265,7 +282,15 @@ export default function NotificationsPage() {
                         </p>
                         <p className="brm-row-title text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
                           <span style={{ color: meta.color }}>{typeLabel}</span>
-                          <span> · {ticketLabel(n.ticket) ? `«${ticketLabel(n.ticket)}»` : n.body}</span>
+                          <span>
+                            {" "}
+                            ·{" "}
+                            {ticketLabel(n.ticket)
+                              ? `«${ticketLabel(n.ticket)}»`
+                              : requirementLabel(n.requirement)
+                                ? `«${requirementLabel(n.requirement)}»`
+                                : n.body}
+                          </span>
                         </p>
                         {n.ticket && (
                           <div className="flex items-center gap-3 mt-1.5 flex-wrap">
@@ -305,6 +330,14 @@ export default function NotificationsPage() {
                       {n.ticketId ? (
                         <Link
                           href={`/tickets/${n.ticketId}`}
+                          className="flex flex-1 basis-64 min-w-0"
+                          onClick={() => { if (!n.isRead) handleMarkOne(n.id); }}
+                        >
+                          {row}
+                        </Link>
+                      ) : notificationHref(n) ? (
+                        <Link
+                          href={notificationHref(n)!}
                           className="flex flex-1 basis-64 min-w-0"
                           onClick={() => { if (!n.isRead) handleMarkOne(n.id); }}
                         >

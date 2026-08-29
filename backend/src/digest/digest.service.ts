@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob, CronTime } from 'cron';
 import {
-  CommentVisibility, NotificationType, Prisma, TaskStatus, TicketStatus,
+  CommentVisibility, MeetingStatus, NotificationType, Prisma, TaskStatus, TicketStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccessService } from '../access/access.service';
@@ -15,9 +15,11 @@ import {
   DIGEST_MAX_ITEMS,
   DigestActionGroup, DigestBugAlert, DigestRecipient, DigestTicketRef, UserDigest,
   formatTicketCode,
+  zonedDayBounds,
 } from './digest.types';
 import { ACTION_BUCKETS } from '../tickets/action-queues';
 import { formatBugCode } from '../testing/test-code';
+import { formatMeetingCode } from '../meetings/meeting-code';
 
 export const DIGEST_JOB_NAME = 'daily-digest';
 
@@ -127,14 +129,21 @@ export class DigestService implements OnModuleInit {
     const now = new Date();
     const since = new Date(now.getTime() - windowHours * 60 * 60 * 1000);
     const dueSoonBefore = new Date(now.getTime() + DIGEST_DUE_SOON_DAYS * 24 * 60 * 60 * 1000);
+    const { start: todayStart, end: todayEnd } = zonedDayBounds(now, this.resolveTimeZone());
     const frontendUrl = this.config.get<string>('FRONTEND_URL') || 'https://barmijly.ai';
     const scope = await this.scopeFor(recipient);
     const openDeadline: Prisma.TicketWhereInput = {
       ...scope,
       status: { notIn: CLOSED_STATUSES },
     };
+    const todayMeetingWhere: Prisma.MeetingWhereInput = {
+      isArchived: false,
+      status: { not: MeetingStatus.CANCELLED },
+      heldAt: { gte: todayStart, lt: todayEnd },
+      attendees: { some: { userId: recipient.id } },
+    };
 
-    const [mentionComments, unreadGroups, recentTicketBugs, bugNotifications, openTasks, overdueTotal, overdueRows, newlyOverdueCount, dueSoonTotal, dueSoonRows, queued] =
+    const [mentionComments, unreadGroups, recentTicketBugs, bugNotifications, openTasks, overdueTotal, overdueRows, newlyOverdueCount, dueSoonTotal, dueSoonRows, queued, todayMeetingRows, todayMeetingTotal] =
       await Promise.all([
         this.prisma.ticketComment.findMany({
           where: {
@@ -230,6 +239,23 @@ export class DigestService implements OnModuleInit {
           take: DIGEST_MAX_ITEMS,
         }),
         this.buildActionGroups(recipient, scope, frontendUrl, since),
+        this.prisma.meeting.findMany({
+          where: todayMeetingWhere,
+          select: {
+            id: true,
+            meetingNumber: true,
+            title: true,
+            type: true,
+            status: true,
+            heldAt: true,
+            durationMins: true,
+            location: true,
+            company: { select: { name: true } },
+          },
+          orderBy: { heldAt: 'asc' },
+          take: DIGEST_MAX_ITEMS,
+        }),
+        this.prisma.meeting.count({ where: todayMeetingWhere }),
       ]);
 
     const unreadByTicket = new Map(
@@ -268,7 +294,11 @@ export class DigestService implements OnModuleInit {
         role: recipient.role,
       },
       windowHours,
-      mentions: mentionComments.map((c) => ({
+      // `ticket` is nullable since a comment may hang off a requirement, but the
+      // query above filters on the ticket relation, so these all carry one.
+      mentions: mentionComments
+        .filter((c): c is typeof c & { ticket: TicketRow } => c.ticket !== null)
+        .map((c) => ({
         ticket: this.toRef(c.ticket, frontendUrl),
         authorName: `${c.author.firstName} ${c.author.lastName}`,
         excerpt: this.excerpt(c.content),
@@ -291,6 +321,22 @@ export class DigestService implements OnModuleInit {
       overdueTotal,
       dueSoon: dueSoonRows.map((t) => this.toRef(t, frontendUrl)),
       dueSoonTotal,
+      todayMeetings: todayMeetingRows
+        .filter((m): m is typeof m & { heldAt: Date } => m.heldAt !== null)
+        .map((m) => ({
+          id: m.id,
+          meetingNumber: m.meetingNumber,
+          meetingCode: formatMeetingCode(m.meetingNumber),
+          title: m.title,
+          type: m.type,
+          status: m.status,
+          heldAt: m.heldAt,
+          durationMins: m.durationMins,
+          location: m.location,
+          url: `${frontendUrl}/meetings/${m.id}`,
+          companyName: m.company.name,
+        })),
+      todayMeetingTotal,
       isEmpty: true,
     };
 
@@ -301,7 +347,8 @@ export class DigestService implements OnModuleInit {
       digest.actionGroups.length === 0 &&
       digest.openTasks.length === 0 &&
       newlyOverdueCount === 0 &&
-      digest.dueSoon.length === 0;
+      digest.dueSoon.length === 0 &&
+      digest.todayMeetings.length === 0;
 
     return digest;
   }

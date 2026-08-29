@@ -13,9 +13,14 @@ const PM = { id: 'pm-1', role: UserRole.PROJECT_MANAGER, companyId: null };
 describe('SystemsService', () => {
   let service: SystemsService;
   let prisma: {
-    system: { findUnique: jest.Mock; update: jest.Mock; create: jest.Mock };
+    system: {
+      findUnique: jest.Mock;
+      findMany: jest.Mock;
+      update: jest.Mock;
+      create: jest.Mock;
+    };
     user: { findUnique: jest.Mock };
-    userSystem: { upsert: jest.Mock; delete: jest.Mock };
+    userSystem: { upsert: jest.Mock; delete: jest.Mock; findMany: jest.Mock };
     userCompany: { findMany: jest.Mock };
   };
   let audit: { log: jest.Mock };

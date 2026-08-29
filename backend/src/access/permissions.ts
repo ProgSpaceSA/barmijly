@@ -89,6 +89,23 @@ export const ACTIONS = [
   /** Turn a bug into a BUG_FIX ticket. Creates a DRAFT — never bypasses approval. */
   'bug:promote',
 
+  // ---- Meetings & requirements -----------------------------------------
+  /** See the meetings board — leadership only (MEETINGS_PLAN.md). */
+  'meeting:read',
+  /** Write the meeting and its minutes: attendees, systems, points, reorder. */
+  'meeting:manage',
+  /**
+   * Read the requirements backlog. Leadership sees the whole company;
+   * everyone else only requirements already pinned to a system they can see.
+   */
+  'requirement:read',
+  /** File a requirement, or capture one off a minutes line. */
+  'requirement:create',
+  /** Triage a requirement: owner, system, priority, due date, status. */
+  'requirement:triage',
+  /** Turn a requirement into a DRAFT ticket. Never bypasses approval. */
+  'requirement:promote',
+
   // ---- People -----------------------------------------------------------
   'user:read',
   /** Read the dev/QA directory without full user admin. */
@@ -162,6 +179,8 @@ const SYSTEM_OWNER_ACTIONS: Action[] = [
   // Read-only on the QA surface, and only inside their own systems (req.md §16).
   'test:read',
   'report:read',
+  // Reads the backlog they are affected by; they file tickets, not requirements.
+  'requirement:read',
 ];
 
 const DEVELOPER_ACTIONS: Action[] = [
@@ -190,6 +209,7 @@ const DEVELOPER_ACTIONS: Action[] = [
   'bug:promote',
   'structure:read-all',
   'report:read',
+  'requirement:read',
 ];
 
 const QA_ACTIONS: Action[] = [
@@ -214,6 +234,7 @@ const QA_ACTIONS: Action[] = [
   'bug:promote',
   'structure:read-all',
   'report:read',
+  'requirement:read',
 ];
 
 const PROJECT_MANAGER_ACTIONS: Action[] = [
@@ -251,6 +272,12 @@ const PROJECT_MANAGER_ACTIONS: Action[] = [
   'structure:create-system',
   'report:read',
   'report:read-team',
+  'meeting:read',
+  'meeting:manage',
+  'requirement:read',
+  'requirement:create',
+  'requirement:triage',
+  'requirement:promote',
 ];
 
 const PROGRAMMING_HEAD_ACTIONS: Action[] = [
@@ -301,6 +328,13 @@ const SENIOR_MANAGEMENT_ACTIONS: Action[] = [
   'structure:deactivate',
   'report:read',
   'report:read-team',
+  // Leadership on this surface: senior management runs the CEO reviews.
+  'meeting:read',
+  'meeting:manage',
+  'requirement:read',
+  'requirement:create',
+  'requirement:triage',
+  'requirement:promote',
 ];
 
 /** Full structure admin — implies roster and create endpoints. */

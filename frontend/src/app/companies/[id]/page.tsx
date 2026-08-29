@@ -111,7 +111,7 @@ function SystemCard({ system, allDevs, canEditSystem, canManageRoster }: {
       await refetch();
       invalidateStructure(qc);
       void qc.invalidateQueries({ queryKey: qk.users.all });
-      void qc.invalidateQueries({ queryKey: qk.users.developers("roster") });
+      void qc.invalidateQueries({ queryKey: qk.users.developers({ pool: "roster" }) });
     } catch {
       setError("فشل التعيين، حاول مرة أخرى");
     } finally { setSaving(false); }
@@ -132,7 +132,7 @@ function SystemCard({ system, allDevs, canEditSystem, canManageRoster }: {
       await refetch();
       invalidateStructure(qc);
       void qc.invalidateQueries({ queryKey: qk.users.all });
-      void qc.invalidateQueries({ queryKey: qk.users.developers("roster") });
+      void qc.invalidateQueries({ queryKey: qk.users.developers({ pool: "roster" }) });
     } catch {
       setError("فشل الحذف، حاول مرة أخرى");
     }
@@ -321,7 +321,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
   });
 
   const { data: allUsersData } = useQuery({
-    queryKey: qk.users.developers("roster"),
+    queryKey: qk.users.developers({ pool: "roster" }),
     queryFn: () => api.get("/users/developers", { params: { pool: "roster" } }).then(r => r.data),
     staleTime: 60_000,
     enabled: canManageRosterFlag,

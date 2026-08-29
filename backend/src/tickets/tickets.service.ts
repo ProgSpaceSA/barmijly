@@ -189,6 +189,9 @@ export class TicketsService {
           orderBy: { createdAt: 'asc' },
         },
         attachments: true,
+        // Set when the ticket was promoted from the backlog — the page links
+        // back to the ask it came from.
+        requirement: { select: { id: true, requirementNumber: true, title: true, status: true } },
         statusHistory: { orderBy: { createdAt: 'asc' }, include: { changedBy: { select: { id: true, firstName: true, lastName: true } } } },
         assignments: { include: { developer: { select: { id: true, firstName: true, lastName: true } } } },
         approvals: { include: { approver: { select: { id: true, firstName: true, lastName: true } } } },
@@ -211,8 +214,22 @@ export class TicketsService {
     // Mention chips resolve by name against a user list. People already stored
     // on `mentions` must stay resolvable even if they later leave the picker.
     const rawComments = ticket.comments ?? [];
+    let requirementComments: typeof rawComments = [];
+    if (ticket.requirementId) {
+      requirementComments = await this.prisma.ticketComment.findMany({
+        where: {
+          requirementId: ticket.requirementId,
+          ...this.access.commentVisibilityWhere(user),
+        },
+        include: {
+          author: { select: { id: true, firstName: true, lastName: true, role: true } },
+          attachments: true,
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+    }
     const mentionIds = [
-      ...new Set(rawComments.flatMap((c) => c.mentions ?? [])),
+      ...new Set([...rawComments, ...requirementComments].flatMap((c) => c.mentions ?? [])),
     ];
     const mentionedRows =
       mentionIds.length === 0
@@ -228,10 +245,18 @@ export class TicketsService {
         .map((mid) => mentionedById.get(mid))
         .filter((u): u is (typeof mentionedRows)[number] => !!u),
     }));
+    const importedRequirementComments = requirementComments.map((c) => ({
+      ...c,
+      fromRequirement: true,
+      mentionedUsers: (c.mentions ?? [])
+        .map((mid) => mentionedById.get(mid))
+        .filter((u): u is (typeof mentionedRows)[number] => !!u),
+    }));
 
     return {
       ...ticket,
       comments,
+      requirementComments: importedRequirementComments,
       // Tasks are the finer-grained truth once they exist; the ticket-level
       // number is what leadership planned before the work was broken down.
       effectiveEstimatedHours: ticket.tasksEstimatedHours ?? ticket.estimatedHours,
@@ -781,6 +806,7 @@ export class TicketsService {
     );
 
     const auditsForTimeline = auditEntries.filter((e) => {
+      if (e.action === 'REQUIREMENT_PROMOTE') return false;
       if (e.action !== 'STATUS_CHANGE') return true;
       const to = statusToken(parseAuditBag(e.newValues)?.status);
       return !forceToSecond.has(`${to}|${Math.floor(e.createdAt.getTime() / 1000)}`);
@@ -808,8 +834,21 @@ export class TicketsService {
       }
     }
 
+    const promotedCreateSeconds = new Set(
+      auditEntries
+        .filter((e) => e.action === 'TICKET_CREATED')
+        .filter((e) => {
+          const bag = parseAuditBag(e.newValues);
+          return Boolean(bag?.requirementId ?? bag?.requirementNumber ?? bag?.bugId);
+        })
+        .map((e) => Math.floor(e.createdAt.getTime() / 1000)),
+    );
+
     const historyOnly = statusHistory
       .filter((h) => {
+        if (h.fromStatus === null && promotedCreateSeconds.has(Math.floor(h.createdAt.getTime() / 1000))) {
+          return false;
+        }
         const key = statusTransitionKey(h.fromStatus, h.toStatus, h.createdAt);
         return !statusCovered.has(key);
       })

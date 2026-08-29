@@ -723,6 +723,8 @@ async function main() {
     [NotificationType.CLOSURE_APPROVAL_REQUESTED]: (t) => ({ title: 'مطلوب اعتماد الإغلاق', body: `يُرجى اعتماد إغلاق «${t}»` }),
     [NotificationType.TASK_ASSIGNED]: (t) => ({ title: 'أُسندت مهمة لمطور', body: `مهمة جديدة على «${t}»` }),
     [NotificationType.BUG_ASSIGNED]: (t) => ({ title: 'أُسند إليك خطأ', body: `خطأ جديد مرتبط بـ «${t}»` }),
+    [NotificationType.REQUIREMENT_RAISED]: (t) => ({ title: 'متطلب جديد على اللوحة', body: `سُجّل المتطلب «${t}»` }),
+    [NotificationType.REQUIREMENT_ASSIGNED]: (t) => ({ title: 'أُسند إليك متطلب', body: `أُسند إليك المتطلب «${t}»` }),
     [NotificationType.TEST_CASE_FAILED]: (t) => ({ title: 'فشلت حالة اختبار', body: `فشلت حالة اختبار على «${t}»` }),
   };
 

@@ -5,6 +5,7 @@ import {
   findMentionQuery,
   inferWritingDir,
   matchesMentionQuery,
+  mentionHandleTable,
   mentionToken,
   mentionedIdsIn,
   splitMentions,
@@ -118,6 +119,34 @@ describe('findMentionQuery', () => {
 
   it('ignores an @ inside an email address', () => {
     expect(findMentionQuery('sara@brm', 8)).toBeNull();
+  });
+
+  it('closes once the caret moves past a completed mention', () => {
+    const body = `hello ${mentionToken(sara)} more text`;
+    const caret = body.length;
+    expect(findMentionQuery(body, caret, users)).toBeNull();
+  });
+
+  it('still opens while the mention is being typed', () => {
+    expect(findMentionQuery('مرحباً @Sara K', 14, users)).toEqual({ query: 'Sara K', start: 7 });
+  });
+
+  it('closes after a complete handle is typed manually', () => {
+    const body = `hello @Sara Khan`;
+    expect(findMentionQuery(body, body.length, users)).toBeNull();
+  });
+
+  it('closes when a trailing space has no matching user', () => {
+    const body = 'مرحباً @Unknown Person ';
+    expect(findMentionQuery(body, body.length, users)).toBeNull();
+  });
+
+  it('reuses a pre-built handle table when provided', () => {
+    const table = mentionHandleTable(users);
+    expect(findMentionQuery('مرحباً @Sara K', 14, users, table)).toEqual({
+      query: 'Sara K',
+      start: 7,
+    });
   });
 });
 

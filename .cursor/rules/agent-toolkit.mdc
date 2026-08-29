@@ -11,13 +11,15 @@ Load the matching skill before coding. Skills live in `.cursor/skills/` (also `.
 |------|-------|
 | Ticket status, approve, assign, comments | `barmijly-ticket-workflow` |
 | Test suites, cases, bugs (QA surface) | `TEST_SUITES_PLAN.md` + rule `testing-domain` |
-| New feature spanning API + UI | `barmijly-full-stack-feature` |
+| Meetings, minutes, requirements | `MEETINGS_PLAN.md` + rule `meetings-domain` + `barmijly-full-stack-feature` |
+| New feature spanning API + UI | `barmijly-full-stack-feature` + rule `feature-standards` |
 | New/changed HTTP endpoint | `barmijly-api-sync` |
 | Copy this repo's code style | `barmijly-patterns` |
 | Prisma schema / migration | `barmijly-prisma-migrate` |
 | Bug, 401/403, empty lists | `barmijly-debug` |
 | QA accounts / lifecycle test | `barmijly-qa-testing` |
 | Review a diff or PR | `barmijly-code-review` |
+| Prepare commit / fix pre-commit, lint-staged, husky | `barmijly-prepare-commit` |
 | Commit message | `barmijly-commit` |
 
 Uncommitted work: keep a numbered Feature/Update/Removal list in `.cursor/uncommitted.md` (rule `session-tracking`). Clear it after commit.

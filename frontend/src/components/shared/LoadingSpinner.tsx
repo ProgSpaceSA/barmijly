@@ -23,12 +23,17 @@ export function FullPageLoading() {
 }
 
 function Bone({ className }: { className?: string }) {
-  return <span className={cn("skeleton max-w-full", className)} aria-hidden />;
+  return <span className={cn("skeleton block max-w-full", className)} aria-hidden />;
 }
 
 function Frame({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div role="status" aria-live="polite" aria-label="جارٍ التحميل" className={className}>
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label="جارٍ التحميل"
+      className={cn("w-full min-w-0", className)}
+    >
       {children}
     </div>
   );
@@ -39,11 +44,11 @@ const cardStyle = {
   borderColor: "var(--border)",
 } as const;
 
-/** Ticket list card — fluid widths so it does not overflow on a phone. */
+/** Ticket list card — fills the page column; fluid so it does not overflow on a phone. */
 export function SkeletonCard() {
   return (
     <div
-      className="rounded-xl flex overflow-hidden min-w-0"
+      className="rounded-xl flex overflow-hidden min-w-0 w-full"
       style={{ background: "var(--card)", border: "1px solid var(--border)" }}
     >
       <div className="w-1 shrink-0 self-stretch skeleton rounded-none" />
@@ -53,7 +58,7 @@ export function SkeletonCard() {
           <Bone className="h-5 w-12 inline-block" />
           <Bone className="h-5 w-14 hidden sm:inline-block" />
         </div>
-        <Bone className="h-4 w-3/4 mb-2 block" />
+        <Bone className="h-4 w-3/4 mb-2" />
         <div className="flex gap-3 flex-wrap">
           <Bone className="h-3 w-20 inline-block" />
           <Bone className="h-3 w-24 hidden sm:inline-block" />
@@ -68,15 +73,15 @@ export function SkeletonCard() {
 export function SkeletonPersonCard() {
   return (
     <div
-      className="rounded-xl flex overflow-hidden min-w-0"
+      className="rounded-xl flex overflow-hidden min-w-0 w-full"
       style={{ background: "var(--card)", border: "1px solid var(--border)" }}
     >
       <div className="w-1 shrink-0 self-stretch skeleton rounded-none" />
       <div className="flex-1 min-w-0 p-4 flex items-center gap-3 flex-wrap">
         <Bone className="w-9 h-9 rounded-full shrink-0 inline-block" />
         <div className="min-w-0 flex-1">
-          <Bone className="h-4 w-1/3 max-w-40 mb-1.5 block" />
-          <Bone className="h-3 w-1/2 max-w-56 block" />
+          <Bone className="h-4 w-1/3 mb-1.5" />
+          <Bone className="h-3 w-1/2" />
         </div>
         <Bone className="h-6 w-16 rounded-full hidden sm:inline-block shrink-0" />
       </div>
@@ -92,8 +97,8 @@ function SkeletonNotificationRow({ bordered }: { bordered?: boolean }) {
     >
       <Bone className="w-8 h-8 rounded-lg shrink-0 inline-block" />
       <div className="min-w-0 flex-1">
-        <Bone className="h-3.5 w-2/3 mb-1.5 block" />
-        <Bone className="h-3 w-1/2 block" />
+        <Bone className="h-3.5 w-2/3 mb-1.5" />
+        <Bone className="h-3 w-1/2" />
       </div>
       <Bone className="h-3 w-12 shrink-0 hidden sm:inline-block" />
     </div>
@@ -115,9 +120,9 @@ export function SkeletonList({
       <Frame className="space-y-4">
         {[0, 1].map((g) => (
           <section key={g}>
-            <Bone className="h-3 w-16 mb-1.5 block" />
+            <Bone className="h-3 w-16 mb-1.5" />
             <div
-              className="rounded-xl overflow-hidden"
+              className="rounded-xl overflow-hidden w-full"
               style={{ border: "1px solid var(--border)", background: "var(--card)" }}
             >
               {Array.from({ length: perGroup }).map((_, i) => (
@@ -133,7 +138,7 @@ export function SkeletonList({
   const Item = variant === "people" ? SkeletonPersonCard : SkeletonCard;
   return (
     <Frame>
-      <div className="flex flex-col gap-3">
+      <div className="flex w-full flex-col gap-3">
         {Array.from({ length: count }).map((_, i) => (
           <Item key={i} />
         ))}
@@ -144,20 +149,20 @@ export function SkeletonList({
 
 export function SkeletonStat() {
   return (
-    <div className="rounded-xl border p-3 min-w-0 sm:p-4" style={cardStyle}>
-      <Bone className="h-3 w-20 max-w-full mb-4 block" />
-      <Bone className="h-8 w-12 max-w-full mb-2 block" />
-      <Bone className="h-3 w-16 max-w-full hidden sm:block" />
+    <div className="rounded-xl border p-3 min-w-0 w-full sm:p-4" style={cardStyle}>
+      <Bone className="h-3 w-20 mb-4" />
+      <Bone className="h-8 w-12 mb-2" />
+      <Bone className="h-3 w-16 hidden sm:block" />
     </div>
   );
 }
 
 export function SkeletonChart() {
   return (
-    <div className="rounded-xl border p-4 min-w-0" style={cardStyle}>
-      <Bone className="h-4 w-32 max-w-[70%] mb-2 block" />
-      <Bone className="h-3 w-40 max-w-[80%] mb-4 block" />
-      <Bone className="h-[160px] w-full rounded-lg block sm:h-[200px]" />
+    <div className="rounded-xl border p-4 min-w-0 w-full" style={cardStyle}>
+      <Bone className="h-4 w-1/2 mb-2" />
+      <Bone className="h-3 w-2/3 mb-4" />
+      <Bone className="h-[160px] w-full rounded-lg sm:h-[200px]" />
     </div>
   );
 }
@@ -182,8 +187,8 @@ export function SkeletonTable({ rows = 6, cols = 4 }: { rows?: number; cols?: nu
                 <div className="flex items-center gap-3 min-w-0">
                   <Bone className="w-9 h-9 rounded-full shrink-0 inline-block" />
                   <div className="min-w-0 flex-1">
-                    <Bone className="h-3.5 w-28 max-w-full mb-1.5 block" />
-                    <Bone className="h-3 w-36 max-w-[80%] block" />
+                    <Bone className="h-3.5 w-2/3 mb-1.5" />
+                    <Bone className="h-3 w-1/2" />
                   </div>
                 </div>
               </td>
@@ -202,33 +207,33 @@ export function SkeletonTable({ rows = 6, cols = 4 }: { rows?: number; cols?: nu
 
 export function SkeletonTicketDetail() {
   return (
-    <Frame className="max-w-4xl">
-      <Bone className="h-4 w-16 mb-5 block" />
+    <Frame>
+      <Bone className="h-4 w-16 mb-5" />
       <div className="flex gap-2 mb-3 flex-wrap">
         <Bone className="h-6 w-20 rounded-full inline-block" />
         <Bone className="h-6 w-16 rounded-full inline-block" />
         <Bone className="h-6 w-14 rounded-full inline-block" />
       </div>
-      <Bone className="h-6 w-3/4 mb-6 block sm:h-7" />
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,56rem)_18rem] lg:justify-start">
+      <Bone className="mb-6 h-6 w-2/3 sm:h-7" />
+      <div className="grid w-full grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="space-y-4 min-w-0">
-          <div className="rounded-xl border p-4 sm:p-5" style={cardStyle}>
-            <Bone className="h-4 w-24 mb-4 block" />
-            <Bone className="h-3 w-full mb-2 block" />
-            <Bone className="h-3 w-5/6 mb-2 block" />
-            <Bone className="h-3 w-2/3 block" />
+          <div className="rounded-xl border p-4 sm:p-5 w-full" style={cardStyle}>
+            <Bone className="h-4 w-24 mb-4" />
+            <Bone className="h-3 w-full mb-2" />
+            <Bone className="h-3 w-5/6 mb-2" />
+            <Bone className="h-3 w-2/3" />
           </div>
-          <div className="rounded-xl border p-4 sm:p-5" style={cardStyle}>
-            <Bone className="h-4 w-20 mb-4 block" />
-            <Bone className="h-3 w-full mb-2 block" />
-            <Bone className="h-3 w-4/5 block" />
+          <div className="rounded-xl border p-4 sm:p-5 w-full" style={cardStyle}>
+            <Bone className="h-4 w-20 mb-4" />
+            <Bone className="h-3 w-full mb-2" />
+            <Bone className="h-3 w-4/5" />
           </div>
         </div>
         <div className="space-y-3 min-w-0">
-          <div className="rounded-xl border p-4" style={cardStyle}>
-            <Bone className="h-4 w-20 mb-3 block" />
-            <Bone className="h-3 w-full mb-2 block" />
-            <Bone className="h-3 w-3/4 block" />
+          <div className="rounded-xl border p-4 w-full" style={cardStyle}>
+            <Bone className="h-4 w-20 mb-3" />
+            <Bone className="h-3 w-full mb-2" />
+            <Bone className="h-3 w-3/4" />
           </div>
         </div>
       </div>
@@ -239,16 +244,16 @@ export function SkeletonTicketDetail() {
 export function SkeletonProfile() {
   return (
     <Frame className="space-y-6">
-      <div className="rounded-2xl p-4 sm:p-6" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+      <div className="rounded-2xl p-4 sm:p-6 w-full" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
         <div className="flex flex-wrap items-start gap-4">
           <Bone className="w-16 h-16 rounded-2xl shrink-0 inline-block" />
           <div className="flex-1 basis-48 min-w-0">
-            <Bone className="h-5 w-40 max-w-full mb-2 block" />
-            <Bone className="h-3 w-56 max-w-full block" />
+            <Bone className="mb-2 h-5 w-1/3" />
+            <Bone className="h-3 w-1/2" />
           </div>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+      <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
           <SkeletonStat key={i} />
         ))}
@@ -267,14 +272,14 @@ export function SkeletonDashboard({
   return (
     <Frame className="space-y-5">
       {showStats && (
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
+        <div className="grid w-full grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
           {Array.from({ length: 4 }).map((_, i) => (
             <SkeletonStat key={i} />
           ))}
         </div>
       )}
       {showCharts && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="grid w-full grid-cols-1 gap-4 lg:grid-cols-2">
           <SkeletonChart />
           <SkeletonChart />
         </div>
@@ -286,12 +291,12 @@ export function SkeletonDashboard({
 export function SkeletonReports() {
   return (
     <Frame className="space-y-6">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
+      <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
         {Array.from({ length: 5 }).map((_, i) => (
           <SkeletonStat key={i} />
         ))}
       </div>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid w-full grid-cols-1 gap-4 lg:grid-cols-2">
         <SkeletonChart />
         <SkeletonChart />
       </div>

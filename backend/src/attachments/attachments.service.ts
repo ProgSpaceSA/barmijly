@@ -2,7 +2,9 @@ import { Injectable, NotFoundException, ForbiddenException, BadRequestException 
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { AccessService } from '../access/access.service';
+import { MeetingAccessService } from '../meetings/meetings.access';
 import { assertCan, can } from '../access/permissions';
+
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -15,6 +17,8 @@ export interface AttachmentOwnerRef {
   bugId?: string | null;
   testStepId?: string | null;
   suiteId?: string | null;
+  meetingId?: string | null;
+  requirementId?: string | null;
 }
 
 /** A step screenshot is a screenshot — the other owners keep the wide list. */
@@ -27,6 +31,7 @@ export class AttachmentsService {
   constructor(
     private prisma: PrismaService,
     private access: AccessService,
+    private meetings: MeetingAccessService,
     private config: ConfigService,
   ) {
     this.uploadDir = config.get<string>('UPLOAD_DIR', './uploads');
@@ -37,7 +42,7 @@ export class AttachmentsService {
     assertCan(user, 'attachment:upload');
     if (!Object.values(owner).some(Boolean)) {
       throw new BadRequestException(
-        'Must provide ticketId, commentId, taskId, testCaseId, bugId, testStepId, or suiteId',
+        'Must provide ticketId, commentId, taskId, testCaseId, bugId, testStepId, suiteId, meetingId, or requirementId',
       );
     }
 
@@ -57,7 +62,7 @@ export class AttachmentsService {
     await this.assertCanReach(owner, user);
 
     const url = `/uploads/${file.filename}`;
-    return this.prisma.ticketAttachment.create({
+    const created = await this.prisma.ticketAttachment.create({
       data: {
         fileName: file.originalname,
         fileSize: file.size,
@@ -70,9 +75,56 @@ export class AttachmentsService {
         bugId: owner.bugId || null,
         testStepId: owner.testStepId || null,
         suiteId: owner.suiteId || null,
+        meetingId: owner.meetingId || null,
+        requirementId: owner.requirementId || null,
         uploadedById: user.id,
       },
     });
+
+    if (owner.requirementId) {
+      await this.syncRequirementAttachmentToTickets(owner.requirementId, created.url, user.id);
+    }
+
+    return created;
+  }
+
+  /**
+   * A file on the requirement should follow it onto any ticket already opened
+   * from that requirement — the ticket is the execution surface.
+   */
+  private async syncRequirementAttachmentToTickets(
+    requirementId: string,
+    url: string,
+    actorId: string,
+  ) {
+    const tickets = await this.prisma.ticket.findMany({
+      where: { requirementId },
+      select: { id: true },
+    });
+    if (!tickets.length) return;
+
+    for (const ticket of tickets) {
+      const exists = await this.prisma.ticketAttachment.count({
+        where: { ticketId: ticket.id, url },
+      });
+      if (exists) continue;
+
+      const source = await this.prisma.ticketAttachment.findFirst({
+        where: { requirementId, url },
+      });
+      if (!source) continue;
+
+      await this.prisma.ticketAttachment.create({
+        data: {
+          fileName: source.fileName,
+          fileSize: source.fileSize,
+          mimeType: source.mimeType,
+          url: source.url,
+          ticketId: ticket.id,
+          uploadedById: source.uploadedById ?? actorId,
+        },
+      });
+    }
   }
 
   /**
@@ -95,6 +147,8 @@ export class AttachmentsService {
         bugId: true,
         testStepId: true,
         suiteId: true,
+        meetingId: true,
+        requirementId: true,
       },
     });
     if (!attachment) throw new NotFoundException('Attachment not found');
@@ -145,8 +199,10 @@ export class AttachmentsService {
 
   /**
    * Ticket-shaped owners answer to the ticket scope; QA-shaped owners answer to
-   * the system their suite or bug sits in. Both are checked here so a file can
-   * never be reachable through an owner its own page would have hidden.
+   * the system their suite or bug sits in; a meeting answers to its company and
+   * a requirement to whichever of the two its own page uses. Every one is
+   * checked here so a file can never be reachable through an owner its own page
+   * would have hidden.
    */
   private async assertCanReach(ref: AttachmentOwnerRef, user: any) {
     const ticketId = await this.resolveTicketId(ref);
@@ -154,6 +210,30 @@ export class AttachmentsService {
       await this.access.assertCanViewTicket(ticketId, user);
       return;
     }
+
+    const requirementId = await this.resolveRequirementId(ref);
+    if (requirementId) {
+      const requirement = await this.prisma.requirement.findUnique({
+        where: { id: requirementId },
+        select: { companyId: true, systemId: true },
+      });
+      if (!requirement) throw new NotFoundException('Requirement not found');
+      assertCan(user, 'requirement:read');
+      await this.meetings.assertCanViewRequirement(requirement, user);
+      return;
+    }
+
+    if (ref.meetingId) {
+      const meeting = await this.prisma.meeting.findUnique({
+        where: { id: ref.meetingId },
+        select: { companyId: true },
+      });
+      if (!meeting) throw new NotFoundException('Meeting not found');
+      assertCan(user, 'meeting:read');
+      await this.access.assertCanViewCompany(meeting.companyId, user);
+      return;
+    }
+
     const systemId = await this.resolveSystemId(ref);
     if (systemId) {
       assertCan(user, 'test:read');
@@ -161,6 +241,17 @@ export class AttachmentsService {
       return;
     }
     throw new BadRequestException('Attachment is not linked to anything readable');
+  }
+
+  /** A comment on a requirement carries no ticket, so the parent is walked here. */
+  private async resolveRequirementId(ref: AttachmentOwnerRef): Promise<string | null> {
+    if (ref.requirementId) return ref.requirementId;
+    if (!ref.commentId) return null;
+    const comment = await this.prisma.ticketComment.findUnique({
+      where: { id: ref.commentId },
+      select: { requirementId: true },
+    });
+    return comment?.requirementId ?? null;
   }
 
   /** Walks comment / task links back to the ticket that governs access. */
@@ -173,6 +264,8 @@ export class AttachmentsService {
         select: { ticketId: true },
       });
       if (!comment) throw new NotFoundException('Comment not found');
+      // Null when the comment hangs off a requirement — the requirement branch
+      // in `assertCanReach` picks it up from there.
       return comment.ticketId;
     }
 

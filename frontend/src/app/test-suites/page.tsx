@@ -14,6 +14,7 @@ import { ThemeSelect } from "@/components/shared/ThemeSelect";
 import { SuiteListCard } from "@/components/testing/SuiteListCard";
 import { SuiteEditorDialog } from "@/components/testing/SuiteEditorDialog";
 import { useTestSuites } from "@/hooks/useTestSuites";
+import { useDebouncedSearch } from "@/hooks/useDebouncedValue";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useAuthStore } from "@/store/auth";
 import { TESTING_LABELS, TEST_STATE_LABELS } from "@/lib/constants";
@@ -78,6 +79,10 @@ function SuitesPageContent() {
         : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== key)),
     );
 
+  const { search, onSearchChange } = useDebouncedSearch((value) =>
+    setFilter("search", value),
+  );
+
   const setCompanyFilter = (next: string) => {
     setCompany(next);
     setSystemId("");
@@ -131,7 +136,8 @@ function SuitesPageContent() {
           placeholder={TESTING_LABELS.searchSuites}
           aria-label={TESTING_LABELS.searchSuites}
           className="ps-9"
-          onChange={(e) => setFilter("search", e.target.value)}
+          value={search}
+          onChange={onSearchChange}
         />
       </div>
 

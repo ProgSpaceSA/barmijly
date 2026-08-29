@@ -6,6 +6,7 @@ import { SkeletonList } from "@/components/shared/LoadingSpinner";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { TicketListCard } from "@/components/shared/TicketListCard";
 import { useTickets } from "@/hooks/useTickets";
+import { useDebouncedSearch } from "@/hooks/useDebouncedValue";
 import { useAuthStore } from "@/store/auth";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,10 @@ export default function ArchivedTicketsPage() {
     );
   };
 
+  const { search, onSearchChange } = useDebouncedSearch((value) =>
+    setFilter("search", value),
+  );
+
   const companyList: any[] = Array.isArray(companies) ? companies : (companies as any)?.data ?? [];
 
   return (
@@ -48,7 +53,8 @@ export default function ArchivedTicketsPage() {
         <Input
           placeholder="بحث في الأرشيف..."
           className="pr-9"
-          onChange={e => setFilter("search", e.target.value)}
+          value={search}
+          onChange={onSearchChange}
         />
       </div>
 

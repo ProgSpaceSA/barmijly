@@ -23,6 +23,7 @@ export function CommentItem({
   currentUserName,
   editing,
   grouped = false,
+  readOnly = false,
   onStartEdit,
   onCancelEdit,
   onSubmitEdit,
@@ -36,6 +37,8 @@ export function CommentItem({
   editing: boolean;
   /** Same author, moments later — the header and avatar are already on screen. */
   grouped?: boolean;
+  /** Imported from a linked requirement — show only, no edit/delete. */
+  readOnly?: boolean;
   onStartEdit: () => void;
   onCancelEdit: () => void;
   onSubmitEdit: (payload: CommentSubmit) => Promise<void>;
@@ -48,6 +51,7 @@ export function CommentItem({
   const author = comment.author ?? {};
   const isMine = !!currentUserId && author.id === currentUserId;
   const isInternal = comment.visibility === "INTERNAL";
+  const fromRequirement = Boolean(comment.fromRequirement);
   const mentionsMe = !!currentUserId && (comment.mentions ?? []).includes(currentUserId);
   const wasEdited =
     new Date(comment.updatedAt).getTime() - new Date(comment.createdAt).getTime() >
@@ -91,7 +95,7 @@ export function CommentItem({
       )}
 
       <div className="flex-1 min-w-0 relative">
-        {isMine && !editing && (
+        {isMine && !editing && !readOnly && (
           confirming ? (
             <div className="brm-comment-confirm" role="group" aria-label={COMMENT_LABELS.deleteConfirm}>
               <p>{COMMENT_LABELS.deleteConfirm}</p>
@@ -161,6 +165,19 @@ export function CommentItem({
             {isInternal && (
               <span className="brm-badge brm-badge-internal">
                 <Lock className="w-3 h-3" /> {COMMENT_LABELS.internal}
+              </span>
+            )}
+
+            {fromRequirement && (
+              <span
+                className="text-xs px-1.5 py-0.5 rounded font-medium"
+                style={{
+                  color: "#818CF8",
+                  background: "rgba(79,70,229,0.12)",
+                  border: "1px solid rgba(79,70,229,0.35)",
+                }}
+              >
+                {COMMENT_LABELS.fromRequirement}
               </span>
             )}
 

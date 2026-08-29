@@ -1,0 +1,97 @@
+---
+description: Meetings, minutes points, requirements — domain rules and ship checklists
+globs: "{backend/src/meetings/**,backend/src/requirements/**,frontend/src/**/meeting*,frontend/src/**/requirement*,frontend/src/components/meetings/**,frontend/src/hooks/useMeeting*.ts,frontend/src/hooks/useRequirement*.ts,MEETINGS_PLAN.md}"
+alwaysApply: false
+---
+
+# Meetings domain
+
+Source of truth: [`MEETINGS_PLAN.md`](../../MEETINGS_PLAN.md). Read it before implementing. Also follow [`feature-standards.mdc`](feature-standards.mdc).
+
+## Visibility
+
+- `TICKET_REQUESTER`: **403 on every meeting/requirement endpoint**; no sidebar nav.
+- `meeting:read` / `meeting:manage`: `PROGRAMMING_HEAD`, `PROJECT_MANAGER`, `SENIOR_MANAGEMENT` only.
+- `requirement:read`: above + `DEVELOPER`, `QA`, `SYSTEM_OWNER` (scoped).
+- `requirement:create` / `triage` / `promote`: leadership + `SENIOR_MANAGEMENT` only.
+- `SYSTEM_OWNER`: read requirements only — **no** `requirement:create` (use tickets).
+- Unpinned requirements (`systemId: null`): invisible to non-leadership (`IN` excludes NULL).
+
+## Never
+
+- Hard-delete meetings, points, or requirements — archive only.
+- Add `BACKLOG` or new `TicketStatus` — requirements are the backlog.
+- Promote to anything other than **DRAFT** ticket — `PROGRAMMING_HEAD` approval still required.
+- Promote without `systemId` on the requirement.
+- Free-text `minutes` on `Meeting` — minutes are ordered `MeetingPoint` rows.
+- Comment thread on meetings or points — only on **Requirement**; meeting-level attachments only on `Meeting`.
+- Ship without capture, reorder, triage, and promote all working end-to-end.
+
+---
+
+## Backend action checklists
+
+Every mutating action: `AuditService.log`. Status changes: `RequirementStatusHistory`.
+
+### Capture point (`POST /meetings/:id/points/:pointId/capture`)
+
+1. `requirement:create` + meeting scope
+2. Create `Requirement` with `source=MEETING`, `meetingPointId`, title/body from point
+3. Audit requirement + point/meeting
+
+### Requirement status (`POST /requirements/:id/status`)
+
+1. `requirement:triage` + scope
+2. Insert `RequirementStatusHistory`
+3. `AuditService.log`
+
+### Promote (`POST /requirements/:id/promote`)
+
+1. `requirement:promote` + scope; refuse without `systemId`
+2. Create `Ticket` — `DRAFT`, scope from requirement; set `Ticket.requirementId`
+3. Requirement → `CONVERTED`
+4. Audit both sides
+
+### Point reorder
+
+1. `meeting:manage`
+2. Contiguous `order` rebalance (mirror `steps.service`)
+3. Audit
+
+---
+
+## Frontend ship checklists
+
+### Meetings list + detail
+
+- [ ] Arabic labels (`MEETING_*`, `POINT_KIND_*` in `constants.ts`)
+- [ ] Leadership-only nav (`meeting:read`)
+- [ ] Ctrl+K: meetings list + new meeting (`CommandPalette`)
+- [ ] Attendee editor: internal user picker + external name/job/org
+- [ ] System chips (`MeetingSystem` join)
+- [ ] Numbered points list — `OrderedStepList` pattern; add / edit / retype / reorder / delete
+- [ ] Capture action per line → requirement chip link
+- [ ] Meeting-level attachments (`FilePickArea`)
+- [ ] Skeleton + empty state; 360px + `lg`
+- [ ] `*.test.tsx` for list page and meeting detail
+
+### Requirements backlog + detail
+
+- [ ] Nav (`requirement:read`); filters: status, source, company
+- [ ] Ctrl+K: new requirement (`CommandPalette`)
+- [ ] Origin strip: meeting point link or `source` + `sourceNote`
+- [ ] Triage: owner, system, priority, due date
+- [ ] `CommentThread` via generalized `useComments({ kind: 'requirement', id })`
+- [ ] Promote «إنشاء تذكرة» → DRAFT ticket
+- [ ] Regression: ticket `CommentThread` still works
+- [ ] Specs + responsive pass
+
+---
+
+## Tests (required)
+
+- Backend: `*.spec.ts` — scope 404/403, TICKET_REQUESTER lockout, unpinned requirement hidden from SYSTEM_OWNER, promote gate, capture, reorder
+- Frontend: `*.test.tsx` on routes and `components/meetings/**`
+- Run `npm run check` before push
+
+Manual QA: leadership flow in `MEETINGS_PLAN.md` § Verification.

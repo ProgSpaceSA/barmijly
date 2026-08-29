@@ -2,10 +2,10 @@ process.env.MAIL_ALLOW_IN_TESTS = 'true';
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { Priority, TaskStatus, TicketStatus, UserRole } from '@prisma/client';
+import { MeetingStatus, MeetingType, Priority, TaskStatus, TicketStatus, UserRole } from '@prisma/client';
 import * as nodemailer from 'nodemailer';
 import { EmailService } from './email.service';
-import { DigestTicketRef, UserDigest, formatTicketCode } from '../digest/digest.types';
+import { DigestMeetingRef, DigestTicketRef, UserDigest, formatTicketCode } from '../digest/digest.types';
 
 jest.mock('nodemailer');
 
@@ -44,6 +44,8 @@ const digestFor = (over: Partial<UserDigest> = {}): UserDigest => ({
   overdueTotal: 0,
   dueSoon: [],
   dueSoonTotal: 0,
+  todayMeetings: [],
+  todayMeetingTotal: 0,
   isEmpty: false,
   ...over,
 });
@@ -304,7 +306,45 @@ describe('EmailService', () => {
     expect((html.match(/width="33%"/g) ?? []).length).toBeGreaterThanOrEqual(3);
   });
 
-  it('lists bug alerts with ticket and bug codes', async () => {
+    it('lists today\'s meetings with MTG codes and a time', async () => {
+      const meeting: DigestMeetingRef = {
+        id: 'mtg-1',
+        meetingNumber: 7,
+        meetingCode: 'MTG-0007',
+        title: 'متابعة الفواتير',
+        type: MeetingType.FOLLOW_UP,
+        status: MeetingStatus.SCHEDULED,
+        heldAt: new Date('2026-08-29T06:00:00.000Z'),
+        durationMins: 45,
+        location: 'قاعة الاجتماعات',
+        url: 'https://barmijly.test/meetings/mtg-1',
+        companyName: 'شركة سنم',
+      };
+      const html = await htmlOf(
+        digestFor({
+          todayMeetings: [meeting],
+          todayMeetingTotal: 3,
+        }),
+      );
+
+      expect(html).toContain('اجتماعاتك اليوم');
+      expect(html).toContain('اجتماعات اليوم');
+      expect(html).toContain('الساعة');
+      expect(html).toContain('MTG-0007');
+      expect(html).toContain('متابعة الفواتير');
+      expect(html).toContain('https://barmijly.test/meetings/mtg-1');
+      expect(html).toContain('شركة سنم');
+      expect(html).toContain('متابعة');
+      expect(html).toContain('مجدول');
+      expect(html).toContain('45 دقيقة');
+      expect(html).toContain('قاعة الاجتماعات');
+      expect(html).toContain('و2 اجتماع آخر');
+      expect(html).toContain('border-right:3px solid #0EA5E9');
+      expect(html).not.toContain('FOLLOW_UP');
+      expect(html).not.toContain('SCHEDULED');
+    });
+
+    it('lists bug alerts with ticket and bug codes', async () => {
     const ticket = ticketRef();
     const html = await htmlOf(
       digestFor({
@@ -442,6 +482,14 @@ describe('EmailService', () => {
         () => service.sendTicketAssigned('a@b.c', 'هاني', 'تذكرة', 'https://barmijly.test/tickets/1', 'سارة', 31),
         () => service.sendTaskAssigned('a@b.c', 'هاني', 'مهمة', 'تذكرة', 'https://barmijly.test/tickets/1', 'سارة', 31),
         () => service.sendStatusUpdate('a@b.c', 'تذكرة', TicketStatus.APPROVED, 'https://barmijly.test/tickets/1', 31),
+        () =>
+          service.sendRequirementMention(
+            'a@b.c',
+            'داود',
+            'متطلب',
+            'https://barmijly.test/requirements/req-1',
+            4,
+          ),
       ];
 
       for (const send of mails) {
@@ -454,6 +502,58 @@ describe('EmailService', () => {
         expect(html).toContain('display:none');
         expect(html).not.toContain('نظام إدارة طلبات البرمجة</div>');
       }
+    });
+  });
+
+  describe('requirement mention', () => {
+    async function mentionHtml() {
+      sendMail.mockClear();
+      await service.sendRequirementMention(
+        'qa@x.com',
+        'داود العتيبي',
+        'تقرير مبيعات يومي',
+        'https://barmijly.test/requirements/req-1',
+        4,
+        { companyName: 'الشركة القابضة', systemName: 'نظام الفواتير' },
+      );
+      expect(sendMail).toHaveBeenCalledTimes(1);
+      return sendMail.mock.calls[0][0] as { subject: string; html: string };
+    }
+
+    it('names a متطلب in the subject, never a تذكرة', async () => {
+      const mail = await mentionHtml();
+      expect(mail.subject).toBe('تم ذكرك في متطلب: تقرير مبيعات يومي');
+      expect(mail.subject).not.toContain('تذكرة');
+    });
+
+    it('prints the REQ code in its own LTR chip, not a BRM one', async () => {
+      const { html } = await mentionHtml();
+      expect(html).toContain('REQ-0004');
+      expect(html).not.toContain('BRM-');
+      expect(html).toContain('unicode-bidi:isolate');
+    });
+
+    it('links the requirement and labels the button for it', async () => {
+      const { html } = await mentionHtml();
+      expect(html).toContain('https://barmijly.test/requirements/req-1');
+      expect(html).toContain('فتح المتطلب');
+    });
+
+    it('carries the company and system like ticket mail does', async () => {
+      const { html } = await mentionHtml();
+      expect(html).toContain('الشركة القابضة');
+      expect(html).toContain('نظام الفواتير');
+    });
+
+    it('drops the code chip when the requirement has no number', async () => {
+      sendMail.mockClear();
+      await service.sendRequirementMention(
+        'qa@x.com',
+        'داود',
+        'طلب',
+        'https://barmijly.test/requirements/req-1',
+      );
+      expect(sendMail.mock.calls[0][0].html).not.toContain('REQ-');
     });
   });
 

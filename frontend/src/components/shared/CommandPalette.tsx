@@ -2,11 +2,15 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { Search, Ticket as TicketIcon, LayoutDashboard, Users, Building2, Bug } from "lucide-react";
+import { Search, Ticket as TicketIcon, LayoutDashboard, Users, Building2, Bug, CalendarDays, ClipboardList } from "lucide-react";
 import { usePermissions } from "@/hooks/usePermissions";
 import type { Action } from "@/lib/permissions";
-import { TESTING_LABELS } from "@/lib/constants";
+import { MEETING_LABELS, TESTING_LABELS } from "@/lib/constants";
 import { BugEditorDialog } from "@/components/testing/BugEditorDialog";
+import { MeetingEditorDialog } from "@/components/meetings/MeetingEditorDialog";
+import { RequirementEditorDialog } from "@/components/meetings/RequirementEditorDialog";
+
+type PaletteDialog = "bug" | "meeting" | "requirement";
 
 interface Result {
   id: string;
@@ -14,8 +18,8 @@ interface Result {
   sub?: string;
   href?: string;
   icon?: React.ReactNode;
-  /** Opens the bug editor instead of navigating. */
-  openBugDialog?: boolean;
+  /** Opens a create dialog instead of navigating. */
+  openDialog?: PaletteDialog;
 }
 
 type QuickLinkDef = {
@@ -24,22 +28,28 @@ type QuickLinkDef = {
   href?: string;
   icon: React.ReactNode;
   action: Action | null;
-  openBugDialog?: boolean;
+  openDialog?: PaletteDialog;
 };
 
-/** `action: null` means every signed-in user gets the shortcut. */
+/**
+ * Frequent destinations (list and create). When a new user-facing flow is a
+ * logical quick-access item, add it here with the same action as the sidebar.
+ * `action: null` means every signed-in user gets the shortcut.
+ */
 const QUICK_LINKS: QuickLinkDef[] = [
   { id: "dash",    label: "لوحة التحكم",      href: "/dashboard",  icon: <LayoutDashboard className="w-4 h-4" />, action: null },
-  { id: "tickets", label: "التذاكر",           href: "/tickets",    icon: <TicketIcon className="w-4 h-4" />,      action: null },
   { id: "new",     label: "تذكرة جديدة",       href: "/tickets/new", icon: <TicketIcon className="w-4 h-4" />,     action: "ticket:create" },
-  { id: "new-bug", label: TESTING_LABELS.newBug, icon: <Bug className="w-4 h-4" />, action: "bug:create", openBugDialog: true },
+  { id: "new-bug", label: TESTING_LABELS.newBug, icon: <Bug className="w-4 h-4" />, action: "bug:create", openDialog: "bug" },
+  { id: "meetings", label: MEETING_LABELS.meetingsTitle, href: "/meetings", icon: <CalendarDays className="w-4 h-4" />, action: "meeting:read" },
+  { id: "new-meeting", label: MEETING_LABELS.newMeeting, icon: <CalendarDays className="w-4 h-4" />, action: "meeting:manage", openDialog: "meeting" },
+  { id: "new-requirement", label: MEETING_LABELS.newRequirement, icon: <ClipboardList className="w-4 h-4" />, action: "requirement:create", openDialog: "requirement" },
   { id: "users",   label: "المستخدمون",        href: "/users",      icon: <Users className="w-4 h-4" />,           action: "user:read" },
   { id: "co",      label: "الشركات والأنظمة",  href: "/companies",  icon: <Building2 className="w-4 h-4" />,       action: "structure:manage" },
 ];
 
 export function CommandPalette() {
   const { can: allowed } = usePermissions();
-  const [bugOpen, setBugOpen] = useState(false);
+  const [dialog, setDialog] = useState<PaletteDialog | null>(null);
   // Same gate as the sidebar: a shortcut to a page the role cannot open is a
   // dead end, and ctrl+k is the one way around a hidden nav link.
   const quickLinks = useMemo(
@@ -49,7 +59,7 @@ export function CommandPalette() {
         label: l.label,
         href: l.href,
         icon: l.icon,
-        openBugDialog: l.openBugDialog,
+        openDialog: l.openDialog,
       })),
     [allowed],
   );
@@ -110,9 +120,9 @@ export function CommandPalette() {
 
   const select = (r: Result | undefined) => {
     if (!r || r.id === "none") return;
-    if (r.openBugDialog) {
+    if (r.openDialog) {
       setOpen(false);
-      setBugOpen(true);
+      setDialog(r.openDialog);
       return;
     }
     if (r.href) {
@@ -194,7 +204,9 @@ export function CommandPalette() {
         </div>
       )}
 
-      {bugOpen && <BugEditorDialog onClose={() => setBugOpen(false)} />}
+      {dialog === "bug" && <BugEditorDialog onClose={() => setDialog(null)} />}
+      {dialog === "meeting" && <MeetingEditorDialog onClose={() => setDialog(null)} />}
+      {dialog === "requirement" && <RequirementEditorDialog onClose={() => setDialog(null)} />}
     </>
   );
 }

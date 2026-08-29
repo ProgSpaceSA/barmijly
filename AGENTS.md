@@ -11,6 +11,7 @@ Internal ticket management system for programming change requests across group c
 | `req.md` | Arabic product requirements (source of truth) | — |
 | `backend/GUIDE.md` | API reference, roles, ticket flow | — |
 | `QA_TESTING.md` | QA accounts and test scenarios | — |
+| `MEETINGS_PLAN.md` | Meetings & requirements implementation plan | — |
 
 ## req.md section index
 
@@ -32,10 +33,11 @@ Internal ticket management system for programming change requests across group c
 
 1. Read the relevant `req.md` section from the index above.
 2. Read `backend/GUIDE.md` for API endpoints and status transitions.
-3. For Next.js changes, read `node_modules/next/dist/docs/` — this project uses Next.js 16 with breaking changes.
-4. For Prisma changes, follow schema conventions and run migrations from `backend/`.
-5. For code patterns, read `.cursor/skills/barmijly-patterns/reference.md`.
-6. Backend endpoint changes must sync frontend hooks — see `barmijly-api-sync` skill.
+3. For a planned feature, read its `*_PLAN.md` (e.g. `MEETINGS_PLAN.md`) and load skill `barmijly-full-stack-feature`; satisfy `.cursor/rules/feature-standards.mdc`.
+4. For Next.js changes, read `node_modules/next/dist/docs/` — this project uses Next.js 16 with breaking changes.
+5. For Prisma changes, follow schema conventions and run migrations from `backend/`.
+6. For code patterns, read `.cursor/skills/barmijly-patterns/reference.md`.
+7. Backend endpoint changes must sync frontend hooks — see `barmijly-api-sync` skill.
 
 ## Core business rules
 

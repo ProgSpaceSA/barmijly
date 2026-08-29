@@ -14,6 +14,7 @@ import { BugListCard, type BugCardBug } from "@/components/testing/BugListCard";
 import { BugEditorDialog } from "@/components/testing/BugEditorDialog";
 import { PromoteBugDialog } from "@/components/testing/PromoteBugDialog";
 import { useBugActions, useBugs } from "@/hooks/useBugs";
+import { useDebouncedSearch } from "@/hooks/useDebouncedValue";
 import { usePermissions } from "@/hooks/usePermissions";
 import api from "@/lib/api";
 import { qk } from "@/lib/query-keys";
@@ -135,6 +136,10 @@ export default function BugsPage() {
         : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== key && k !== "page")),
     );
 
+  const { search, onSearchChange } = useDebouncedSearch((value) =>
+    setFilter("search", value),
+  );
+
   const setStatusFilter = (value: string) => {
     setStatus(value);
     setFilters((prev) => {
@@ -226,7 +231,8 @@ export default function BugsPage() {
           placeholder={TESTING_LABELS.searchBugs}
           aria-label={TESTING_LABELS.searchBugs}
           className="ps-9"
-          onChange={(e) => setFilter("search", e.target.value)}
+          value={search}
+          onChange={onSearchChange}
         />
       </div>
 

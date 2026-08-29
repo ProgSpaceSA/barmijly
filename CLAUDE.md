@@ -8,7 +8,7 @@ Claude Code loads this file every session. Keep it thin.
 
 ## Cursor rules apply to Claude Code too
 
-`.cursor/rules/*.mdc` are **binding here**, not Cursor-only. The five with
+`.cursor/rules/*.mdc` are **binding here**, not Cursor-only. The six with
 `alwaysApply: true` are imported below so they load every session:
 
 @.cursor/rules/project-overview.mdc
@@ -16,6 +16,7 @@ Claude Code loads this file every session. Keep it thin.
 @.cursor/rules/session-tracking.mdc
 @.cursor/rules/to-migrate.mdc
 @.cursor/rules/agent-toolkit.mdc
+@.cursor/rules/feature-standards.mdc
 
 The rest are scoped by glob — **read the matching rule before editing files it covers**:
 
@@ -28,6 +29,8 @@ The rest are scoped by glob — **read the matching rule before editing files it
 | `.cursor/rules/responsive-ui.mdc` | `frontend/**/*.{tsx,css}` |
 | `.cursor/rules/ticket-domain.mdc` | `backend/src/tickets/**`, `frontend/src/**/ticket*`, `useTickets.ts` |
 | `.cursor/rules/testing-domain.mdc` | `backend/src/testing/**`, `backend/src/bugs/**`, `frontend/src/components/testing/**`, test-suite/bugs routes, `useTest*.ts`, `useBugs.ts` |
+| `.cursor/rules/meetings-domain.mdc` | `backend/src/meetings/**`, `backend/src/requirements/**`, meetings/requirements UI, `MEETINGS_PLAN.md` |
+| `.cursor/rules/feature-standards.mdc` | Every user-facing feature (always on) |
 | `.cursor/rules/api-sync.mdc` | `*.controller.ts`, `frontend/src/hooks/**`, `frontend/src/lib/**` |
 | `.cursor/rules/testing.mdc` | `backend/**/*.spec.ts`, `frontend/**/*.test.tsx`, `backend/test/**`, `QA_TESTING.md` |
 

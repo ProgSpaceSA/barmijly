@@ -8,6 +8,7 @@ import { AttachmentsService } from '../attachments/attachments.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '../email/email.service';
+import { MeetingAccessService } from '../meetings/meetings.access';
 
 const TICKET_ID = 'ticket-1';
 const COMMENT_ID = 'comment-1';
@@ -47,7 +48,7 @@ describe('CommentsService — editing and deleting', () => {
   let prisma: any;
   let attachments: { deleteForComment: jest.Mock };
   let notifications: { notify: jest.Mock; notifyMany: jest.Mock };
-  let email: { sendMentionEmail: jest.Mock };
+  let email: { sendMentionEmail: jest.Mock; sendRequirementMention: jest.Mock };
 
   const storedComment = (over: Record<string, any> = {}) => ({
     id: COMMENT_ID,
@@ -78,13 +79,14 @@ describe('CommentsService — editing and deleting', () => {
     };
     attachments = { deleteForComment: jest.fn().mockResolvedValue(0) };
     notifications = { notify: jest.fn(), notifyMany: jest.fn() };
-    email = { sendMentionEmail: jest.fn() };
+    email = { sendMentionEmail: jest.fn(), sendRequirementMention: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CommentsService,
         { provide: PrismaService, useValue: prisma },
         AccessService,
+        MeetingAccessService,
         { provide: AttachmentsService, useValue: attachments },
         { provide: NotificationsService, useValue: notifications },
         { provide: EmailService, useValue: email },
@@ -177,6 +179,34 @@ describe('CommentsService — editing and deleting', () => {
         'author-1',
       );
       expect(email.sendMentionEmail).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not hold the comment response open while mention email is sending', async () => {
+      let finishEmail!: () => void;
+      const pendingEmail = new Promise<void>((resolve) => {
+        finishEmail = resolve;
+      });
+      prisma.ticketComment.findUnique.mockResolvedValue(storedComment());
+      prisma.user.findMany
+        .mockResolvedValueOnce([candidate({ id: 'qa-1', role: UserRole.QA })])
+        .mockResolvedValueOnce([{ email: 'qa1@company.com' }]);
+      email.sendMentionEmail.mockReturnValue(pendingEmail);
+
+      const result = service.update(
+        COMMENT_ID,
+        { content: 'مرحبا @qa1', mentions: ['qa-1'] },
+        asUser(UserRole.DEVELOPER, 'author-1'),
+      );
+
+      await expect(
+        Promise.race([
+          result.then(() => 'saved'),
+          new Promise((resolve) => setTimeout(() => resolve('blocked'), 100)),
+        ]),
+      ).resolves.toBe('saved');
+
+      finishEmail();
+      await pendingEmail;
     });
 
     it('still refuses an outsider mention added on an internal comment', async () => {

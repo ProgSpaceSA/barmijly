@@ -1,5 +1,5 @@
 "use client";
-import { use, useRef, useState, useEffect, useCallback, useReducer, Fragment } from "react";
+import { use, useRef, useState, useEffect, useCallback, useReducer, useMemo, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { SkeletonTicketDetail } from "@/components/shared/LoadingSpinner";
@@ -25,7 +25,7 @@ import { AttachmentImage } from "@/components/shared/AttachmentImage";
 import { FileDropZone } from "@/components/shared/FileDropZone";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserNameWithYou, personFullName } from "@/components/shared/UserNameWithYou";
-import { BLOCK_LABELS, COMMENT_LABELS, DEPENDENCY_LABELS, DIFFICULTY_LABELS, ESTIMATE_LABELS, TASK_STATUS_COLORS, TASK_STATUS_LABELS, FORCE_STATUS_LABELS, SELECT_PLACEHOLDERS, TASK_LABELS, TICKET_ACTION_CONFIRM, TICKET_STATUS_LABELS, TICKET_TYPE_LABELS, ASSIGNEE_LABELS, TESTING_LABELS } from "@/lib/constants";
+import { BLOCK_LABELS, COMMENT_LABELS, DEPENDENCY_LABELS, DIFFICULTY_LABELS, ESTIMATE_LABELS, TASK_STATUS_COLORS, TASK_STATUS_LABELS, FORCE_STATUS_LABELS, SELECT_PLACEHOLDERS, TASK_LABELS, TICKET_ACTION_CONFIRM, TICKET_STATUS_LABELS, TICKET_TYPE_LABELS, ASSIGNEE_LABELS, TESTING_LABELS, MEETING_LABELS } from "@/lib/constants";
 import { canBlockTicket, canResumeTicket } from "@/lib/permissions";
 import { formatAbsoluteTime, parseTimestamp } from "@/lib/dates";
 import { format } from "date-fns";
@@ -33,8 +33,9 @@ import { ar } from "date-fns/locale";
 import {
   ArrowRight, Clock, CalendarClock, User, Building2, Monitor, Lock,
   Paperclip, FileText, Trash2, Download, Check, AlertTriangle, X, Plus, Pencil, Eye, Loader2,
-  ChevronDown, ChevronLeft, UserPlus, CircleCheck, Bug as BugIcon,
+  ChevronDown, ChevronLeft, UserPlus, CircleCheck, Bug as BugIcon, ExternalLink, ClipboardList,
 } from "lucide-react";
+import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import api from "@/lib/api";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
@@ -48,7 +49,7 @@ import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { useSuiteActions, useTicketTesting } from "@/hooks/useTestSuites";
 import { useCaseActions } from "@/hooks/useTestCases";
 import { useBugActions } from "@/hooks/useBugs";
-import { formatBytes } from "@/lib/utils";
+import { formatBytes, formatRequirementCode } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { qk } from "@/lib/query-keys";
@@ -261,11 +262,11 @@ function SidebarMeta({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-2 text-sm" style={{ color: "var(--muted-foreground)" }}>
+    <div className="flex min-w-0 items-center gap-2 text-sm" style={{ color: "var(--muted-foreground)" }}>
       <span title={field} aria-label={field} className="shrink-0 cursor-help">
         {icon}
       </span>
-      <span>{children}</span>
+      <span className="min-w-0">{children}</span>
     </div>
   );
 }
@@ -772,6 +773,21 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const canHold          = allowed("ticket:hold");
   const canPostInternal  = allowed("comment:internal");
 
+  const threadComments = useMemo(() => {
+    if (!ticket) return [];
+    const imported = (ticket.requirementComments ?? []).map((c: any) => ({
+      ...c,
+      fromRequirement: true,
+    }));
+    const native = (ticket.comments ?? []).map((c: any) => ({
+      ...c,
+      fromRequirement: false,
+    }));
+    return [...imported, ...native].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+  }, [ticket?.comments, ticket?.requirementComments]);
+
   if (isLoading) return <AppShell><SkeletonTicketDetail /></AppShell>;
   if (!ticket)   return <AppShell><p className="text-sm" style={{ color: "var(--muted-foreground)" }}>التذكرة غير موجودة</p></AppShell>;
 
@@ -917,7 +933,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   return (
     <>
     <AppShell>
-      <div className="max-w-4xl">
+      <div className="w-full min-w-0">
 
         {/* Top nav */}
         <button onClick={() => router.back()} className="flex items-center gap-1.5 text-sm mb-5 transition-colors"
@@ -958,15 +974,31 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
               {TICKET_TYPE_LABELS[ticket.type]}
             </span>
             <RelativeTime date={ticket.createdAt} />
+            {/* Promoted from the backlog — the ask it came from stays one click away. */}
+            {ticket.requirement && (
+              <Link
+                href={`/requirements/${ticket.requirement.id}`}
+                title={ticket.requirement.title}
+                className="ltr-isolate inline-flex h-6 items-center gap-1 rounded-full px-2.5 font-brm text-xs font-semibold leading-4"
+                style={{
+                  background: "rgba(79,70,229,0.12)",
+                  color: "#818CF8",
+                  border: "1px solid rgba(79,70,229,0.35)",
+                }}
+              >
+                {formatRequirementCode(ticket.requirement.requirementNumber)}
+                <ExternalLink className="h-2.5 w-2.5" aria-hidden />
+              </Link>
+            )}
           </div>
           <h1 className="text-lg font-bold leading-snug sm:text-xl" style={{ color: "var(--foreground)" }}>{ticket.title}</h1>
         </div>
       </div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,56rem)_18rem] lg:justify-start lg:gap-5">
+        <div className="grid w-full grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-5">
 
           {/* ── Main column ── */}
-          <div className="space-y-4 max-w-4xl">
+          <div className="min-w-0 space-y-4">
 
             <TicketBlockBanner
               status={ticket.status}
@@ -1644,10 +1676,10 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
             <TicketTimeline ticketId={id} />
 
             {/* Comments */}
-            <Section title={`${COMMENT_LABELS.sectionTitle}${ticket.comments?.length ? ` · ${ticket.comments.length}` : ""}`}>
+            <Section title={`${COMMENT_LABELS.sectionTitle}${threadComments.length ? ` · ${threadComments.length}` : ""}`}>
               <CommentThread
-                ticketId={id}
-                comments={ticket.comments ?? []}
+                parent={{ kind: "ticket", id }}
+                comments={threadComments}
                 users={mentionableUsers}
                 currentUserId={user?.id}
                 currentUserName={[user?.firstName, user?.lastName].filter(Boolean).join(" ")}
@@ -1716,6 +1748,18 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                   currentUserId={user?.id}
                 />
               </SidebarMeta>
+              {ticket.requirement && (
+                <SidebarMeta field={MEETING_LABELS.ticketRequirement} icon={<ClipboardList className="w-3.5 h-3.5" aria-hidden />}>
+                  <Link
+                    href={`/requirements/${ticket.requirement.id}`}
+                    title={ticket.requirement.title}
+                    className="ltr-isolate font-brm text-xs font-semibold"
+                    style={{ color: "var(--foreground)" }}
+                  >
+                    {formatRequirementCode(ticket.requirement.requirementNumber)}
+                  </Link>
+                </SidebarMeta>
+              )}
               <SidebarMeta field="تاريخ الإنشاء" icon={<Clock className="w-3.5 h-3.5" aria-hidden />}>
                 {formatAbsoluteTime(ticket.createdAt)}
               </SidebarMeta>

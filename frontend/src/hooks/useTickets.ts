@@ -306,28 +306,5 @@ export function useDependencyActions(id: string) {
   };
 }
 
-/**
- * Posting, editing, and deleting stay quiet on purpose: a comment can carry
- * attachments, and the thread only refreshes and reports once every upload has
- * landed. Toasting or invalidating here would announce a half-uploaded comment.
- */
-export function useAddComment(ticketId: string) {
-  return useMutation({
-    mutationFn: (data: { content: string; visibility?: string; mentions?: string[] }) =>
-      api.post(`/tickets/${ticketId}/comments`, data).then(r => r.data),
-  });
-}
-
-export function useUpdateComment(ticketId: string) {
-  return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; content: string; mentions?: string[] }) =>
-      api.patch(`/tickets/${ticketId}/comments/${id}`, data).then(r => r.data),
-  });
-}
-
-export function useDeleteComment(ticketId: string) {
-  return useMutation({
-    mutationFn: (id: string) =>
-      api.delete(`/tickets/${ticketId}/comments/${id}`).then(r => r.data),
-  });
-}
+/* Comments moved to `useComments`, which serves tickets and requirements from
+   one implementation — see `hooks/useComments.ts`. */

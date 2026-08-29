@@ -8,7 +8,7 @@ import { AtSign, FileText, Languages, Paperclip, Send, X } from "lucide-react";
 import { MentionText } from "@/components/shared/MentionText";
 import {
   applyMention, encodeWritingDir, findMentionQuery, matchesMentionQuery,
-  mentionName, mentionedIdsIn, sanitizeCommentText, type MentionUser,
+  mentionHandleTable, mentionName, mentionedIdsIn, sanitizeCommentText, type MentionUser,
 } from "@/lib/mentions";
 import {
   COMMENT_LABELS, EDITOR_DIRECTION_LABELS, ROLE_COLORS, ROLE_LABELS,
@@ -137,6 +137,7 @@ export function CommentComposer({
     () => users.filter((u) => u.id !== currentUserId),
     [users, currentUserId],
   );
+  const mentionTable = useMemo(() => mentionHandleTable(candidates), [candidates]);
 
   const options = useMemo(() => {
     if (!menu) return [];
@@ -216,19 +217,27 @@ export function CommentComposer({
     });
   }, []);
 
+  const menuOpen = menu !== null;
+
   useEffect(() => {
-    if (!menu) {
+    if (!menuOpen) {
       setMenuBox(null);
       return;
     }
-    placeMenu();
+
+    const editor = inputRef.current?.closest<HTMLElement>(".brm-composer");
+    const needsRoomAbove = (inputRef.current?.getBoundingClientRect().top ?? 0) < MENU_HEIGHT + 16;
+    if (needsRoomAbove) editor?.scrollIntoView?.({ block: "end", behavior: "auto" });
+
+    const frame = requestAnimationFrame(placeMenu);
     window.addEventListener("scroll", placeMenu, true);
     window.addEventListener("resize", placeMenu);
     return () => {
+      cancelAnimationFrame(frame);
       window.removeEventListener("scroll", placeMenu, true);
       window.removeEventListener("resize", placeMenu);
     };
-  }, [menu, placeMenu]);
+  }, [menuOpen, placeMenu]);
 
   useEffect(() => {
     setMenuIndex(0);
@@ -255,8 +264,8 @@ export function CommentComposer({
 
   // ── Mentions ────────────────────────────────────────────────────────────
   const syncMenu = useCallback((value: string, caret: number) => {
-    setMenu(findMentionQuery(value, caret));
-  }, []);
+    setMenu(findMentionQuery(value, caret, candidates, mentionTable));
+  }, [candidates, mentionTable]);
 
   const pickMention = useCallback(
     (user: MentionUser) => {
@@ -331,7 +340,7 @@ export function CommentComposer({
     try {
       await onSubmit({
         content: encodeWritingDir(content.trim(), direction),
-        mentions: mentionedIdsIn(content, candidates),
+        mentions: mentionedIdsIn(content, candidates, mentionTable),
         files,
         setStatus: () => {},
         setFileProgress: (index, percent) =>
@@ -348,7 +357,7 @@ export function CommentComposer({
       setBusy(false);
       setProgress({});
     }
-  }, [canSend, candidates, content, direction, files, onSubmit, resetOnSubmit]);
+  }, [canSend, candidates, content, direction, files, mentionTable, onSubmit, resetOnSubmit]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -457,7 +466,10 @@ export function CommentComposer({
               dir={direction}
               value={content}
               placeholder={placeholder}
-              disabled={busy}
+              // `disabled` dumps the caret (and a click-outside could not land).
+              // Read-only blocks typing while the send is in flight and keeps
+              // focus so the next comment is ready — until a click outside.
+              readOnly={busy}
               rows={compact ? 2 : 3}
               aria-label={placeholder}
               aria-autocomplete="list"
@@ -469,10 +481,6 @@ export function CommentComposer({
               onChange={(e) => {
                 setContent(e.target.value);
                 syncMenu(e.target.value, e.target.selectionStart ?? e.target.value.length);
-              }}
-              onSelect={(e) => {
-                const el = e.currentTarget;
-                syncMenu(el.value, el.selectionStart ?? el.value.length);
               }}
               onScroll={(e) => {
                 if (mirrorRef.current) mirrorRef.current.scrollTop = e.currentTarget.scrollTop;
@@ -631,7 +639,15 @@ export function CommentComposer({
               </button>
             )}
 
-            <button type="button" onClick={() => void submit()} disabled={!canSend} className="brm-send">
+            <button
+              type="button"
+              // Same as the mention button: taking focus would leave the
+              // composer, and the writer is about to type the next comment.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => void submit()}
+              disabled={!canSend}
+              className="brm-send"
+            >
               <Send className="w-3.5 h-3.5" />
               {submitLabel}
             </button>

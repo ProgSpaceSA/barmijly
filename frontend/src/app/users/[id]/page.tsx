@@ -12,6 +12,7 @@ import { CodeComment } from "@/components/shared/CodeComment";
 import { SkeletonList, SkeletonProfile } from "@/components/shared/LoadingSpinner";
 import { ROLE_LABELS, TICKET_TYPE_LABELS } from "@/lib/constants";
 import api from "@/lib/api";
+import { formatRequirementCode, formatTicketCode } from "@/lib/utils";
 import { qk } from "@/lib/query-keys";
 import { ArrowLeft, Mail, Building2, User, Layers, FileText, Download, AtSign } from "lucide-react";
 
@@ -81,7 +82,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
 
   return (
     <AppShell requires={['user:read', 'user:read-directory']}>
-      <div className="max-w-4xl space-y-6">
+      <div className="w-full min-w-0 space-y-6">
         {/* Back */}
         <button onClick={() => router.back()}
           className="flex items-center gap-1.5 text-sm transition-colors"
@@ -239,16 +240,33 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                   const isMentioned = c.mentions?.includes(id) && c.authorId !== id;
                   const commentImgs = (c.attachments || []).filter((a: any) => isImg(a.mimeType));
                   const commentFiles = (c.attachments || []).filter((a: any) => !isImg(a.mimeType));
+                  // A comment hangs off a ticket or a requirement, never both.
+                  const parent = c.ticket
+                    ? {
+                        href: `/tickets/${c.ticket.id}`,
+                        code: formatTicketCode(c.ticket.ticketNumber),
+                        title: c.ticket.title,
+                        status: c.ticket.status,
+                      }
+                    : c.requirement
+                      ? {
+                          href: `/requirements/${c.requirement.id}`,
+                          code: formatRequirementCode(c.requirement.requirementNumber),
+                          title: c.requirement.title,
+                          status: null,
+                        }
+                      : null;
+                  if (!parent) return null;
                   return (
-                    <Link key={c.id} href={`/tickets/${c.ticket?.id}`}>
+                    <Link key={c.id} href={parent.href}>
                       <div className="rounded-xl p-4 transition-all hover:shadow-md"
                         style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                         {/* Ticket name header */}
                         <div className="flex items-center gap-2 mb-3 pb-2.5" style={{ borderBottom: "1px solid var(--border)" }}>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-medium truncate" style={{ color: "#4F46E5" }}>
-                              {c.ticket?.ticketNumber ? `BRM-${String(c.ticket.ticketNumber).padStart(4, "0")} · ` : ""}
-                              {c.ticket?.title}
+                              {parent.code ? `${parent.code} · ` : ""}
+                              {parent.title}
                             </p>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
@@ -258,7 +276,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                                 <AtSign className="w-3 h-3" /> إشارة
                               </span>
                             )}
-                            {c.ticket?.status && <StatusBadge status={c.ticket.status} />}
+                            {parent.status && <StatusBadge status={parent.status} />}
                           </div>
                         </div>
 

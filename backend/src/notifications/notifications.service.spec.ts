@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotificationType, UserRole } from '@prisma/client';
 import { NotificationsService } from './notifications.service';
 import { AccessService } from '../access/access.service';
+import { MeetingAccessService } from '../meetings/meetings.access';
 import { PrismaService } from '../prisma/prisma.service';
 
 const READER = { id: 'user-1', role: UserRole.PROGRAMMING_HEAD };
@@ -28,6 +29,7 @@ describe('NotificationsService', () => {
         NotificationsService,
         { provide: PrismaService, useValue: prisma },
         AccessService,
+        MeetingAccessService,
       ],
     }).compile();
 

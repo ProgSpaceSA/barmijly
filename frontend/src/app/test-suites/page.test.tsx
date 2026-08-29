@@ -116,6 +116,11 @@ describe("/test-suites", () => {
     await user.type(screen.getByLabelText(TESTING_LABELS.searchSuites), "دخول");
 
     await waitFor(() => expect(lastSuiteParams().search).toBe("دخول"));
+    const searches = mockGet.mock.calls
+      .filter(([url]) => url === "/test-suites")
+      .map(([, opts]) => (opts as { params?: { search?: string } } | undefined)?.params?.search)
+      .filter((term): term is string => Boolean(term));
+    expect(searches).toEqual(["دخول"]);
   });
 
   it("puts a health filter into the query", async () => {

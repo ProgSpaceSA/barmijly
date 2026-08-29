@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccessService } from '../access/access.service';
-import type { Actor } from '../access/permissions';
+import { MeetingAccessService, MeetingActor } from '../meetings/meetings.access';
+import { can } from '../access/permissions';
 import { NotificationType, Prisma } from '@prisma/client';
 
 interface NotifyPayload {
@@ -9,12 +10,17 @@ interface NotifyPayload {
   title: string;
   body: string;
   ticketId?: string;
+  requirementId?: string;
   metadata?: any;
 }
 
 @Injectable()
 export class NotificationsService {
-  constructor(private prisma: PrismaService, private access: AccessService) {}
+  constructor(
+    private prisma: PrismaService,
+    private access: AccessService,
+    private meetings: MeetingAccessService,
+  ) {}
 
   async notify(userId: string, payload: NotifyPayload, actorId: string) {
     if (userId === actorId) return;
@@ -31,7 +37,7 @@ export class NotificationsService {
     });
   }
 
-  async findAll(user: Actor, unreadOnly = false, page = 1, limit = 20) {
+  async findAll(user: MeetingActor, unreadOnly = false, page = 1, limit = 20) {
     const where = await this.scopedWhere(user, unreadOnly);
     const skip  = (page - 1) * limit;
     const [data, total] = await Promise.all([
@@ -48,6 +54,17 @@ export class NotificationsService {
               ticketNumber: true,
               estimatedDeadline: true,
               status: true,
+              company: { select: { id: true, name: true, logoUrl: true } },
+              system: { select: { id: true, name: true } },
+            },
+          },
+          requirement: {
+            select: {
+              id: true,
+              title: true,
+              requirementNumber: true,
+              status: true,
+              dueDate: true,
               company: { select: { id: true, name: true, logoUrl: true } },
               system: { select: { id: true, name: true } },
             },
@@ -80,27 +97,48 @@ export class NotificationsService {
     });
   }
 
-  async countUnread(user: Actor) {
+  async countUnread(user: MeetingActor) {
     return this.prisma.notification.count({ where: await this.scopedWhere(user, true) });
   }
 
   /**
-   * Notifications addressed to the user, minus any whose ticket has since moved
-   * out of their reach.
+   * Notifications addressed to the user, minus any whose subject has since
+   * moved out of their reach.
    *
    * Being the addressee is the primary filter, but a portfolio can be taken
-   * away after the fact, and the row carries the ticket title. Notifications
-   * with no ticket attached are always kept.
+   * away after the fact, and the row carries the ticket or requirement title.
+   * Each parent is checked on its own axis: `ticketId: null` cannot wave a
+   * requirement notification through, and vice versa. A row with neither parent
+   * — a mention on nothing, an account notice — is always kept.
    */
-  private async scopedWhere(user: Actor, unreadOnly: boolean): Promise<Prisma.NotificationWhereInput> {
+  private async scopedWhere(
+    user: MeetingActor,
+    unreadOnly: boolean,
+  ): Promise<Prisma.NotificationWhereInput> {
     const base: Prisma.NotificationWhereInput = {
       userId: user.id,
       ...(unreadOnly && { isRead: false }),
     };
 
-    const scope = await this.access.ticketScope(user);
-    if (!scope) return base;
+    const filters: Prisma.NotificationWhereInput[] = [];
 
-    return { ...base, OR: [{ ticketId: null }, { ticket: scope }] };
+    const ticketScope = await this.access.ticketScope(user);
+    if (ticketScope) filters.push({ OR: [{ ticketId: null }, { ticket: ticketScope }] });
+
+    // A role with no requirement access at all keeps none of them, so the scope
+    // call is skipped rather than allowed to throw on `requirement:read`.
+    if (can(user.role, 'requirement:read')) {
+      const requirementScope = await this.meetings.requirementScope(user);
+      if (Object.keys(requirementScope).length) {
+        filters.push({
+          OR: [{ requirementId: null }, { requirement: requirementScope }],
+        });
+      }
+    } else {
+      filters.push({ requirementId: null });
+    }
+
+    if (!filters.length) return base;
+    return { ...base, AND: filters };
   }
 }

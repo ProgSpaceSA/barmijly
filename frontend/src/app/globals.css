@@ -723,14 +723,25 @@ select optgroup {
   min-height: 36px;
   border-radius: 8px;
 }
+.brm-step-textarea {
+  min-height: 36px;
+  height: auto;
+  resize: none;
+  overflow: hidden;
+  border-radius: 8px;
+  line-height: 1.45;
+  padding-block: 0.45rem;
+}
 @media (min-width: 1024px) {
   .brm-step-shot { width: 40px; height: 40px; }
   .brm-step-btn { width: 40px; height: 40px; }
   .brm-step-input { height: 40px; min-height: 40px; }
+  .brm-step-textarea { min-height: 40px; }
 }
 @media (pointer: coarse) {
   .brm-step-shot { width: 44px; height: 44px; }
   .brm-step-input { height: 44px; min-height: 44px; }
+  .brm-step-textarea { min-height: 44px; }
 }
 .brm-step-thumb {
   width: 100%;

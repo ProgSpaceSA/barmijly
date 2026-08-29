@@ -38,7 +38,7 @@ export class UsersService {
    * silently dropped on save. Without one it falls back to the caller's own
    * reach — an unrestricted list here is a staff directory with emails.
    */
-  async findMentionable(user: any, ticketId?: string) {
+  async findMentionable(user: any, ticketId?: string, requirementId?: string) {
     if (ticketId) {
       const ticket = await this.prisma.ticket.findUnique({
         where: { id: ticketId },
@@ -55,6 +55,41 @@ export class UsersService {
       const allowed = new Set(
         await this.access.filterMentionable(
           ticket,
+          candidates.map((c) => c.id),
+        ),
+      );
+      return candidates.filter((c) => allowed.has(c.id));
+    }
+
+    if (requirementId) {
+      const requirement = await this.prisma.requirement.findUnique({
+        where: { id: requirementId },
+        select: {
+          id: true,
+          createdById: true,
+          ownerId: true,
+          systemId: true,
+          companyId: true,
+        },
+      });
+      if (!requirement) throw new NotFoundException('Requirement not found');
+      await this.access.assertCanViewCompany(requirement.companyId, user);
+
+      const candidates = await this.prisma.user.findMany({
+        where: { isActive: true },
+        select: { id: true, firstName: true, lastName: true, role: true, email: true, companyId: true },
+        orderBy: { firstName: 'asc' },
+      });
+      const scope = {
+        id: requirement.id,
+        creatorId: requirement.createdById,
+        systemOwnerId: requirement.ownerId,
+        systemId: requirement.systemId,
+        companyId: requirement.companyId,
+      };
+      const allowed = new Set(
+        await this.access.filterMentionable(
+          scope,
           candidates.map((c) => c.id),
         ),
       );
@@ -140,7 +175,12 @@ export class UsersService {
       },
       include: {
         author: { select: { id: true, firstName: true, lastName: true } },
+        // Nullable since a comment may hang off a requirement instead — the
+        // profile renders whichever parent came back.
         ticket: { select: { id: true, title: true, ticketNumber: true, status: true } },
+        requirement: {
+          select: { id: true, title: true, requirementNumber: true, status: true },
+        },
         attachments: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -416,7 +456,7 @@ export class UsersService {
   async getDevelopers(
     user: any,
     ticketId?: string,
-    opts?: { pool?: 'roster' },
+    opts?: { pool?: 'roster'; systemId?: string; companyId?: string },
   ) {
     if (ticketId) {
       const ticket = await this.prisma.ticket.findUnique({
@@ -426,6 +466,17 @@ export class UsersService {
       if (!ticket) throw new NotFoundException('Ticket not found');
       await this.access.assertCanViewTicket(ticketId, user);
       return this.access.assignableDevelopers(ticket);
+    }
+
+    if (opts?.systemId && opts?.companyId) {
+      await this.access.assertCanFileAgainst(opts.systemId, opts.companyId, user);
+      return this.access.assignableDevelopers({
+        id: 'scope',
+        creatorId: user.id,
+        systemOwnerId: null,
+        systemId: opts.systemId,
+        companyId: opts.companyId,
+      });
     }
 
     if (

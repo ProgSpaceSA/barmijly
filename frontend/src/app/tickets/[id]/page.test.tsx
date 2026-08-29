@@ -106,6 +106,49 @@ beforeEach(() => {
   });
 });
 
+describe('TicketDetailPage — promoted from the backlog', () => {
+  it('links back to the requirement in the hero and under the requester in the sidebar', async () => {
+    mockGet.mockImplementation((url: unknown) => {
+      const path = String(url);
+      if (path.startsWith('/tickets/ticket-1/tasks')) return Promise.resolve({ data: [] });
+      if (path.startsWith('/tickets/ticket-1/assignees')) return Promise.resolve({ data: [] });
+      if (path.startsWith('/tickets/ticket-1')) {
+        return Promise.resolve({
+          data: {
+            ...ticket,
+            requirement: { id: 'req-1', requirementNumber: 4, title: 'تقرير مبيعات', status: 'CONVERTED' },
+          },
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    await renderPage();
+
+    const codes = await screen.findAllByText('REQ-0004');
+    expect(codes).toHaveLength(2);
+    for (const code of codes) {
+      expect(code.closest('a')).toHaveAttribute('href', '/requirements/req-1');
+    }
+
+    const sidebar = document.getElementById('ticket-sidebar')!;
+    const requester = screen.getByLabelText('طالب التذكرة');
+    const requirement = within(sidebar).getByLabelText('المتطلب');
+    const createdAt = within(sidebar).getByLabelText('تاريخ الإنشاء');
+    const following = Node.DOCUMENT_POSITION_FOLLOWING;
+
+    expect(within(sidebar).queryByText('تقرير مبيعات')).toBeNull();
+    expect(requester.compareDocumentPosition(requirement) & following).not.toBe(0);
+    expect(requirement.compareDocumentPosition(createdAt) & following).not.toBe(0);
+  });
+
+  it('shows no requirement chip on an ordinary ticket', async () => {
+    await renderPage();
+    await screen.findByText('تعديل قالب الفاتورة');
+
+    expect(screen.queryByText(/^REQ-/)).toBeNull();
+  });
+});
+
 describe('TicketDetailPage', () => {
   it('renders the loading skeleton without reading ticket fields', async () => {
     mockGet.mockImplementation(() => new Promise(() => {}));

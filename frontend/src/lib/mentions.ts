@@ -96,10 +96,10 @@ function handleVariants(user: MentionUser): string[] {
   return [...new Set([full, glued, `${first}${last}`, `${first}_${last}`].filter((v) => v.length > 0))];
 }
 
-type HandleEntry = { handle: string; user: MentionUser };
+export type MentionHandleEntry = { handle: string; user: MentionUser };
 
-function handleTable(users: MentionUser[]): HandleEntry[] {
-  const table: HandleEntry[] = [];
+export function mentionHandleTable(users: MentionUser[]): MentionHandleEntry[] {
+  const table: MentionHandleEntry[] = [];
   for (const user of users) {
     if (!user?.id) continue;
     for (const handle of handleVariants(user)) {
@@ -136,10 +136,13 @@ function matchHandleLength(rest: string, handle: string): number | null {
  * does not spell a candidate exactly — a half-deleted name, an email address,
  * a person who lost access — stays in the text run.
  */
-export function splitMentions(content: string, users: MentionUser[]): MentionSegment[] {
+export function splitMentions(
+  content: string,
+  users: MentionUser[],
+  table = mentionHandleTable(users),
+): MentionSegment[] {
   const body = sanitizeCommentText(content);
   if (!body) return [];
-  const table = handleTable(users);
   if (!table.length) return [{ type: "text", value: body }];
 
   const segments: MentionSegment[] = [];
@@ -177,9 +180,13 @@ export function splitMentions(content: string, users: MentionUser[]): MentionSeg
 }
 
 /** The ids a body still spells out — what the composer sends as `mentions`. */
-export function mentionedIdsIn(content: string, users: MentionUser[]): string[] {
+export function mentionedIdsIn(
+  content: string,
+  users: MentionUser[],
+  table = mentionHandleTable(users),
+): string[] {
   const ids = new Set<string>();
-  for (const segment of splitMentions(content, users)) {
+  for (const segment of splitMentions(content, users, table)) {
     if (segment.type === "mention") ids.add(segment.user.id);
   }
   return [...ids];
@@ -194,6 +201,8 @@ export function mentionedIdsIn(content: string, users: MentionUser[]): string[] 
 export function findMentionQuery(
   content: string,
   caret: number,
+  users: MentionUser[] = [],
+  table = mentionHandleTable(users),
 ): { query: string; start: number } | null {
   const before = content.slice(0, caret);
   const at = before.lastIndexOf("@");
@@ -201,6 +210,20 @@ export function findMentionQuery(
   if (EMAIL_LOCAL_CHAR.test(before[at - 1] ?? "")) return null;
   const query = before.slice(at + 1);
   if (query.length > 40 || /\n/.test(query) || /  /.test(query)) return null;
+
+  for (const entry of table) {
+    const length = matchHandleLength(query, entry.handle);
+    if (length === null || length < entry.handle.length) continue;
+    if (WORD_CHAR.test(query[length] ?? "")) continue;
+    const after = query[length];
+    if (after === undefined || SPACE.test(after)) return null;
+  }
+
+  if (/\s$/.test(query) && users.length) {
+    const needle = query.replace(/\s+/gu, " ").trim();
+    if (needle && !users.some((user) => matchesMentionQuery(user, needle))) return null;
+  }
+
   return { query, start: at };
 }
 

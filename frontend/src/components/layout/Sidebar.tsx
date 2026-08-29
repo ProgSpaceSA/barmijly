@@ -6,10 +6,12 @@ import { useTheme } from "@/hooks/useTheme";
 import {
   LayoutDashboard, Ticket, Users, Building2, FlaskConical, Bug,
   BarChart3, Bell, LogOut, Mail, UserPlus, Sun, Moon, Archive, X,
+  CalendarDays, ClipboardList,
 } from "lucide-react";
-import { NAV_UNREAD_LABEL, ROLE_LABELS, TESTING_LABELS } from "@/lib/constants";
+import { MEETING_LABELS, NAV_UNREAD_LABEL, ROLE_LABELS, TESTING_LABELS } from "@/lib/constants";
 import { useUnreadCount } from "@/hooks/useNotifications";
 import { useOpenBugCount } from "@/hooks/useBugs";
+import { useOpenRequirementCount } from "@/hooks/useRequirements";
 import { usePermissions } from "@/hooks/usePermissions";
 import type { Action } from "@/lib/permissions";
 /** `action: null` means every signed-in user gets the link. */
@@ -19,6 +21,8 @@ const navItems: { href: string; label: string; icon: any; action: Action | null;
   { href: "/tickets/archived", label: "الأرشيف",            icon: Archive,         action: "ticket:read-archived" },
   { href: "/test-suites",      label: "الاختبارات",         icon: FlaskConical,    action: "test:read" },
   { href: "/bugs",             label: "الأخطاء",            icon: Bug,             action: "test:read" },
+  { href: "/meetings",         label: "الاجتماعات",         icon: CalendarDays,    action: "meeting:read" },
+  { href: "/requirements",     label: "المتطلبات",          icon: ClipboardList,   action: "requirement:read" },
   { href: "/notifications",    label: "الإشعارات",          icon: Bell,            action: null },
   { href: "/reports",          label: "التقارير",           icon: BarChart3,       action: "report:read-team" },
   { href: "/users",            label: "المستخدمون",         icon: Users,           action: "user:read", altAction: "user:read-directory" },
@@ -82,6 +86,7 @@ export function Sidebar({
   // Only asked for when the user has a QA surface at all — otherwise the badge
   // would 403 on every page load for a requester.
   const { data: openBugCount } = useOpenBugCount(allowed("test:read"));
+  const { data: openRequirementCount } = useOpenRequirementCount(allowed("requirement:read"));
 
   const visibleItems = navItems.filter((item) =>
     item.action === null ||
@@ -91,15 +96,19 @@ export function Sidebar({
 
   const initials = `${user?.firstName?.[0] ?? ""}${user?.lastName?.[0] ?? ""}`;
 
-  /** Two links carry a count; everything else carries none. */
+  /** Three links carry a count; everything else carries none. */
   const badgeFor = (href: string): number => {
     if (href === "/notifications") return (unreadCount as number) ?? 0;
     if (href === "/bugs") return openBugCount ?? 0;
+    if (href === "/requirements") return openRequirementCount ?? 0;
     return 0;
   };
 
-  const badgeLabelFor = (href: string): string =>
-    href === "/bugs" ? TESTING_LABELS.openBugs : NAV_UNREAD_LABEL;
+  const badgeLabelFor = (href: string): string => {
+    if (href === "/bugs") return TESTING_LABELS.openBugs;
+    if (href === "/requirements") return MEETING_LABELS.openRequirements;
+    return NAV_UNREAD_LABEL;
+  };
 
   return (
     <aside

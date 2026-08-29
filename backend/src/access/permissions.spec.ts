@@ -53,6 +53,14 @@ const EXPECTED: Record<Action, UserRole[]> = {
   'bug:assign': [UserRole.DEVELOPER, UserRole.QA, UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD],
   'bug:promote': [UserRole.DEVELOPER, UserRole.QA, UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD],
 
+  // ---- meetings & requirements ------------------------------------------
+  'meeting:read': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
+  'meeting:manage': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
+  'requirement:read': [UserRole.SYSTEM_OWNER, UserRole.DEVELOPER, UserRole.QA, UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
+  'requirement:create': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
+  'requirement:triage': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
+  'requirement:promote': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
+
   // ---- people -----------------------------------------------------------
   'user:read': [UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
   'user:read-directory': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD],
@@ -122,6 +130,28 @@ describe('req.md non-negotiables', () => {
   it('a developer can neither test nor accept their own delivery', () => {
     expect(can(UserRole.DEVELOPER, 'ticket:verify-testing')).toBe(false);
     expect(can(UserRole.DEVELOPER, 'ticket:accept-delivery')).toBe(false);
+  });
+
+  it('MEETINGS_PLAN — the requester never reaches meetings or requirements', () => {
+    for (const action of [
+      'meeting:read',
+      'meeting:manage',
+      'requirement:read',
+      'requirement:create',
+      'requirement:triage',
+      'requirement:promote',
+    ] as Action[]) {
+      expect(can(UserRole.TICKET_REQUESTER, action)).toBe(false);
+    }
+  });
+
+  it('MEETINGS_PLAN — minutes are leadership-only, and the owner only reads the backlog', () => {
+    for (const role of [UserRole.SYSTEM_OWNER, UserRole.DEVELOPER, UserRole.QA]) {
+      expect(can(role, 'meeting:read')).toBe(false);
+      expect(can(role, 'requirement:read')).toBe(true);
+      expect(can(role, 'requirement:create')).toBe(false);
+      expect(can(role, 'requirement:promote')).toBe(false);
+    }
   });
 
   it('role changes are limited to the head of programming', () => {

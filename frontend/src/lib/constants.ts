@@ -117,6 +117,7 @@ export const TIMELINE_LABELS = {
   PLAN_UPDATED: "حدّث التخطيط",
   BUG_STATUS_CHANGE: "غيّر حالة الخطأ",
   BUG_PROMOTE: "أنشأ تذكرة من خطأ",
+  REQUIREMENT_PROMOTE: "حوّل متطلباً إلى تذكرة",
   BUG_UPDATE: "عدّل خطأ",
   BUG_TICKET_LINK: "ربط خطأ",
   BUG_TICKET_UNLINK: "أزال ربط خطأ",
@@ -159,6 +160,7 @@ export const TIMELINE_FILTERS = {
       "FORCE_STATUS",
       "BUG_STATUS_CHANGE",
       "BUG_PROMOTE",
+      "REQUIREMENT_PROMOTE",
     ] as const,
   },
   assign: {
@@ -494,6 +496,7 @@ export const NOTIFICATION_TITLES: Record<string, string> = {
   TICKET_ASSIGNED: "أُسندت إليك تذكرة",
   STATUS_CHANGED: "تغيّرت حالة التذكرة",
   COMMENT_ADDED: "تعليق جديد على تذكرتك",
+  REQUIREMENT_COMMENT_ADDED: "تعليق جديد على متطلبك",
   DEADLINE_APPROACHING: "موعد التسليم يقترب",
   TICKET_DELAYED: "التذكرة متأخرة",
   EXECUTION_COMPLETED: "التذكرة جاهزة للاختبار",
@@ -506,6 +509,7 @@ export const NOTIFICATION_TITLES: Record<string, string> = {
 const LEGACY_ENGLISH_TITLES: Record<string, string> = {
   "You were mentioned in a comment": "تمت الإشارة إليك في تعليق",
   "New comment on your ticket": "تعليق جديد على تذكرتك",
+  "New comment on your requirement": "تعليق جديد على متطلبك",
   "New ticket assigned to you": "أُسندت إليك تذكرة",
   "Ticket ready for testing": "التذكرة جاهزة للاختبار",
   "Ticket approved": "تم اعتماد التذكرة",
@@ -570,6 +574,7 @@ export const COMMENT_LABELS = {
   filterMentions: "ذُكرت",
   you: "أنت",
   mentionedYou: "ذُكرت هنا",
+  fromRequirement: "من المتطلب",
   deleteConfirm: "حذف التعليق نهائياً؟",
   posting: "جارٍ نشر التعليق…",
   saving: "جارٍ حفظ التعديل…",
@@ -937,4 +942,294 @@ export const TESTING_LABELS = {
   caseLinkedToBug: "تم ربط حالة الاختبار بالخطأ",
   archiveTitle: "أرشفة",
   deleteTitle: "حذف",
+} as const;
+
+/* ── Meetings, minutes and requirements (MEETINGS_PLAN.md) ─────────────────*/
+
+export const MEETING_TYPE_LABELS: Record<string, string> = {
+  CEO_REVIEW: "مراجعة الرئيس التنفيذي",
+  KICKOFF: "اجتماع انطلاق",
+  FOLLOW_UP: "متابعة",
+  DISCUSSION: "نقاش",
+  RETROSPECTIVE: "مراجعة بعدية",
+  OTHER: "أخرى",
+};
+
+export const MEETING_STATUS_LABELS: Record<string, string> = {
+  SCHEDULED: "مجدول",
+  HELD: "انعقد",
+  CANCELLED: "ملغى",
+};
+
+export const MEETING_STATUS_COLORS: Record<string, string> = {
+  SCHEDULED: "#0EA5E9",
+  HELD: "#10B981",
+  CANCELLED: "#94A3B8",
+};
+
+/** What a minutes line is. `REQUEST` is the one normally captured. */
+export const POINT_KIND_LABELS: Record<string, string> = {
+  NOTE: "ملاحظة",
+  DECISION: "قرار",
+  RISK: "مخاطرة",
+  REQUEST: "طلب",
+};
+
+export const POINT_KIND_COLORS: Record<string, string> = {
+  NOTE: "#94A3B8",
+  DECISION: "#10B981",
+  RISK: "#F59E0B",
+  REQUEST: "#4F46E5",
+};
+
+export const REQUIREMENT_SOURCE_LABELS: Record<string, string> = {
+  MEETING: "اجتماع",
+  WHATSAPP: "واتساب",
+  EMAIL: "بريد إلكتروني",
+  DOCUMENT: "مستند",
+  CALL: "مكالمة",
+  OTHER: "أخرى",
+};
+
+export const REQUIREMENT_STATUS_LABELS: Record<string, string> = {
+  NEW: "جديد",
+  UNDER_REVIEW: "قيد الدراسة",
+  ACCEPTED: "مقبول",
+  CONVERTED: "حُوِّل لتذكرة",
+  DECLINED: "مرفوض",
+};
+
+/** Still on the board — mirrors OPEN_REQUIREMENT_STATUSES on the API. */
+export const OPEN_REQUIREMENT_STATUSES = ["NEW", "UNDER_REVIEW", "ACCEPTED"] as const;
+
+/**
+ * Statuses triage may set by hand. `CONVERTED` is missing on purpose: the API
+ * refuses it, because a ticket is what makes a requirement converted.
+ */
+export const TRIAGE_REQUIREMENT_STATUSES = [
+  "NEW",
+  "UNDER_REVIEW",
+  "ACCEPTED",
+  "DECLINED",
+] as const;
+
+export function requirementStatusColor(status: string): string {
+  switch (status) {
+    case "NEW":
+      return "#0EA5E9";
+    case "UNDER_REVIEW":
+      return "#F59E0B";
+    case "ACCEPTED":
+      return "#8B5CF6";
+    case "CONVERTED":
+      return "#10B981";
+    case "DECLINED":
+      return "#94A3B8";
+    default:
+      return "#0EA5E9";
+  }
+}
+
+/** Every string on the meetings and requirements surface. */
+export const MEETING_LABELS = {
+  // nav + page chrome
+  meetingsTitle: "الاجتماعات",
+  meetingsDescription: "محاضر الاجتماعات والطلبات الناتجة عنها",
+  requirementsTitle: "المتطلبات",
+  requirementsDescription: "الطلبات المتابَعة قبل تحويلها إلى تذاكر",
+  newMeeting: "اجتماع جديد",
+  newRequirement: "تسجيل متطلب",
+  back: "رجوع",
+  meetingCount: "اجتماع",
+  requirementCount: "متطلب",
+  searchMeetings: "بحث في الاجتماعات...",
+  searchRequirements: "بحث في المتطلبات...",
+
+  // filters
+  filterAll: "الكل",
+  filterCompany: "الشركة",
+  filterSystem: "المشروع",
+  filterStatus: "الحالة",
+  filterType: "نوع الاجتماع",
+  filterSource: "المصدر",
+  filterOwner: "المسؤول",
+  filterArchived: "الأرشفة",
+  dateAll: "الكل",
+  dateToday: "اليوم",
+  dateWeek: "هذا الأسبوع",
+  dateMonth: "هذا الشهر",
+  dateYear: "هذا العام",
+  dateFrom: "من",
+  dateTo: "إلى",
+  filterDate: "تاريخ الاجتماع",
+  activeOnly: "النشطة",
+  archivedOnly: "المؤرشفة فقط",
+  mineMeetings: "اجتماعاتي",
+  mineRequirements: "متطلباتي",
+  filterOpen: "تحتاج متابعة",
+  openHint: "جديد + قيد الدراسة + مقبول",
+  unpinnedOnly: "بلا مشروع",
+  pinnedOnly: "مرتبطة بمشروع",
+
+  // meeting fields
+  title: "عنوان الاجتماع",
+  agenda: "جدول الأعمال",
+  type: "نوع الاجتماع",
+  company: "الشركة",
+  heldAt: "التاريخ والوقت",
+  duration: "المدة (دقيقة)",
+  location: "المكان",
+  organizer: "منظّم الاجتماع",
+  systems: "المشاريع المشمولة",
+  noSystems: "لم تُحدَّد مشاريع",
+  pickSystems: "اختيار المشاريع",
+  saveSystems: "حفظ المشاريع",
+  systemsSaved: "تم حفظ المشاريع",
+
+  // attendees
+  attendees: "الحضور",
+  noAttendees: "لا يوجد حضور مسجّل",
+  addAttendee: "إضافة حاضر",
+  internalAttendee: "من داخل النظام",
+  externalAttendee: "ضيف خارجي",
+  attendeeName: "الاسم",
+  attendeeJobTitle: "المسمى الوظيفي",
+  attendeeOrganization: "الجهة",
+  removeAttendee: "إزالة الحاضر",
+  removeAttendeeConfirm: "إزالة هذا الحاضر من الاجتماع؟",
+  attendeeAdded: "تمت إضافة الحاضر",
+  attendeeRemoved: "تمت إزالة الحاضر",
+  pickUser: "اختر مستخدماً",
+
+  // minutes
+  minutes: "محضر الاجتماع",
+  minutePoints: "بنود المحضر",
+  pointLine: "بند",
+  pointCount: (n: number) => relativePhrase(n, "بند", "بندان", "بنود", "بند"),
+  noPoints: "لا توجد بنود بعد",
+  noPointsHint: "أضف أول بند من بنود المحضر",
+  addPoint: "إضافة بند",
+  pointPlaceholder: "اكتب البند…",
+  pointKind: "نوع البند",
+  raisedBy: "أثاره",
+  raisedByName: "اسم من أثاره",
+  deletePoint: "حذف البند",
+  deletePointConfirm: "حذف هذا البند؟ المتطلبات الملتقطة منه تبقى على اللوحة.",
+  dragPoint: "اسحب لإعادة الترتيب",
+  pointAdded: "تمت إضافة البند",
+  pointRemoved: "تم حذف البند",
+
+  // capture
+  capture: "التقاط كمتطلب",
+  captureHint: "يُنشئ متطلباً متابَعاً مرتبطاً بهذا البند",
+  captureTitle: "التقاط بند كمتطلب",
+  captureConfirm: "التقاط",
+  captured: "تم التقاط المتطلب",
+  capturedChip: "متطلب",
+  openRequirement: "فتح المتطلب",
+
+  // meeting lifecycle
+  markHeld: "تسجيل الانعقاد",
+  markHeldConfirm: "تسجيل أن الاجتماع انعقد؟",
+  cancelMeeting: "إلغاء الاجتماع",
+  cancelMeetingConfirm: "إلغاء هذا الاجتماع؟ لا يُحذف، ويبقى سجله.",
+  archiveMeeting: "أرشفة الاجتماع",
+  archiveMeetingConfirm: "أرشفة هذا الاجتماع؟ لا يُحذف، ويبقى سجله.",
+  unarchiveMeeting: "إلغاء أرشفة الاجتماع",
+  meetingCreated: "تم إنشاء الاجتماع",
+  meetingUpdated: "تم حفظ الاجتماع",
+  meetingHeld: "تم تسجيل الانعقاد",
+  meetingCancelled: "تم إلغاء الاجتماع",
+  meetingArchived: "تمت أرشفة الاجتماع",
+  meetingUnarchived: "تم إلغاء أرشفة الاجتماع",
+  noMeetings: "لا توجد اجتماعات",
+  noMeetingsHint: "لم يُسجَّل أي اجتماع بهذه الفلاتر",
+  meetingAttachments: "مرفقات الاجتماع",
+  addMeetingFile: "إضافة ملف للاجتماع",
+  meetingFileHint: "عرض تقديمي، محضر موقّع، أي ملف",
+
+  // requirement fields
+  requirementTitle: "عنوان المتطلب",
+  requirementDescription: "تفاصيل المتطلب",
+  requirementDescriptionHint: "وصف تفصيلي للمتطلب — يُسجَّل في سجل الوصف عند كل تعديل",
+  descriptionHistoryHint: "سجل بتعديلات الوصف — يظهر بعد أول حفظ للتفاصيل",
+  source: "المصدر",
+  sourceNote: "تفاصيل المصدر",
+  sourceNoteHint: "مثال: واتساب من م. أحمد",
+  requestedBy: "طالب المتطلب",
+  requestedByName: "اسم الطالب",
+  priority: "الأولوية",
+  owner: "المسؤول عن المتابعة",
+  unassigned: "بلا مسؤول",
+  dueDate: "تاريخ الاستحقاق",
+  system: "المشروع",
+  unpinned: "لم يُحدَّد المشروع",
+  origin: "المصدر",
+  originFromMeeting: "من محضر اجتماع",
+  openMeeting: "فتح الاجتماع",
+  status: "الحالة",
+  decisionNote: "ملاحظة القرار",
+  statusNote: "سبب تغيير الحالة",
+  changeStatus: "تغيير الحالة",
+  history: "سجل التغييرات",
+  historyEmpty: "لا يوجد سجل بعد",
+  showMore: "عرض المزيد",
+  showLess: "عرض أقل",
+  you: "أنت",
+  descriptionHistory: "سجل الوصف",
+  descriptionChanged: "تعديل الوصف",
+  noDescriptionHistory: "لا يوجد سجل للوصف بعد",
+  linkedTickets: "التذاكر المرتبطة",
+  noLinkedTickets: "لا توجد تذاكر بعد",
+  ticketRequirement: "المتطلب",
+  comments: "التعليقات",
+  attachments: "المرفقات",
+  noAttachments: "لا توجد مرفقات",
+  addRequirementFile: "إضافة ملف للمتطلب",
+  requirementFileHint: "مستند، صورة شاشة، أي ملف",
+  createdBy: "سجّله",
+  createdAt: "تاريخ التسجيل",
+
+  // requirement lifecycle
+  promote: "إنشاء تذكرة",
+  promoting: "جارٍ الإنشاء...",
+  promoteHint: "تُنشأ التذكرة كمسودة وتمر بمسار الاعتماد المعتاد",
+  promoteTitle: "إنشاء تذكرة من المتطلب",
+  promoteTitleLabel: "عنوان التذكرة",
+  promoteTypeLabel: "نوع التذكرة",
+  promoteConfirm: "إنشاء التذكرة",
+  promoted: "أُنشئت التذكرة",
+  promoteNeedsSystem: "حدّد المشروع قبل إنشاء التذكرة",
+  archiveRequirement: "أرشفة المتطلب",
+  archiveRequirementConfirm: "أرشفة هذا المتطلب؟ لا يُحذف، ويبقى سجله.",
+  unarchiveRequirement: "إلغاء أرشفة المتطلب",
+  requirementCreated: "تم تسجيل المتطلب",
+  requirementUpdated: "تم حفظ المتطلب",
+  requirementStatusChanged: "تم تغيير الحالة",
+  requirementArchived: "تمت أرشفة المتطلب",
+  requirementUnarchived: "تم إلغاء أرشفة المتطلب",
+  noRequirements: "لا توجد متطلبات",
+  noRequirementsHint: "لم يُسجَّل أي متطلب بهذه الفلاتر",
+  openRequirements: "متطلبات مفتوحة",
+  awaitingSystem: "بانتظار مشروع",
+  converted: "حُوِّلت لتذاكر",
+  total: "الإجمالي",
+
+  // shared chrome
+  save: "حفظ",
+  saving: "جارٍ الحفظ...",
+  saved: "تم الحفظ",
+  cancel: "إلغاء",
+  close: "إغلاق",
+  add: "إضافة",
+  edit: "تعديل",
+  delete: "حذف",
+  confirm: "تأكيد",
+  optional: "اختياري",
+  readOnly: "للعرض فقط",
+  loadFailed: "تعذر تحميل البيانات",
+  notFound: "غير موجود",
+  copyCode: "نسخ الرقم",
+  copiedCode: "تم نسخ الرقم",
+  copyFailed: "تعذر نسخ الرقم",
 } as const;

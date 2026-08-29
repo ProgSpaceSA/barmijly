@@ -23,6 +23,9 @@ import { TasksModule } from './tasks/tasks.module';
 import { DigestModule } from './digest/digest.module';
 import { TestingModule } from './testing/testing.module';
 import { BugsModule } from './bugs/bugs.module';
+import { MeetingAccessModule } from './meetings/meeting-access.module';
+import { MeetingsModule } from './meetings/meetings.module';
+import { RequirementsModule } from './requirements/requirements.module';
 
 @Module({
   imports: [
@@ -34,6 +37,7 @@ import { BugsModule } from './bugs/bugs.module';
     }),
     PrismaModule,
     AccessModule,
+    MeetingAccessModule,
     AuthModule,
     UsersModule,
     CompaniesModule,
@@ -52,6 +56,8 @@ import { BugsModule } from './bugs/bugs.module';
     DigestModule,
     TestingModule,
     BugsModule,
+    MeetingsModule,
+    RequirementsModule,
   ],
 })
 export class AppModule {}

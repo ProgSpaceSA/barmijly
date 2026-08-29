@@ -28,9 +28,17 @@ export interface TicketScopeRef {
   id: string;
   creatorId: string;
   systemOwnerId?: string | null;
-  systemId: string;
+  /**
+   * Null only for a requirement that triage has not pinned to a system yet.
+   * A null system grants nothing: it means "system membership does not make
+   * this reachable", not "everybody is a member".
+   */
+  systemId: string | null;
   companyId: string;
 }
+
+/** A `systemId` no row carries, so `where: { systemId: NO_SYSTEM }` matches none. */
+const NO_SYSTEM = '00000000-0000-0000-0000-000000000000';
 
 /**
  * Resolves *what* a user may touch, as opposed to `permissions.ts`, which
@@ -395,7 +403,10 @@ export class AccessService {
         id: true,
         role: true,
         companyId: true,
-        systems: { where: { systemId: ticket.systemId }, select: { systemId: true } },
+        systems: {
+          where: { systemId: ticket.systemId ?? NO_SYSTEM },
+          select: { systemId: true },
+        },
         companies: { where: { companyId: ticket.companyId }, select: { companyId: true } },
         assignments: { where: { ticketId: ticket.id, isActive: true }, select: { id: true } },
         tasksAssigned: { where: { ticketId: ticket.id }, select: { id: true } },
