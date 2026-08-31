@@ -420,7 +420,7 @@ export default function RequirementDetailPage({
               allowed("meeting:read") ? (
                 <Link
                   href={`/meetings/${meeting.id}`}
-                  className="brm-ticket-link inline-flex items-center gap-2 text-sm"
+                  className="brm-ticket-link inline-flex max-w-full flex-wrap items-center gap-2 text-sm"
                 >
                   <span dir="ltr" className="ltr-isolate font-brm">
                     {formatMeetingCode(meeting.meetingNumber)}

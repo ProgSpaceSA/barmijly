@@ -78,6 +78,22 @@ export function useTaskActions(ticketId: string) {
         settled();
       },
     }),
+    /**
+     * Managers only — the API refuses everyone else.
+     *
+     * The server answers with the whole list in its new order, so it is written
+     * straight into the cache: a reorder renumbers every row and releases or
+     * traps whatever sits under a blocker, which no per-row patch can express.
+     */
+    reorder: useMutation({
+      mutationFn: ({ id, order }: { id: string; order: number }) =>
+        api.post(`/tasks/${id}/reorder`, { order }).then(r => r.data),
+      onSuccess: (data) => {
+        if (Array.isArray(data)) qc.setQueryData(qk.ticket.tasks(ticketId), data);
+        settled();
+      },
+      onError: fail,
+    }),
     remove: useMutation({
       mutationFn: (id: string) => api.delete(`/tasks/${id}`).then(r => r.data),
       onSuccess: settled,

@@ -344,6 +344,93 @@ describe('TicketDetailPage', () => {
     expect(finishedLine).toHaveTextContent(/20 أغسطس/);
   });
 
+  it('locks a task held by a blocker above it and lets a manager reorder the list', async () => {
+    mockGet.mockImplementation((url: unknown) => {
+      const path = String(url);
+      if (path.startsWith('/tickets/ticket-1/tasks')) {
+        return Promise.resolve({
+          data: [
+            {
+              id: 'task-gate',
+              title: 'مراجعة التصميم',
+              status: 'NEW',
+              order: 0,
+              isBlocking: true,
+              blockedBy: null,
+              assignedTo: { id: 'dev-1', firstName: 'أحمد', lastName: 'علي' },
+              attachments: [],
+            },
+            {
+              id: 'task-held',
+              title: 'ربط الـ API',
+              status: 'NEW',
+              order: 1,
+              isBlocking: false,
+              blockedBy: { id: 'task-gate', title: 'مراجعة التصميم', order: 0 },
+              assignedTo: { id: 'user-1', firstName: 'ف', lastName: 'ل' },
+              attachments: [],
+            },
+          ],
+        });
+      }
+      if (path.startsWith('/tickets/ticket-1/assignees')) {
+        return Promise.resolve({ data: [] });
+      }
+      if (path.startsWith('/tickets/ticket-1')) return Promise.resolve({ data: ticket });
+      if (path === '/users/mentionable') return Promise.resolve({ data: [] });
+      if (path.startsWith('/systems/')) return Promise.resolve({ data: { id: 'sys-1' } });
+      return Promise.resolve({ data: [] });
+    });
+
+    await renderPage();
+
+    const gateRow = (await screen.findByText('مراجعة التصميم')).closest('div.rounded-xl') as HTMLElement;
+    expect(within(gateRow).getByText('حاجبة')).toBeInTheDocument();
+
+    // The held row offers no status control at all — the API refuses the same
+    // move, so the row explains itself instead of failing on click.
+    const heldRow = screen.getByText('ربط الـ API').closest('div.rounded-xl') as HTMLElement;
+    expect(within(heldRow).getByText('بانتظار «مراجعة التصميم»')).toBeInTheDocument();
+    expect(within(heldRow).queryByTitle('تغيير الحالة')).not.toBeInTheDocument();
+    expect(within(gateRow).getByTitle('تغيير الحالة')).toBeInTheDocument();
+
+    // PROGRAMMING_HEAD holds task:manage, so every row carries a drag handle.
+    expect(screen.getAllByLabelText('اسحب لإعادة الترتيب')).toHaveLength(2);
+  });
+
+  it('offers no drag handle to someone who cannot manage tasks', async () => {
+    authState.user = { id: 'dev-1', role: 'DEVELOPER', firstName: 'أحمد', lastName: 'علي' };
+    mockGet.mockImplementation((url: unknown) => {
+      const path = String(url);
+      if (path.startsWith('/tickets/ticket-1/tasks')) {
+        return Promise.resolve({
+          data: [{
+            id: 'task-1',
+            title: 'ربط الـ API',
+            status: 'NEW',
+            order: 0,
+            isBlocking: false,
+            blockedBy: null,
+            assignedTo: { id: 'dev-1', firstName: 'أحمد', lastName: 'علي' },
+            attachments: [],
+          }],
+        });
+      }
+      if (path.startsWith('/tickets/ticket-1/assignees')) {
+        return Promise.resolve({ data: [] });
+      }
+      if (path.startsWith('/tickets/ticket-1')) return Promise.resolve({ data: ticket });
+      if (path === '/users/mentionable') return Promise.resolve({ data: [] });
+      if (path.startsWith('/systems/')) return Promise.resolve({ data: { id: 'sys-1' } });
+      return Promise.resolve({ data: [] });
+    });
+
+    await renderPage();
+
+    expect(await screen.findByText('ربط الـ API')).toBeInTheDocument();
+    expect(screen.queryByLabelText('اسحب لإعادة الترتيب')).not.toBeInTheDocument();
+  });
+
   it('shows ticket completion date in the sidebar when set', async () => {
     mockGet.mockImplementation((url: unknown) => {
       const path = String(url);

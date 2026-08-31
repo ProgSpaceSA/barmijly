@@ -225,8 +225,8 @@ export default function MeetingsPage() {
         />
       </div>
 
-      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="brm-seg overflow-x-auto" role="group" aria-label={MEETING_LABELS.filterDate}>
+      <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div className="brm-seg brm-seg-rail w-fit max-w-full" role="group" aria-label={MEETING_LABELS.filterDate}>
           {DATE_TABS.map(({ key, label }) => (
             <button
               key={key}
@@ -238,7 +238,7 @@ export default function MeetingsPage() {
             </button>
           ))}
         </div>
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-2 sm:flex sm:min-w-0 sm:gap-2">
           <label
             htmlFor="meeting-date-from"
             className="shrink-0 text-sm"

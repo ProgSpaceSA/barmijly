@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TaskStatus, UserRole } from '@prisma/client';
 import { TasksService } from './tasks.service';
@@ -40,6 +40,8 @@ const taskRow = (over: Partial<Record<string, any>> = {}) => ({
   assignedToId: 'dev-1',
   createdById: 'pm-1',
   status: TaskStatus.NEW,
+  order: 0,
+  isBlocking: false,
   estimatedHours: null,
   difficultyLevel: null,
   ...over,
@@ -82,6 +84,7 @@ describe('TasksService', () => {
       ticketTask: {
         findUnique: jest.fn().mockResolvedValue(taskRow()),
         findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
         create: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({ id: TASK_ID, ...data })),
         update: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({ ...taskRow(), ...data })),
         delete: jest.fn().mockResolvedValue(taskRow()),
@@ -91,7 +94,11 @@ describe('TasksService', () => {
       user: { findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn().mockResolvedValue(null) },
       userCompany: { findMany: jest.fn().mockResolvedValue([]) },
       userSystem: { findMany: jest.fn().mockResolvedValue([]) },
-      $transaction: jest.fn().mockImplementation((fn: any) => fn(prisma)),
+      // Both call shapes: the interactive callback, and the array of writes a
+      // reorder hands over.
+      $transaction: jest.fn().mockImplementation((arg: any) =>
+        typeof arg === 'function' ? arg(prisma) : Promise.all(arg),
+      ),
     };
     rollup = { recompute: jest.fn().mockResolvedValue(undefined) };
     assignments = { syncFromTasks: jest.fn().mockResolvedValue(undefined) };
@@ -361,6 +368,161 @@ describe('TasksService', () => {
       prisma.ticketTask.findUnique.mockResolvedValue(null);
 
       await expect(service.remove('missing', asUser(UserRole.PROJECT_MANAGER))).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('order and blocking — the list runs top to bottom', () => {
+    const sibling = (over: Record<string, any>) => ({
+      id: 'sibling-1',
+      ticketId: TICKET_ID,
+      order: 0,
+      title: 'مهمة',
+      status: TaskStatus.NEW,
+      isBlocking: false,
+      ...over,
+    });
+
+    /** The list every sibling read sees. */
+    const listIs = (rows: any[]) => prisma.ticketTask.findMany.mockResolvedValue(rows);
+
+    /** `[id, order]` for every position actually written. */
+    const written = () =>
+      prisma.ticketTask.update.mock.calls.map(([arg]: any) => [arg.where.id, arg.data.order]);
+
+    it('appends a new task to the bottom of the list', async () => {
+      prisma.ticketTask.count.mockResolvedValue(2);
+
+      await service.create(TICKET_ID, { title: 'مهمة', assignedToId: 'dev-1' } as any, asUser(UserRole.PROJECT_MANAGER));
+
+      expect(prisma.ticketTask.create.mock.calls[0][0].data.order).toBe(2);
+    });
+
+    it('lets a manager file a blocker but ignores a developer asking for one', async () => {
+      // A blocker holds up work that is not the author's own, so it is scoping.
+      await service.create(
+        TICKET_ID,
+        { title: 'مهمة', assignedToId: 'dev-1', isBlocking: true } as any,
+        asUser(UserRole.PROJECT_MANAGER),
+      );
+      expect(prisma.ticketTask.create.mock.calls[0][0].data.isBlocking).toBe(true);
+
+      prisma.ticketTask.create.mockClear();
+      prisma.ticketAssignment.findFirst.mockResolvedValue({ id: 'a-1', isActive: true });
+      assigneeIsEligible(true, 'self-1');
+
+      await service.create(
+        TICKET_ID,
+        { title: 'مهمة', assignedToId: 'self-1', isBlocking: true } as any,
+        asUser(UserRole.DEVELOPER, 'self-1'),
+      );
+      expect(prisma.ticketTask.create.mock.calls[0][0].data.isBlocking).toBe(false);
+    });
+
+    it('refuses a reorder from anyone without task:manage', async () => {
+      await expect(service.reorder(TASK_ID, 0, asUser(UserRole.DEVELOPER, 'dev-1')))
+        .rejects.toThrow(ForbiddenException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('moves a task and writes only the rows whose position changed', async () => {
+      listIs([
+        sibling({ id: 'a', order: 0 }),
+        sibling({ id: TASK_ID, order: 1 }),
+        sibling({ id: 'c', order: 2 }),
+        sibling({ id: 'd', order: 3 }),
+      ]);
+
+      await service.reorder(TASK_ID, 0, asUser(UserRole.PROJECT_MANAGER));
+
+      // Only the swapped pair moves — `c` and `d` keep their `updatedAt`, which
+      // the dashboard feed sorts on.
+      expect(written()).toEqual([[TASK_ID, 0], ['a', 1]]);
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'TASK_REORDER', entityId: TASK_ID, ticketId: TICKET_ID }),
+      );
+    });
+
+    it('refuses to start a task while a blocker above it is open', async () => {
+      prisma.ticketTask.findUnique.mockResolvedValue(taskRow({ order: 2 }));
+      listIs([
+        sibling({ id: 'gate', order: 1, isBlocking: true, title: 'مراجعة التصميم' }),
+        sibling({ id: TASK_ID, order: 2 }),
+      ]);
+
+      await expect(
+        service.update(TASK_ID, { status: TaskStatus.IN_PROGRESS }, asUser(UserRole.DEVELOPER, 'dev-1')),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.ticketTask.update).not.toHaveBeenCalled();
+    });
+
+    it('blocks a manager too — the order is the rule, not a hint', async () => {
+      prisma.ticketTask.findUnique.mockResolvedValue(taskRow({ order: 2 }));
+      listIs([
+        sibling({ id: 'gate', order: 1, isBlocking: true }),
+        sibling({ id: TASK_ID, order: 2 }),
+      ]);
+
+      await expect(
+        service.update(TASK_ID, { status: TaskStatus.COMPLETED }, asUser(UserRole.PROJECT_MANAGER)),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('releases the tasks below once the blocker is completed', async () => {
+      prisma.ticketTask.findUnique.mockResolvedValue(taskRow({ order: 2 }));
+      listIs([
+        sibling({ id: 'gate', order: 1, isBlocking: true, status: TaskStatus.COMPLETED }),
+        sibling({ id: TASK_ID, order: 2 }),
+      ]);
+
+      await service.update(TASK_ID, { status: TaskStatus.IN_PROGRESS }, asUser(UserRole.DEVELOPER, 'dev-1'));
+
+      expect(prisma.ticketTask.update).toHaveBeenCalled();
+    });
+
+    it('ignores a blocker that sits below the task', async () => {
+      prisma.ticketTask.findUnique.mockResolvedValue(taskRow({ order: 0 }));
+      listIs([
+        sibling({ id: TASK_ID, order: 0 }),
+        sibling({ id: 'later', order: 1, isBlocking: true }),
+      ]);
+
+      await service.update(TASK_ID, { status: TaskStatus.IN_PROGRESS }, asUser(UserRole.DEVELOPER, 'dev-1'));
+
+      expect(prisma.ticketTask.update).toHaveBeenCalled();
+    });
+
+    it('still lets a blocked task be sent back to NEW', async () => {
+      // Otherwise a start made just before the blocker was filed is trapped.
+      prisma.ticketTask.findUnique.mockResolvedValue(taskRow({ order: 2, status: TaskStatus.IN_PROGRESS }));
+      listIs([
+        sibling({ id: 'gate', order: 1, isBlocking: true }),
+        sibling({ id: TASK_ID, order: 2, status: TaskStatus.IN_PROGRESS }),
+      ]);
+
+      await service.update(TASK_ID, { status: TaskStatus.NEW }, asUser(UserRole.DEVELOPER, 'dev-1'));
+
+      expect(prisma.ticketTask.update).toHaveBeenCalled();
+    });
+
+    it('tells the client which task each row is waiting on', async () => {
+      listIs([
+        sibling({ id: 'gate', order: 0, isBlocking: true, title: 'مراجعة التصميم' }),
+        sibling({ id: TASK_ID, order: 1 }),
+      ]);
+
+      const [gate, blocked] = await service.findByTicket(TICKET_ID, asUser(UserRole.PROJECT_MANAGER));
+
+      expect(gate.blockedBy).toBeNull();
+      expect(blocked.blockedBy).toEqual({ id: 'gate', title: 'مراجعة التصميم', order: 0 });
+    });
+
+    it('closes the gap a deleted task leaves behind', async () => {
+      prisma.ticketTask.findUnique.mockResolvedValue(taskRow({ order: 0 }));
+      listIs([sibling({ id: 'b', order: 1 }), sibling({ id: 'c', order: 2 })]);
+
+      await service.remove(TASK_ID, asUser(UserRole.PROJECT_MANAGER));
+
+      expect(written()).toEqual([['b', 0], ['c', 1]]);
     });
   });
 });

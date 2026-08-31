@@ -1,4 +1,13 @@
-import { IsString, IsOptional, MinLength, IsDateString, IsInt, Min, Max } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  MinLength,
+  IsDateString,
+  IsInt,
+  IsBoolean,
+  Min,
+  Max,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateTaskDto {
@@ -34,4 +43,13 @@ export class CreateTaskDto {
   @Min(1)
   @Max(5)
   difficultyLevel?: number;
+
+  /**
+   * Manager-only in the service: a blocking task holds up everyone under it, so
+   * setting one is a scoping call, not a note on your own work.
+   */
+  @ApiPropertyOptional({ description: 'Blocks every task below it until COMPLETED.' })
+  @IsOptional()
+  @IsBoolean()
+  isBlocking?: boolean;
 }

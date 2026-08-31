@@ -11,10 +11,10 @@ import { useMarkTicketRead } from "@/hooks/useNotifications";
 import { useAuthStore } from "@/store/auth";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { personalGreetingFor, ROLE_LABELS, TASK_STATUS_COLORS, TASK_STATUS_LABELS, TREND_SERIES_LABELS } from "@/lib/constants";
+import { personalGreetingFor, ROLE_LABELS, TASK_LABELS, TASK_STATUS_COLORS, TASK_STATUS_LABELS, TREND_SERIES_LABELS } from "@/lib/constants";
 import { formatTrendMonth, niceYAxisMax, rankDevelopers, trendTooltipRows, yAxisTicks } from "@/lib/report-charts";
 import { Area, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Activity, AlertTriangle, Check, Clock, TrendingUp, type LucideIcon } from "lucide-react";
+import { Activity, AlertTriangle, Check, Clock, Lock, TrendingUp, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import { TicketCodeBadge } from "@/components/shared/TicketCodeBadge";
@@ -215,8 +215,35 @@ const TICKET_STATUS_CFG: Record<string, { label: string; color: string; bg: stri
   ON_HOLD:                 { label: "معلقة",              color: "#94A3B8", bg: "rgba(148,163,184,0.12)" },
 };
 
-function TaskStatusDot({ status, onClick, pending }: { status: string; onClick: () => void; pending: boolean }) {
+function TaskStatusDot({ status, onClick, pending, blockedBy }: {
+  status: string;
+  onClick: () => void;
+  pending: boolean;
+  /** An unfinished blocking task above this one on its ticket. */
+  blockedBy?: { title: string } | null;
+}) {
   const cfg = STATUS_CFG[status as keyof typeof STATUS_CFG] ?? STATUS_CFG.NEW;
+
+  // Nothing to cycle: the API refuses the same move, so the dot says why
+  // instead of offering a click that would only come back as a toast.
+  if (blockedBy) {
+    const note = TASK_LABELS.blockedBy(blockedBy.title);
+    return (
+      <span
+        title={note}
+        aria-label={note}
+        style={{
+          width: 22, height: 22, borderRadius: "50%",
+          border: "2px solid #F59E0B", color: "#F59E0B",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <Lock style={{ width: 11, height: 11 }} aria-hidden />
+      </span>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -338,7 +365,7 @@ function DevTaskHub() {
               const isPendingThis = pendingId === item.id && isPending;
               return (
                 <div key={`task-${item.id}`} className="brm-term-row">
-                  <TaskStatusDot status={item.status} onClick={() => cycleStatus(item)} pending={isPendingThis} />
+                  <TaskStatusDot status={item.status} onClick={() => cycleStatus(item)} pending={isPendingThis} blockedBy={item.blockedBy} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
                       <span className="brm-kind brm-kind-task">TASK</span>

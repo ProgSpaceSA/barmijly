@@ -1,4 +1,13 @@
-import { IsString, IsOptional, IsEnum, IsDateString, IsInt, Min, Max } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsDateString,
+  IsInt,
+  IsBoolean,
+  Min,
+  Max,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { TaskStatus } from '@prisma/client';
 
@@ -43,4 +52,10 @@ export class UpdateTaskDto {
   @Min(1)
   @Max(5)
   difficultyLevel?: number | null;
+
+  /** Manager-only in the service — a blocker gates work that is not yours. */
+  @ApiPropertyOptional({ description: 'Blocks every task below it until COMPLETED.' })
+  @IsOptional()
+  @IsBoolean()
+  isBlocking?: boolean;
 }

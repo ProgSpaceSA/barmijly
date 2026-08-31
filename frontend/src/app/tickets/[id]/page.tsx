@@ -34,7 +34,25 @@ import {
   ArrowRight, Clock, CalendarClock, User, Building2, Monitor, Lock,
   Paperclip, FileText, Trash2, Download, Check, AlertTriangle, X, Plus, Pencil, Eye, Loader2,
   ChevronDown, ChevronLeft, UserPlus, CircleCheck, Bug as BugIcon, ExternalLink, ClipboardList,
+  GripVertical, ShieldAlert,
 } from "lucide-react";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import api from "@/lib/api";
@@ -150,6 +168,86 @@ function TaskAttributionLine({
   );
 }
 
+/**
+ * Wraps one task row so a manager can drag it up or down the list.
+ *
+ * `@dnd-kit` needs its hook per row, so the row body arrives as a render prop
+ * rather than the whole row moving into its own file — the row keeps every
+ * closure the page already holds it in. The grip carries the keyboard path for
+ * free (focus, space to lift, arrows, space to drop), which matters because a
+ * drag-only list is unreachable without a mouse.
+ */
+function SortableTask({
+  id,
+  disabled,
+  children,
+}: {
+  id: string;
+  disabled: boolean;
+  children: (grip: React.ReactNode) => React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    disabled,
+  });
+
+  const grip = disabled ? null : (
+    // `brm-step-grip` only for the cursor and `touch-action: none` a lift needs;
+    // the row is a card, not a step row, so it keeps its own size.
+    <button
+      type="button"
+      className="brm-step-grip -ms-1 mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors"
+      style={{ color: "var(--muted-foreground)" }}
+      aria-label={TASK_LABELS.drag}
+      title={TASK_LABELS.drag}
+      {...attributes}
+      {...listeners}
+    >
+      <GripVertical className="h-4 w-4" aria-hidden />
+    </button>
+  );
+
+  return (
+    <div
+      ref={setNodeRef}
+      className="min-w-0"
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : undefined,
+        zIndex: isDragging ? 20 : undefined,
+        position: isDragging ? "relative" : undefined,
+      }}
+    >
+      {children(grip)}
+    </div>
+  );
+}
+
+/** The «this task holds up the ones below it» switch — managers only. */
+function BlockingToggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-2 text-xs" style={{ color: "var(--muted-foreground)" }}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={e => onChange(e.target.checked)}
+        className="mt-0.5 h-4 w-4 shrink-0 accent-[#F59E0B]"
+      />
+      <span className="min-w-0">
+        <span className="font-medium" style={{ color: "var(--foreground)" }}>{TASK_LABELS.blocking}</span>
+        <span className="block leading-snug">{TASK_LABELS.blockingHint}</span>
+      </span>
+    </label>
+  );
+}
+
 function todayDateInput() {
   const now = new Date();
   return [
@@ -165,7 +263,7 @@ function dateInputValue(value?: string | null) {
 }
 
 function emptyTaskDraft() {
-  return { title: "", description: "", assignedToId: "", dueDate: todayDateInput(), estimatedHours: "", difficultyLevel: "" };
+  return { title: "", description: "", assignedToId: "", dueDate: todayDateInput(), estimatedHours: "", difficultyLevel: "", isBlocking: false };
 }
 
 function taskToDraft(task: {
@@ -175,6 +273,7 @@ function taskToDraft(task: {
   dueDate?: string | null;
   estimatedHours?: number | null;
   difficultyLevel?: number | null;
+  isBlocking?: boolean;
 }) {
   return {
     title: task.title ?? "",
@@ -183,6 +282,7 @@ function taskToDraft(task: {
     dueDate: dateInputValue(task.dueDate) || todayDateInput(),
     estimatedHours: task.estimatedHours != null ? String(task.estimatedHours) : "",
     difficultyLevel: task.difficultyLevel != null ? String(task.difficultyLevel) : "",
+    isBlocking: task.isBlocking ?? false,
   };
 }
 
@@ -642,6 +742,42 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const [taskFiles, setTaskFiles] = useState<File[]>([]);
   const taskFileRef = useRef<HTMLInputElement>(null);
 
+  /**
+   * The order the server last reported. A drop is previewed against this key
+   * and thrown away the moment the server answers with a different one, so the
+   * list never sits on a stale order — the same shape the meeting minutes use.
+   */
+  const taskOrderKey = tasks.map((t: any) => `${t.id}:${t.order}`).join("|");
+  const [pendingTaskOrder, setPendingTaskOrder] = useState<{ key: string; ids: string[] } | null>(null);
+  const orderedTasks: any[] =
+    pendingTaskOrder && pendingTaskOrder.key === taskOrderKey
+      ? (pendingTaskOrder.ids.map(tid => tasks.find((t: any) => t.id === tid)).filter(Boolean) as any[])
+      : tasks;
+  // The collapsed list is a prefix, so a drop index inside it is already the
+  // absolute position — no offset to reconcile.
+  const visibleTasks: any[] = tasksExpanded ? orderedTasks : orderedTasks.slice(0, 4);
+
+  const taskSensors = useSensors(
+    // A little distance so a tap on a row control is never read as a drag.
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    // Long-press to lift on touch, so the page still scrolls.
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleTaskDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    const from = orderedTasks.findIndex((t: any) => t.id === active.id);
+    const to = orderedTasks.findIndex((t: any) => t.id === over.id);
+    if (from === -1 || to === -1) return;
+
+    const next = [...orderedTasks];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setPendingTaskOrder({ key: taskOrderKey, ids: next.map((t: any) => t.id) });
+    taskActions.reorder.mutate({ id: String(active.id), order: to });
+  };
+
   const createTask = async () => {
     // A developer may only file a task for themselves, so the picker is hidden
     // for them and the assignee is filled in here instead.
@@ -705,6 +841,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         payload.dueDate = editTask.dueDate || null;
         payload.estimatedHours = editTask.estimatedHours ? parseInt(editTask.estimatedHours, 10) : null;
         payload.difficultyLevel = editTask.difficultyLevel ? parseInt(editTask.difficultyLevel, 10) : null;
+        if (canManageTasks) payload.isBlocking = editTask.isBlocking;
       }
       await taskActions.update.mutateAsync(payload);
       setEditingTaskId(null);
@@ -1166,11 +1303,16 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                 )}
 
                 {/* Task list */}
+                <DndContext sensors={taskSensors} collisionDetection={closestCenter} onDragEnd={handleTaskDragEnd}>
+                <SortableContext
+                  items={visibleTasks.map((t: any) => t.id)}
+                  strategy={verticalListSortingStrategy}
+                >
                 <div className="space-y-2 mb-3">
                   {tasks.length === 0 ? (
                     <p className="font-brm text-xs text-center py-3" style={{ color: "var(--muted-foreground)" }}>$ no tasks yet_</p>
                   ) : (
-                    (tasksExpanded ? tasks : tasks.slice(0, 4)).map((t: any) => {
+                    visibleTasks.map((t: any) => {
                       const isAssignee = t.assignedTo?.id === user?.id;
                       const isCompleted = t.status === "COMPLETED";
                       const statusColor = TASK_STATUS_COLORS[t.status] ?? TASK_STATUS_COLORS.NEW;
@@ -1180,6 +1322,10 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                       const canEditThis = canEditFull || canEditEstimate;
                       const isEditing = editingTaskId === t.id;
                       const estimateOnlyEdit = isEditing && canEditEstimate && !canEditFull;
+                      // A blocker above this row has not been completed yet, so
+                      // nobody may move it — the API refuses the same write.
+                      const blocker = t.blockedBy ?? null;
+                      const blockedNote = blocker ? TASK_LABELS.blockedBy(blocker.title) : null;
 
                       if (isEditing) {
                         return (
@@ -1243,6 +1389,12 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                     style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--foreground)", direction: "ltr" }}
                                   />
                                 </div>
+                                {canManageTasks && (
+                                  <BlockingToggle
+                                    checked={editTask.isBlocking}
+                                    onChange={(next) => setEditTask(p => ({ ...p, isBlocking: next }))}
+                                  />
+                                )}
                               </>
                             )}
                             <div className="flex flex-col gap-2 sm:flex-row">
@@ -1289,7 +1441,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                       }
 
                       return (
-                        <div key={t.id} className="rounded-xl px-3 py-2.5 transition-colors group"
+                        <SortableTask key={t.id} id={t.id} disabled={!canManageTasks}>
+                        {(grip) => (
+                        <div className="rounded-xl px-3 py-2.5 transition-colors group"
                           style={{
                             background: isCompleted
                               ? "rgba(5, 150, 105, 0.04)"
@@ -1303,8 +1457,17 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                 : "1px solid var(--border)",
                           }}>
                           <div className="flex items-start gap-3 min-w-0">
-                          {/* Status toggle for assignee/manager */}
-                          {(isAssignee || isManager) ? (
+                          {grip}
+                          {/* Status toggle for assignee/manager — locked while a blocker above is open */}
+                          {blocker ? (
+                            <span
+                              className="w-5 h-5 rounded-full border-2 flex items-center justify-center mt-0.5 shrink-0"
+                              style={{ borderColor: "#F59E0B", color: "#F59E0B" }}
+                              aria-label={blockedNote ?? undefined}
+                              title={blockedNote ?? undefined}>
+                              <Lock className="w-2.5 h-2.5" aria-hidden />
+                            </span>
+                          ) : (isAssignee || isManager) ? (
                             <button
                               onClick={() => {
                                 const next = t.status === "NEW" ? "IN_PROGRESS" : t.status === "IN_PROGRESS" ? "COMPLETED" : "NEW";
@@ -1382,6 +1545,21 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                                   {TASK_LABELS.assignedToMe}
                                 </span>
                               )}
+                              {t.isBlocking && !isCompleted && (
+                                <span className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium"
+                                  style={{ background: "rgba(245,158,11,0.12)", color: "#B45309", border: "1px solid rgba(245,158,11,0.28)" }}
+                                  title={TASK_LABELS.blockingHint}>
+                                  <ShieldAlert className="w-3 h-3" aria-hidden />
+                                  {TASK_LABELS.blockingBadge}
+                                </span>
+                              )}
+                              {blockedNote && (
+                                <span className="inline-flex min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium"
+                                  style={{ background: "rgba(245,158,11,0.10)", color: "#B45309", border: "1px solid rgba(245,158,11,0.24)" }}>
+                                  <Lock className="w-3 h-3 shrink-0" aria-hidden />
+                                  <span className="break-words">{blockedNote}</span>
+                                </span>
+                              )}
                               <span className="inline-flex min-w-0 flex-wrap items-center max-sm:w-full" style={{ color: "var(--muted-foreground)" }}>
                                 {joinTaskMeta([
                                   !isAssignee && t.status !== "COMPLETED" && taskPersonName(t.assignedTo) ? (
@@ -1426,10 +1604,14 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                           </div>
                           </div>
                         </div>
+                        )}
+                        </SortableTask>
                       );
                     })
                   )}
                 </div>
+                </SortableContext>
+                </DndContext>
 
                 {tasks.length > 4 && (
                   <button onClick={() => setTasksExpanded(e => !e)}
@@ -1508,6 +1690,13 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                           onBlur={e => (e.target.style.borderColor = "var(--border)")}
                         />
                       </div>
+
+                      {canManageTasks && (
+                        <BlockingToggle
+                          checked={newTask.isBlocking}
+                          onChange={(next) => setNewTask(p => ({ ...p, isBlocking: next }))}
+                        />
+                      )}
 
                       <div className="flex flex-col gap-2 sm:flex-row">
                         <input

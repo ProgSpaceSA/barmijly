@@ -110,6 +110,26 @@ describe("MinutesList", () => {
     expect(screen.getByLabelText(`${MEETING_LABELS.capture} 1`)).toBeDisabled();
   });
 
+  /**
+   * The line is one row only at `xl`. Below it the text keeps a row of its own
+   * and the kind, capture and delete controls sit under it — a phone has no
+   * room for four controls abreast, and neither has the `lg` two-column page.
+   */
+  it("stacks the editable line until the column is wide", () => {
+    render(<MinutesList points={points} canCapture onCapture={vi.fn()} />);
+
+    const text = screen.getByLabelText(`${MEETING_LABELS.pointLine} 1`);
+    const row = text.parentElement as HTMLElement;
+    expect(row.className).toContain("flex-wrap");
+    expect(row.className).toContain("xl:flex-nowrap");
+
+    // The text claims the whole row; the kind select shares the one below it.
+    expect(text.className).toContain("basis-full");
+    const kind = screen.getByLabelText(`${MEETING_LABELS.pointKind} 1`);
+    expect(kind.className).toContain("flex-1");
+    expect(kind.className).toContain("xl:w-32");
+  });
+
   it("shows the empty state with no lines", () => {
     render(<MinutesList points={[]} />);
     expect(screen.getByText(MEETING_LABELS.noPoints)).toBeInTheDocument();

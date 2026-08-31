@@ -39,6 +39,11 @@ const SAVE_DELAY_MS = 600;
  * typist. Captured requirements show as chips on the row rather than as a
  * status on the point: the point stays a record of what was said, and the
  * requirement is the thing that gets chased.
+ *
+ * The editable line stacks until `xl`: the text takes a line of its own and
+ * the kind, capture and delete controls sit under it. A phone has no room for
+ * four controls abreast, and neither has `lg` — the 20rem sidebar leaves this
+ * column around 368px there, which is a 50px text box on one line.
  */
 export function PointRow({
   point,
@@ -185,13 +190,13 @@ export function PointRow({
             </p>
           </div>
         ) : (
-          <div className="flex min-w-0 items-center gap-1.5 py-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5 py-1 xl:flex-nowrap">
             <ThemeSelect
               value={point.kind}
               onChange={(value) => value && onKindChange?.(point.id, value)}
               placeholder={MEETING_LABELS.pointKind}
               aria-label={`${MEETING_LABELS.pointKind} ${index + 1}`}
-              triggerClassName="h-8 w-full sm:w-32 shrink-0"
+              triggerClassName="order-2 h-8 min-w-0 flex-1 xl:order-none xl:w-32 xl:flex-none"
               items={KIND_OPTIONS}
             />
             <textarea
@@ -200,7 +205,7 @@ export function PointRow({
               rows={1}
               aria-label={pointLabel}
               placeholder={MEETING_LABELS.pointPlaceholder}
-              className="brm-step-textarea w-full min-w-0 flex-1 border border-border bg-muted px-3 text-sm text-foreground outline-none focus-visible:border-indigo-500 focus-visible:ring-2 focus-visible:ring-indigo-500/30"
+              className="brm-step-textarea order-1 w-full min-w-0 grow basis-full border border-border bg-muted px-3 text-sm text-foreground outline-none focus-visible:border-indigo-500 focus-visible:ring-2 focus-visible:ring-indigo-500/30 xl:order-none xl:basis-0"
               onChange={(e) => scheduleSave(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Escape") {
@@ -219,7 +224,7 @@ export function PointRow({
             {canCapture && (
               <button
                 type="button"
-                className="brm-step-btn shrink-0"
+                className="brm-step-btn order-3 shrink-0 xl:order-none"
                 aria-label={`${MEETING_LABELS.capture} ${index + 1}`}
                 title={MEETING_LABELS.captureHint}
                 disabled={capturing || blank}
@@ -230,7 +235,7 @@ export function PointRow({
             )}
             <button
               type="button"
-              className="brm-step-btn shrink-0"
+              className="brm-step-btn order-4 shrink-0 xl:order-none"
               aria-label={`${MEETING_LABELS.deletePoint} ${index + 1}`}
               title={MEETING_LABELS.deletePoint}
               onClick={() => onDelete?.(point.id)}

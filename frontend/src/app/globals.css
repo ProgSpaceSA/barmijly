@@ -2286,6 +2286,21 @@ kbd.brm-kbd {
   .brm-pill-rail > * { flex-shrink: 0; }
 }
 
+/* A segmented control is one strip, never a wrap: below `sm` the date tabs
+   scroll sideways rather than clip the last one. The scrollbar stays hidden
+   because the control is a fixed 30px tall and has nowhere to put one. */
+@media (max-width: 639px) {
+  .brm-seg-rail {
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .brm-seg-rail::-webkit-scrollbar { display: none; }
+  .brm-seg-rail > * { flex-shrink: 0; }
+}
+
 /* ── Comments & editors ─────────────────────────────────────────────────── */
 
 @media (max-width: 639px) {

@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccessService } from '../access/access.service';
 import { assertCan, can } from '../access/permissions';
@@ -9,15 +10,35 @@ import { EmailService } from '../email/email.service';
 import { AssignmentSyncService } from '../tickets/assignment-sync.service';
 import { TaskRollupService } from '../tickets/task-rollup.service';
 import { taskClockFields } from '../tickets/transitions';
+import { moveTo } from '../testing/cases.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
+import { assertNotBlocked, attachBlockers } from './task-order';
 import { NotificationType, TaskStatus } from '@prisma/client';
+
+type Db = Prisma.TransactionClient | PrismaService;
 
 /** Shape returned to the client — assignee, creator and files, never a bare row. */
 const TASK_INCLUDE = {
   assignedTo:  { select: { id: true, firstName: true, lastName: true } },
   createdBy:   { select: { id: true, firstName: true, lastName: true } },
   attachments: true,
+} as const;
+
+/**
+ * List order. `createdAt` breaks the tie two simultaneous creates can leave;
+ * the next reorder or delete pulls the list back to contiguous positions.
+ */
+const TASK_ORDER = [{ order: 'asc' as const }, { createdAt: 'asc' as const }];
+
+/** Just enough of a sibling to answer «is this task blocked?». */
+const BLOCK_FIELDS = {
+  id: true,
+  ticketId: true,
+  order: true,
+  title: true,
+  status: true,
+  isBlocking: true,
 } as const;
 
 @Injectable()
@@ -65,6 +86,8 @@ export class TasksService {
     if (!eligible) throw new ForbiddenException('Assignee cannot access this ticket');
 
     const task = await this.prisma.$transaction(async (tx) => {
+      // New work lands at the bottom of the list; a manager drags it up.
+      const below = await tx.ticketTask.count({ where: { ticketId } });
       const created = await tx.ticketTask.create({
         data: {
           ticketId,
@@ -74,6 +97,10 @@ export class TasksService {
           createdById: user.id,
           estimatedHours: dto.estimatedHours,
           difficultyLevel: dto.difficultyLevel,
+          order: below,
+          // A blocker gates work that is not the author's own, so setting one
+          // is a scoping call and stays with whoever manages the ticket.
+          isBlocking: isManager ? dto.isBlocking ?? false : false,
           ...(dto.dueDate ? { dueDate: new Date(dto.dueDate) } : {}),
         },
         include: TASK_INCLUDE,
@@ -91,7 +118,14 @@ export class TasksService {
       entityId: task.id,
       userId: user.id,
       ticketId,
-      newValues: { title: task.title, assignedToId: task.assignedToId, estimatedHours: task.estimatedHours, difficultyLevel: task.difficultyLevel },
+      newValues: {
+        title: task.title,
+        assignedToId: task.assignedToId,
+        estimatedHours: task.estimatedHours,
+        difficultyLevel: task.difficultyLevel,
+        order: task.order,
+        isBlocking: task.isBlocking,
+      },
     });
 
     if (dto.assignedToId !== user.id) {
@@ -128,7 +162,7 @@ export class TasksService {
   }
 
   async findMyTasks(user: any) {
-    return this.prisma.ticketTask.findMany({
+    const mine = await this.prisma.ticketTask.findMany({
       where: { assignedToId: user.id },
       include: {
         ticket: {
@@ -148,15 +182,73 @@ export class TasksService {
         { createdAt: 'asc' },
       ],
     });
+
+    // The blocker above one of my tasks is usually somebody else's, so it takes
+    // a query of its own rather than falling out of the rows I hold.
+    const blockers = await this.prisma.ticketTask.findMany({
+      where: {
+        ticketId: { in: [...new Set(mine.map((row) => row.ticketId))] },
+        isBlocking: true,
+        status: { not: TaskStatus.COMPLETED },
+      },
+      select: BLOCK_FIELDS,
+    });
+
+    return attachBlockers(mine, blockers);
   }
 
   async findByTicket(ticketId: string, user: any) {
     await this.access.assertCanViewTicket(ticketId, user);
-    return this.prisma.ticketTask.findMany({
+    const tasks = await this.prisma.ticketTask.findMany({
       where: { ticketId },
       include: TASK_INCLUDE,
-      orderBy: { createdAt: 'asc' },
+      orderBy: TASK_ORDER,
     });
+    return attachBlockers(tasks, tasks);
+  }
+
+  /**
+   * Moves a task and rewrites only the positions that actually changed.
+   *
+   * Rewriting the whole list would work, but every write bumps `updatedAt` and
+   * the dashboard feed sorts on it — one drag would throw every task on the
+   * ticket to the top of everyone's queue.
+   */
+  async reorder(id: string, order: number, user: any) {
+    // Order decides what runs first, so it belongs to whoever scopes the
+    // ticket. A developer reorders nothing, not even their own tasks.
+    assertCan(user, 'task:manage');
+
+    const task = await this.prisma.ticketTask.findUnique({ where: { id } });
+    if (!task) throw new NotFoundException('Task not found');
+    await this.access.assertCanViewTicket(task.ticketId, user);
+
+    const siblings = await this.siblings(task.ticketId);
+    const reordered = moveTo(siblings.map((row) => row.id), id, order);
+    const positions = new Map(siblings.map((row) => [row.id, row.order]));
+    const moved = reordered
+      .map((rowId, index) => ({ rowId, index }))
+      .filter(({ rowId, index }) => positions.get(rowId) !== index);
+
+    if (moved.length) {
+      await this.prisma.$transaction(
+        moved.map(({ rowId, index }) =>
+          this.prisma.ticketTask.update({ where: { id: rowId }, data: { order: index } }),
+        ),
+      );
+
+      await this.audit.log({
+        action: 'TASK_REORDER',
+        entity: 'TicketTask',
+        entityId: id,
+        userId: user.id,
+        ticketId: task.ticketId,
+        oldValues: { title: task.title, order: task.order },
+        newValues: { title: task.title, order: reordered.indexOf(id) },
+      });
+    }
+
+    return this.findByTicket(task.ticketId, user);
   }
 
   async update(id: string, dto: UpdateTaskDto, user: any) {
@@ -174,6 +266,12 @@ export class TasksService {
     // manager who scoped it.
     const data: any = {};
     if (dto.status !== undefined) {
+      // Starting or finishing a task is the claim the blocker above it exists
+      // to refuse. Sending it back to NEW is always allowed — that is how a
+      // mistaken start is undone.
+      if (dto.status !== TaskStatus.NEW) {
+        assertNotBlocked(await this.siblings(task.ticketId), task);
+      }
       data.status = dto.status;
       Object.assign(data, taskClockFields(task, dto.status));
     }
@@ -192,6 +290,7 @@ export class TasksService {
         if (!eligible) throw new ForbiddenException('Assignee cannot access this ticket');
         data.assignedToId = dto.assignedToId;
       }
+      if (dto.isBlocking !== undefined) data.isBlocking = dto.isBlocking;
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
@@ -242,7 +341,11 @@ export class TasksService {
       }, user.id);
     }
 
-    return updated;
+    // The client writes this row straight into its cache, so it has to carry
+    // the block state or the row would look free until the next refetch — and
+    // completing a blocker releases the rows under it in the same breath.
+    const [withBlocker] = attachBlockers([updated], await this.siblings(task.ticketId));
+    return withBlocker;
   }
 
   async remove(id: string, user: any) {
@@ -268,6 +371,9 @@ export class TasksService {
 
     const deleted = await this.prisma.$transaction(async (tx) => {
       const gone = await tx.ticketTask.delete({ where: { id } });
+      // Close the gap the row left, so «المهمة ٣» on screen and `order = 3` in
+      // the database never mean two different rows.
+      await this.rebalance(task.ticketId, tx);
       // Losing your last task takes you back off the roster, unless you lead it.
       await this.assignments.syncFromTasks(task.ticketId, tx);
       await this.rollup.recompute(task.ticketId, tx);
@@ -284,5 +390,28 @@ export class TasksService {
     });
 
     return deleted;
+  }
+
+  /** The ticket's whole list in order, trimmed to what the block rules read. */
+  private siblings(ticketId: string, tx: Db = this.prisma) {
+    return tx.ticketTask.findMany({
+      where: { ticketId },
+      orderBy: TASK_ORDER,
+      select: BLOCK_FIELDS,
+    });
+  }
+
+  /** Pulls the list back to contiguous positions from 0, touching only movers. */
+  private async rebalance(ticketId: string, tx: Db = this.prisma) {
+    const rows = await tx.ticketTask.findMany({
+      where: { ticketId },
+      orderBy: TASK_ORDER,
+      select: { id: true, order: true },
+    });
+
+    for (const [index, row] of rows.entries()) {
+      if (row.order === index) continue;
+      await tx.ticketTask.update({ where: { id: row.id }, data: { order: index } });
+    }
   }
 }

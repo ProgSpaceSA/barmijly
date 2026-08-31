@@ -105,4 +105,34 @@ describe("task writes", () => {
       expect.objectContaining({ id: "task-1", status: "IN_PROGRESS" }),
     ]);
   });
+
+  it("takes the whole reordered list from the server rather than patching one row", async () => {
+    // A move renumbers every row and releases or traps whatever sits under a
+    // blocker, so nothing short of the full list is right.
+    mockPost.mockResolvedValue({
+      data: [
+        { id: "task-2", order: 0, isBlocking: true, blockedBy: null },
+        { id: "task-1", order: 1, blockedBy: { id: "task-2", title: "مراجعة التصميم", order: 0 } },
+      ],
+    });
+    const client = seededClient();
+    client.setQueryData(qk.ticket.tasks(TICKET), [
+      { id: "task-1", order: 0, blockedBy: null },
+      { id: "task-2", order: 1, isBlocking: true, blockedBy: null },
+    ]);
+    const { result } = renderHook(() => useTaskActions(TICKET), { wrapper: wrapperFor(client) });
+
+    await act(async () => {
+      await result.current.reorder.mutateAsync({ id: "task-2", order: 0 });
+    });
+
+    expect(mockPost).toHaveBeenCalledWith("/tasks/task-2/reorder", { order: 0 });
+    expect(client.getQueryData(qk.ticket.tasks(TICKET))).toEqual([
+      expect.objectContaining({ id: "task-2", order: 0 }),
+      expect.objectContaining({
+        id: "task-1",
+        blockedBy: expect.objectContaining({ title: "مراجعة التصميم" }),
+      }),
+    ]);
+  });
 });

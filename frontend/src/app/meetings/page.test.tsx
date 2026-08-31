@@ -135,6 +135,22 @@ describe("MeetingsPage", () => {
     expect(screen.getByLabelText(MEETING_LABELS.dateTo)).toHaveAttribute("id", "meeting-date-to");
   });
 
+  /**
+   * Five Arabic presets are wider than a 360px phone. They scroll as one strip
+   * rather than clip, and the custom range drops to a label/field grid.
+   */
+  it("keeps the date filters reachable on a phone", async () => {
+    renderPage();
+    await screen.findByText("اجتماع الربع الثالث");
+
+    const tabs = screen.getByRole("group", { name: MEETING_LABELS.filterDate });
+    expect(tabs.className).toContain("brm-seg-rail");
+
+    const range = screen.getByLabelText(MEETING_LABELS.dateFrom).parentElement as HTMLElement;
+    expect(range.className).toContain("grid-cols-[auto_minmax(0,1fr)]");
+    expect(range.className).toContain("sm:flex");
+  });
+
   it("sends a date preset to the API", async () => {
     const user = userEvent.setup();
     renderPage();

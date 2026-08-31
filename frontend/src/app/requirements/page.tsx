@@ -212,7 +212,7 @@ export default function RequirementsPage() {
         />
       </div>
 
-      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
         <ThemeSelect
           value={companyId}
           onChange={(v) => {

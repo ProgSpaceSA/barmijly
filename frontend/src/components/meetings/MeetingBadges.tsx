@@ -25,7 +25,7 @@ import { formatMeetingCode, formatRequirementCode } from "@/lib/utils";
 function Chip({ color, children }: { color: string; children: React.ReactNode }) {
   return (
     <span
-      className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold leading-4"
+      className="inline-flex h-6 max-w-full shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold leading-4"
       style={{
         background: `color-mix(in srgb, ${color} 14%, transparent)`,
         color,
@@ -37,7 +37,7 @@ function Chip({ color, children }: { color: string; children: React.ReactNode })
         style={{ background: color }}
         aria-hidden
       />
-      <span className="truncate">{children}</span>
+      <span className="min-w-0 truncate">{children}</span>
     </span>
   );
 }

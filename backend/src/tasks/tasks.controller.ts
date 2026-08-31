@@ -1,8 +1,9 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { TasksService } from './tasks.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
+import { ReorderTaskDto } from './dto/reorder-task.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
@@ -35,6 +36,12 @@ export class TasksController {
   @Patch('tasks/:id')
   update(@Param('id') id: string, @Body() dto: UpdateTaskDto, @CurrentUser() user: any) {
     return this.tasksService.update(id, dto, user);
+  }
+
+  @Post('tasks/:id/reorder')
+  @ApiOperation({ summary: 'Move a task; siblings rebalance to a contiguous order' })
+  reorder(@Param('id') id: string, @Body() dto: ReorderTaskDto, @CurrentUser() user: any) {
+    return this.tasksService.reorder(id, dto.order, user);
   }
 
   @Delete('tasks/:id')

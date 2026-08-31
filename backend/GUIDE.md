@@ -213,17 +213,26 @@ never counts time nobody was working.
 
 | Method | Endpoint | Who | Description |
 |--------|----------|-----|-------------|
-| GET | `/tickets/:ticketId/tasks` | Role-filtered | Tasks on a ticket |
-| POST | `/tickets/:ticketId/tasks` | Manager / Head / Senior; Developer & QA for themselves | Create a task (`title`, `assignedToId`, `dueDate?`, `estimatedHours?`, `difficultyLevel?` 1–5) |
+| GET | `/tickets/:ticketId/tasks` | Role-filtered | Tasks on a ticket, in list order |
+| POST | `/tickets/:ticketId/tasks` | Manager / Head / Senior; Developer & QA for themselves | Create a task (`title`, `assignedToId`, `dueDate?`, `estimatedHours?`, `difficultyLevel?` 1–5, `isBlocking?` manager-only) — appended to the bottom of the list |
 | GET | `/tasks/my` | Signed in | The caller's own tasks, soonest due first |
-| PATCH | `/tasks/:id` | Assignee (status + estimate) / Manager (everything) | Update a task — developers revise hours/difficulty only; managers may also retitle, reassign and reschedule |
-| DELETE | `/tasks/:id` | Manager; creator for their own untouched NEW task | Delete a task |
+| PATCH | `/tasks/:id` | Assignee (status + estimate) / Manager (everything) | Update a task — developers revise hours/difficulty only; managers may also retitle, reassign, reschedule and set `isBlocking` |
+| POST | `/tasks/:id/reorder` | Manager / Head / Senior (`task:manage`) | Move a task to `order` (zero-based); siblings rebalance to contiguous positions. Returns the whole list |
+| DELETE | `/tasks/:id` | Manager; creator for their own untouched NEW task | Delete a task; the list closes the gap behind it |
 
 Holding a task on a ticket makes you an active assignee on it; losing your last
 task takes you back off, unless you are the lead. Task estimates roll up into
 `Ticket.tasksEstimatedHours` / `tasksWeightTotal`, and `GET /tickets/:id` returns
 `effectiveEstimatedHours` (the rollup, falling back to the planned figure),
 `openTaskCount` and `actualHours`.
+
+**Order and blocking.** Tasks carry a manual `order`, contiguous from 0, that
+only `task:manage` may change. A task flagged `isBlocking` holds every task
+below it: moving one of those out of `NEW` is refused with 400 until the blocker
+reaches `COMPLETED`, so the tail of the list runs top to bottom. The rule binds
+managers too — to work out of order, clear the flag or move the row above the
+blocker. Every task read carries `blockedBy` (`{ id, title, order }` or `null`)
+naming the nearest blocker still in the way.
 
 ### Meetings
 

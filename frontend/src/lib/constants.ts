@@ -77,6 +77,14 @@ export const TASK_LABELS = {
   assignedToMe: "مُكلف بها",
   devFinishedAt: "أنجزها",
   assigneeSync: "يُضاف المُكلَّف تلقائياً إلى فريق التذكرة",
+  /** Manual ordering — managers only. */
+  drag: "اسحب لإعادة الترتيب",
+  /** The blocking flag, and what it does to the tasks under it. */
+  blocking: "مهمة حاجبة",
+  blockingHint: "تحجب كل المهام التي تليها حتى تكتمل",
+  blockingBadge: "حاجبة",
+  blockedBadge: "محجوبة",
+  blockedBy: (title: string) => `بانتظار «${title}»`,
 } as const;
 
 /** Ticket create — cover image and attachment pickers. */
@@ -111,6 +119,7 @@ export const TIMELINE_LABELS = {
   TASK_CREATE: "أضاف مهمة",
   TASK_UPDATE: "عدّل مهمة",
   TASK_STATUS_CHANGE: "غيّر حالة مهمة",
+  TASK_REORDER: "غيّر ترتيب المهام",
   TASK_DELETE: "حذف مهمة",
   DEPENDENCY_ADD: "أضاف علاقة",
   DEPENDENCY_REMOVE: "أزال علاقة",
@@ -169,7 +178,7 @@ export const TIMELINE_FILTERS = {
   },
   tasks: {
     label: "المهام",
-    actions: ["TASK_CREATE", "TASK_UPDATE", "TASK_STATUS_CHANGE", "TASK_DELETE"] as const,
+    actions: ["TASK_CREATE", "TASK_UPDATE", "TASK_STATUS_CHANGE", "TASK_REORDER", "TASK_DELETE"] as const,
   },
   relations: {
     label: "العلاقات",

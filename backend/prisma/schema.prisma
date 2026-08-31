@@ -549,6 +549,13 @@ model TicketTask {
   createdById     String
   createdBy       User               @relation("TaskCreator", fields: [createdById], references: [id])
   status          TaskStatus         @default(NEW)
+  /// Manual position inside the ticket's task list. Contiguous from 0,
+  /// rebalanced on reorder and delete (mirrors MeetingPoint and TestStep).
+  order           Int                @default(0)
+  /// A blocking task gates everything under it: no task with a higher `order`
+  /// may start or complete until this one is COMPLETED, so the list below a
+  /// blocker runs top to bottom.
+  isBlocking      Boolean            @default(false)
   dueDate         DateTime?
   estimatedHours  Int?
   /// 1–5, the same scale as Ticket.difficultyLevel (req.md §9 «مستوى الصعوبة»).
@@ -560,6 +567,7 @@ model TicketTask {
   attachments     TicketAttachment[]
 
   @@index([ticketId, status])
+  @@index([ticketId, order])
   @@index([assignedToId, status])
 }
 
