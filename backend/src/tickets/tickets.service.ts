@@ -54,9 +54,20 @@ export class TicketsService {
     // to live tickets no matter what they send.
     const isArchived = can(user.role, 'ticket:read-archived') ? (filters.isArchived ?? false) : false;
 
+    const statusWhere: Prisma.TicketWhereInput = filters.overdue
+      ? {
+          estimatedDeadline: { lt: new Date() },
+          status: { notIn: [TicketStatus.CLOSED, TicketStatus.COMPLETED, TicketStatus.REJECTED] },
+        }
+      : filters.statuses?.length
+        ? { status: { in: filters.statuses } }
+        : filters.status
+          ? { status: filters.status }
+          : {};
+
     const where: Prisma.TicketWhereInput = {
       isArchived,
-      ...(filters.status && { status: filters.status }),
+      ...statusWhere,
       ...(filters.type && { type: filters.type }),
       ...(filters.priority && { finalPriority: filters.priority }),
       ...(filters.systemId && { systemId: filters.systemId }),
@@ -74,10 +85,6 @@ export class TicketsService {
         if (ticketNumber != null) or.push({ ticketNumber });
         return { OR: or };
       })()),
-      ...(filters.overdue && {
-        estimatedDeadline: { lt: new Date() },
-        status: { notIn: [TicketStatus.CLOSED, TicketStatus.COMPLETED, TicketStatus.REJECTED] },
-      }),
     };
 
     // Assigned as the ticket developer, or given at least one task on it.

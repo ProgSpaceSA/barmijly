@@ -46,6 +46,12 @@ export type Action =
   | "requirement:create"
   | "requirement:triage"
   | "requirement:promote"
+  | "tool:read"
+  | "tool:request"
+  | "tool:manage"
+  | "feedback:read"
+  | "feedback:create"
+  | "feedback:triage"
   | "user:read"
   | "user:read-directory"
   | "user:manage"
@@ -70,6 +76,10 @@ const REQUESTER: Action[] = [
   "comment:create",
   "attachment:upload",
   "report:read",
+  // Reads the kit, but does not ask for it — the hub is the dev section's.
+  "tool:read",
+  "feedback:read",
+  "feedback:create",
 ];
 
 // Read-only on the QA surface and the backlog, and only inside their own
@@ -99,6 +109,11 @@ const DEVELOPER: Action[] = [
   "requirement:read",
   "structure:read-all",
   "report:read",
+  // The developer is who notices the gap in the kit, so the ask starts here.
+  "tool:read",
+  "tool:request",
+  "feedback:read",
+  "feedback:create",
 ];
 
 const QA: Action[] = [
@@ -122,6 +137,10 @@ const QA: Action[] = [
   "requirement:read",
   "structure:read-all",
   "report:read",
+  "tool:read",
+  "tool:request",
+  "feedback:read",
+  "feedback:create",
 ];
 
 const PROJECT_MANAGER: Action[] = [
@@ -163,6 +182,12 @@ const PROJECT_MANAGER: Action[] = [
   "requirement:create",
   "requirement:triage",
   "requirement:promote",
+  "tool:read",
+  "tool:request",
+  "tool:manage",
+  "feedback:read",
+  "feedback:create",
+  "feedback:triage",
   "report:read",
   "report:read-team",
 ];
@@ -216,6 +241,12 @@ const SENIOR_MANAGEMENT: Action[] = [
   "requirement:create",
   "requirement:triage",
   "requirement:promote",
+  "tool:read",
+  "tool:request",
+  "tool:manage",
+  "feedback:read",
+  "feedback:create",
+  "feedback:triage",
   "report:read",
   "report:read-team",
 ];

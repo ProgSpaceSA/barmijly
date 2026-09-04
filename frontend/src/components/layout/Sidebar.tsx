@@ -6,12 +6,14 @@ import { useTheme } from "@/hooks/useTheme";
 import {
   LayoutDashboard, Ticket, Users, Building2, FlaskConical, Bug,
   BarChart3, Bell, LogOut, Mail, UserPlus, Sun, Moon, Archive, X,
-  CalendarDays, ClipboardList,
+  CalendarDays, ClipboardList, Wrench,
 } from "lucide-react";
-import { MEETING_LABELS, NAV_UNREAD_LABEL, ROLE_LABELS, TESTING_LABELS } from "@/lib/constants";
+import { HUB_LABELS, MEETING_LABELS, NAV_UNREAD_LABEL, ROLE_LABELS, TESTING_LABELS } from "@/lib/constants";
 import { useUnreadCount } from "@/hooks/useNotifications";
 import { useOpenBugCount } from "@/hooks/useBugs";
 import { useOpenRequirementCount } from "@/hooks/useRequirements";
+import { usePendingToolCount } from "@/hooks/useTools";
+import { useFeedbackInboxCount } from "@/hooks/useFeedback";
 import { usePermissions } from "@/hooks/usePermissions";
 import type { Action } from "@/lib/permissions";
 /** `action: null` means every signed-in user gets the link. */
@@ -23,6 +25,7 @@ const navItems: { href: string; label: string; icon: any; action: Action | null;
   { href: "/bugs",             label: "الأخطاء",            icon: Bug,             action: "test:read" },
   { href: "/meetings",         label: "الاجتماعات",         icon: CalendarDays,    action: "meeting:read" },
   { href: "/requirements",     label: "المتطلبات",          icon: ClipboardList,   action: "requirement:read" },
+  { href: "/hub",              label: HUB_LABELS.hubTitle,  icon: Wrench,          action: "tool:read" },
   { href: "/notifications",    label: "الإشعارات",          icon: Bell,            action: null },
   { href: "/reports",          label: "التقارير",           icon: BarChart3,       action: "report:read-team" },
   { href: "/users",            label: "المستخدمون",         icon: Users,           action: "user:read", altAction: "user:read-directory" },
@@ -87,6 +90,9 @@ export function Sidebar({
   // would 403 on every page load for a requester.
   const { data: openBugCount } = useOpenBugCount(allowed("test:read"));
   const { data: openRequirementCount } = useOpenRequirementCount(allowed("requirement:read"));
+  // Only leadership has a queue to clear, so only leadership is asked.
+  const { data: pendingToolCount } = usePendingToolCount(allowed("tool:manage"));
+  const { data: feedbackInbox } = useFeedbackInboxCount(allowed("feedback:read"));
 
   const visibleItems = navItems.filter((item) =>
     item.action === null ||
@@ -96,17 +102,19 @@ export function Sidebar({
 
   const initials = `${user?.firstName?.[0] ?? ""}${user?.lastName?.[0] ?? ""}`;
 
-  /** Three links carry a count; everything else carries none. */
+  /** Four links carry a count; everything else carries none. */
   const badgeFor = (href: string): number => {
     if (href === "/notifications") return (unreadCount as number) ?? 0;
     if (href === "/bugs") return openBugCount ?? 0;
     if (href === "/requirements") return openRequirementCount ?? 0;
+    if (href === "/hub") return (pendingToolCount ?? 0) + (feedbackInbox ?? 0);
     return 0;
   };
 
   const badgeLabelFor = (href: string): string => {
     if (href === "/bugs") return TESTING_LABELS.openBugs;
     if (href === "/requirements") return MEETING_LABELS.openRequirements;
+    if (href === "/hub") return HUB_LABELS.pendingHub;
     return NAV_UNREAD_LABEL;
   };
 

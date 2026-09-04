@@ -31,6 +31,14 @@ vi.mock('@/components/layout/AppShell', () => ({
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import TicketsPage from './page';
+import { TICKET_ACTION_INBOX_LABEL, TICKET_CREATED_BY_ME_LABEL } from '@/lib/constants';
+import { ticketActionInboxStatuses } from '@/lib/ticket-list-filters';
+
+const HEAD_APPROVAL = { statuses: 'NEW,AWAITING_APPROVAL' };
+
+function listUrl(filters: Record<string, string>) {
+  return `/tickets?${new URLSearchParams(filters).toString()}`;
+}
 
 const overdueTicket = {
   id: 'ticket-1',
@@ -62,6 +70,8 @@ beforeEach(() => {
   mockSearchParams.delete('overdue');
   mockSearchParams.delete('mine');
   mockSearchParams.delete('developerId');
+  mockSearchParams.delete('status');
+  mockSearchParams.delete('statuses');
   mockGet.mockImplementation((url: unknown) => {
     const path = String(url);
     if (path.startsWith('/tickets')) {
@@ -69,6 +79,57 @@ beforeEach(() => {
     }
     if (path === '/companies') return Promise.resolve({ data: [] });
     return Promise.resolve({ data: [] });
+  });
+});
+
+describe('TicketsPage — role defaults', () => {
+  it('opens the programming head on the approval queue', async () => {
+    renderPage();
+
+    expect(await screen.findByRole('button', { name: 'بانتظار اعتمادك' })).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith(listUrl(HEAD_APPROVAL));
+    });
+  });
+
+  it('opens a developer on تذاكري', async () => {
+    currentRole = 'DEVELOPER';
+    renderPage();
+
+    expect(await screen.findByRole('button', { name: 'تذاكري' })).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith(listUrl({ mine: 'true' }));
+    });
+  });
+
+  it('opens the project manager on معتمدة', async () => {
+    currentRole = 'PROJECT_MANAGER';
+    renderPage();
+
+    expect(await screen.findByRole('button', { name: 'معتمدة' })).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith(listUrl({ status: 'APPROVED' }));
+    });
+  });
+
+  it('opens QA on بانتظار اختبار', async () => {
+    currentRole = 'QA';
+    renderPage();
+
+    expect(await screen.findByRole('button', { name: 'بانتظار اختبار' })).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith(listUrl({ status: 'AWAITING_TESTING' }));
+    });
+  });
+
+  it('keeps dashboard overdue=true instead of the role default', async () => {
+    mockSearchParams.set('overdue', 'true');
+    renderPage();
+
+    await waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith('/tickets?overdue=true');
+    });
+    expect(mockGet.mock.calls.some(([url]) => String(url).includes('statuses='))).toBe(false);
   });
 });
 
@@ -82,10 +143,12 @@ describe('TicketsPage — status filter', () => {
     });
   });
 
-  it('lists every ticket status plus overdue for programming head', async () => {
+  it('lists every ticket status plus overdue and the approval inbox for programming head', async () => {
     renderPage();
 
     expect(await screen.findByRole('button', { name: 'الكل' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: TICKET_ACTION_INBOX_LABEL })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'بانتظار اعتمادك' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'مسودة' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'جديدة' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'بانتظار معلومات' })).toBeInTheDocument();
@@ -138,6 +201,19 @@ describe('TicketsPage — status filter', () => {
     expect(screen.queryByRole('button', { name: 'بانتظار الاعتماد' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'مجدولة' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'قيد التنفيذ' })).not.toBeInTheDocument();
+  });
+
+  it('lists تحتاج إجراء and requests the head\'s action statuses', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: TICKET_ACTION_INBOX_LABEL }));
+
+    await waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith(
+        listUrl({ statuses: ticketActionInboxStatuses('PROGRAMMING_HEAD').join(',') }),
+      );
+    });
   });
 
   it('requests awaiting-info tickets when a requester selects بانتظار معلومات', async () => {
@@ -256,7 +332,7 @@ describe('TicketsPage — mine filter', () => {
     await user.click(await screen.findByRole('button', { name: 'تذاكري' }));
 
     await waitFor(() => {
-      expect(mockGet).toHaveBeenCalledWith('/tickets?mine=true');
+      expect(mockGet).toHaveBeenCalledWith(listUrl({ ...HEAD_APPROVAL, mine: 'true' }));
     });
   });
 
@@ -265,12 +341,12 @@ describe('TicketsPage — mine filter', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'تذاكري' }));
-    await waitFor(() => expect(mockGet).toHaveBeenCalledWith('/tickets?mine=true'));
+    await waitFor(() => expect(mockGet).toHaveBeenCalledWith(listUrl({ ...HEAD_APPROVAL, mine: 'true' })));
 
     await user.click(screen.getByRole('button', { name: 'معتمدة' }));
 
     await waitFor(() => {
-      expect(mockGet).toHaveBeenCalledWith('/tickets?mine=true&status=APPROVED');
+      expect(mockGet).toHaveBeenCalledWith(listUrl({ status: 'APPROVED', mine: 'true' }));
     });
   });
 
@@ -279,7 +355,7 @@ describe('TicketsPage — mine filter', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'تذاكري' }));
-    await waitFor(() => expect(mockGet).toHaveBeenCalledWith('/tickets?mine=true'));
+    await waitFor(() => expect(mockGet).toHaveBeenCalledWith(listUrl({ ...HEAD_APPROVAL, mine: 'true' })));
 
     await user.click(screen.getByRole('button', { name: 'كل التذاكر' }));
 
@@ -287,8 +363,27 @@ describe('TicketsPage — mine filter', () => {
       const ticketCalls = mockGet.mock.calls
         .map(([url]) => String(url))
         .filter((url) => url.startsWith('/tickets'));
-      expect(ticketCalls.at(-1)).toBe('/tickets?');
+      expect(ticketCalls.at(-1)).toBe(listUrl(HEAD_APPROVAL));
     });
+  });
+
+  it('lists أنشأتها and requests creatorId when it is selected', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: TICKET_CREATED_BY_ME_LABEL }));
+
+    await waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith(listUrl({ ...HEAD_APPROVAL, creatorId: 'user-1' }));
+    });
+  });
+
+  it('hides أنشأتها from a ticket requester', async () => {
+    currentRole = 'TICKET_REQUESTER';
+    renderPage();
+
+    expect(await screen.findByRole('button', { name: 'تذاكري' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: TICKET_CREATED_BY_ME_LABEL })).not.toBeInTheDocument();
   });
 });
 
@@ -326,7 +421,7 @@ describe('TicketsPage — developer assignment filter', () => {
     await user.click(await screen.findByRole('button', { name: 'التذاكر المُسندة إلى ديمة الحربي' }));
 
     await waitFor(() => {
-      expect(mockGet).toHaveBeenCalledWith('/tickets?developerId=dev-1');
+      expect(mockGet).toHaveBeenCalledWith(listUrl({ ...HEAD_APPROVAL, developerId: 'dev-1' }));
     });
   });
 
@@ -335,12 +430,12 @@ describe('TicketsPage — developer assignment filter', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'التذاكر المُسندة إلى سعد القحطاني' }));
-    await waitFor(() => expect(mockGet).toHaveBeenCalledWith('/tickets?developerId=dev-2'));
+    await waitFor(() => expect(mockGet).toHaveBeenCalledWith(listUrl({ ...HEAD_APPROVAL, developerId: 'dev-2' })));
 
     await user.click(screen.getByRole('button', { name: 'معتمدة' }));
 
     await waitFor(() => {
-      expect(mockGet).toHaveBeenCalledWith('/tickets?developerId=dev-2&status=APPROVED');
+      expect(mockGet).toHaveBeenCalledWith(listUrl({ status: 'APPROVED', developerId: 'dev-2' }));
     });
   });
 
@@ -349,12 +444,12 @@ describe('TicketsPage — developer assignment filter', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'التذاكر المُسندة إلى ديمة الحربي' }));
-    await waitFor(() => expect(mockGet).toHaveBeenCalledWith('/tickets?developerId=dev-1'));
+    await waitFor(() => expect(mockGet).toHaveBeenCalledWith(listUrl({ ...HEAD_APPROVAL, developerId: 'dev-1' })));
 
     await user.click(screen.getByRole('button', { name: 'تذاكري' }));
 
     await waitFor(() => {
-      expect(mockGet).toHaveBeenCalledWith('/tickets?mine=true');
+      expect(mockGet).toHaveBeenCalledWith(listUrl({ ...HEAD_APPROVAL, mine: 'true' }));
     });
     expect(mockGet.mock.calls.some(([url]) => String(url).includes('mine=true') && String(url).includes('developerId='))).toBe(false);
   });

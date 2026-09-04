@@ -6,9 +6,11 @@ export interface ActionBucket {
 }
 
 /**
- * Statuses each role is expected to act on. Shared by the daily digest and the
- * dashboard activity hub so a ticket that lands in the morning email also
- * appears on the terminal. A bucket only lists statuses that role can move.
+ * Statuses each role is expected to act on. Shared by the daily digest, the
+ * dashboard activity hub, and the tickets-list inbox pills
+ * (`frontend/src/lib/ticket-list-filters.ts`) so a ticket that lands in the
+ * morning email also appears on the terminal. A bucket only lists statuses
+ * that role can move.
  */
 export const ACTION_BUCKETS: Record<UserRole, ActionBucket[]> = {
   [UserRole.PROGRAMMING_HEAD]: [

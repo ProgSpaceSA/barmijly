@@ -79,11 +79,12 @@ function nextTicketTime(cached: unknown) {
   return new Date(ticketTime(cached) + 1).toISOString();
 }
 
-export function useTickets(filters: Record<string, string> = {}) {
+export function useTickets(filters: Record<string, string> = {}, options?: { enabled?: boolean }) {
   const params = new URLSearchParams(filters).toString();
   return useQuery({
     queryKey: qk.tickets.list(filters),
     queryFn: () => api.get(`/tickets?${params}`).then(r => r.data),
+    enabled: options?.enabled ?? true,
   });
 }
 

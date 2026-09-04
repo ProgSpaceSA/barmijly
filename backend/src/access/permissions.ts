@@ -106,6 +106,22 @@ export const ACTIONS = [
   /** Turn a requirement into a DRAFT ticket. Never bypasses approval. */
   'requirement:promote',
 
+  // ---- Dev hub: tools ---------------------------------------------------
+  /** Read the tools catalogue and the dev-cycle guides. Everyone signed in. */
+  'tool:read',
+  /** Ask for a tool to be added. Lands as REQUESTED — never live on its own. */
+  'tool:request',
+  /** Approve, decline, edit or retire a tool. Leadership only. */
+  'tool:manage',
+
+  // ---- Dev hub: complaints & improvements -------------------------------
+  /** See own rows, rows assigned to you, and (if you triage) every row. */
+  'feedback:read',
+  /** File a complaint, improvement, or inquiry. Anyone signed in. */
+  'feedback:create',
+  /** Reassign and change status on any row. Leadership only. */
+  'feedback:triage',
+
   // ---- People -----------------------------------------------------------
   'user:read',
   /** Read the dev/QA directory without full user admin. */
@@ -167,6 +183,10 @@ const REQUESTER_ACTIONS: Action[] = [
   'comment:create',
   'attachment:upload',
   'report:read',
+  // Reads the kit, but does not ask for it — the hub is the dev section's.
+  'tool:read',
+  'feedback:read',
+  'feedback:create',
 ];
 
 const SYSTEM_OWNER_ACTIONS: Action[] = [
@@ -181,6 +201,9 @@ const SYSTEM_OWNER_ACTIONS: Action[] = [
   'report:read',
   // Reads the backlog they are affected by; they file tickets, not requirements.
   'requirement:read',
+  'tool:read',
+  'feedback:read',
+  'feedback:create',
 ];
 
 const DEVELOPER_ACTIONS: Action[] = [
@@ -210,6 +233,11 @@ const DEVELOPER_ACTIONS: Action[] = [
   'structure:read-all',
   'report:read',
   'requirement:read',
+  // The developer is who notices the gap in the kit, so the ask starts here.
+  'tool:read',
+  'tool:request',
+  'feedback:read',
+  'feedback:create',
 ];
 
 const QA_ACTIONS: Action[] = [
@@ -235,6 +263,10 @@ const QA_ACTIONS: Action[] = [
   'structure:read-all',
   'report:read',
   'requirement:read',
+  'tool:read',
+  'tool:request',
+  'feedback:read',
+  'feedback:create',
 ];
 
 const PROJECT_MANAGER_ACTIONS: Action[] = [
@@ -278,6 +310,12 @@ const PROJECT_MANAGER_ACTIONS: Action[] = [
   'requirement:create',
   'requirement:triage',
   'requirement:promote',
+  'tool:read',
+  'tool:request',
+  'tool:manage',
+  'feedback:read',
+  'feedback:create',
+  'feedback:triage',
 ];
 
 const PROGRAMMING_HEAD_ACTIONS: Action[] = [
@@ -335,6 +373,12 @@ const SENIOR_MANAGEMENT_ACTIONS: Action[] = [
   'requirement:create',
   'requirement:triage',
   'requirement:promote',
+  'tool:read',
+  'tool:request',
+  'tool:manage',
+  'feedback:read',
+  'feedback:create',
+  'feedback:triage',
 ];
 
 /** Full structure admin — implies roster and create endpoints. */

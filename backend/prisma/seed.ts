@@ -10,6 +10,11 @@ import {
   TaskStatus,
   InvitationStatus,
   SignupRequestStatus,
+  ToolCategory,
+  ToolStatus,
+  ToolTeam,
+  FeedbackKind,
+  FeedbackStatus,
 } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
@@ -102,6 +107,18 @@ async function reset() {
   await prisma.emailInvitation.deleteMany();
   await prisma.signupRequest.deleteMany();
   await prisma.ticketTemplate.deleteMany();
+  // Testing domain — must go before users due to FK on ownerId / createdById
+  await prisma.bug.deleteMany();
+  await prisma.testCase.deleteMany();
+  await prisma.testSuite.deleteMany();
+  // Meetings domain
+  await prisma.requirement.deleteMany();
+  await prisma.meetingPoint.deleteMany();
+  await prisma.meeting.deleteMany();
+  // Hub domain
+  await prisma.feedback.deleteMany();
+  await prisma.tool.deleteMany();
+  await prisma.hubGuide.deleteMany();
   await prisma.user.deleteMany();
   await prisma.department.deleteMany();
   await prisma.system.deleteMany();
@@ -726,6 +743,10 @@ async function main() {
     [NotificationType.REQUIREMENT_RAISED]: (t) => ({ title: 'متطلب جديد على اللوحة', body: `سُجّل المتطلب «${t}»` }),
     [NotificationType.REQUIREMENT_ASSIGNED]: (t) => ({ title: 'أُسند إليك متطلب', body: `أُسند إليك المتطلب «${t}»` }),
     [NotificationType.TEST_CASE_FAILED]: (t) => ({ title: 'فشلت حالة اختبار', body: `فشلت حالة اختبار على «${t}»` }),
+    [NotificationType.TOOL_REQUESTED]: (t) => ({ title: 'طلب إضافة أداة', body: `طُلبت أداة جديدة أثناء العمل على «${t}»` }),
+    [NotificationType.TOOL_DECIDED]: (t) => ({ title: 'صدر قرار على أداة', body: `صدر قرار على أداة طُلبت أثناء «${t}»` }),
+    [NotificationType.FEEDBACK_CREATED]: (t) => ({ title: 'طلب شكوى أو تحسين', body: `قُدّم طلب أثناء العمل على «${t}»` }),
+    [NotificationType.FEEDBACK_UPDATED]: (t) => ({ title: 'تحديث على طلبك', body: `تحدّث طلب مرتبط بـ «${t}»` }),
   };
 
   const types = Object.values(NotificationType);
@@ -940,6 +961,223 @@ async function main() {
     status: InvitationStatus.ACCEPTED,
     expiresAt: daysFromNow(-5),
     password: hash,
+  });
+
+  const developerAll = roster.developer.call;
+  // Prefer anas.hagras1999+0 when present; otherwise requester=developer, decider=head.
+  const hubOwner =
+    (await prisma.user.findUnique({ where: { email: seedEmail('0') } })) ?? null;
+  const toolRequesterId = hubOwner?.id ?? developerAll.id;
+  const toolDeciderId = hubOwner?.id ?? headAll.id;
+
+  await prisma.tool.createMany({
+    data: [
+      // ── Testing & API ───────────────────────────────────────────────────
+      {
+        name: 'Postman',
+        website: 'https://www.postman.com',
+        description: 'Run and share saved API requests across the team',
+        gettingStarted:
+          '1. Install the app or use the web client\n2. Request an invite to the team workspace\n3. Import the shared collection',
+        categories: [ToolCategory.TESTING],
+        teams: [ToolTeam.BACKEND, ToolTeam.FRONTEND, ToolTeam.MOBILE, ToolTeam.QA],
+        status: ToolStatus.APPROVED,
+        requestedById: toolRequesterId,
+        decidedById: toolDeciderId,
+        decidedAt: hoursAgo(720),
+      },
+      {
+        name: 'Jam',
+        website: 'https://jam.dev',
+        description:
+          'Bug reporting with instant repro: screen recording, console, and network — share a link instead of a long write-up',
+        gettingStarted:
+          '1. Install the Jam browser extension\n2. Capture the bug (click Jam → record)\n3. Paste the Jam link on the bug or ticket in Barmijly\n4. Always link the report to the related ticket',
+        categories: [ToolCategory.TESTING],
+        teams: [ToolTeam.QA, ToolTeam.FRONTEND, ToolTeam.MOBILE],
+        status: ToolStatus.APPROVED,
+        requestedById: toolRequesterId,
+        decidedById: toolDeciderId,
+        decidedAt: hoursAgo(180),
+      },
+      // ── Design ─────────────────────────────────────────────────────────
+      {
+        name: 'Figma',
+        website: 'https://figma.com',
+        description: 'UI design, prototypes, and in-browser design review comments',
+        gettingStarted:
+          '1. Sign in with Google or email\n2. Ask the PM for Viewer or Editor access\n3. Open the team Design System file',
+        categories: [ToolCategory.DESIGN],
+        teams: [ToolTeam.FRONTEND, ToolTeam.MOBILE, ToolTeam.PROJECT_MANAGEMENT],
+        status: ToolStatus.APPROVED,
+        requestedById: toolRequesterId,
+        decidedById: toolDeciderId,
+        decidedAt: hoursAgo(600),
+      },
+      // ── Deployment ─────────────────────────────────────────────────────
+      {
+        name: 'GitHub Actions',
+        website: 'https://github.com/features/actions',
+        description: 'CI/CD pipelines: tests, builds, and deploys on every push or pull request',
+        gettingStarted:
+          '1. Create .github/workflows in the repo\n2. Add a YAML file with build and deploy steps\n3. Check logs under the Actions tab',
+        categories: [ToolCategory.DEPLOYMENT],
+        teams: [ToolTeam.BACKEND, ToolTeam.FRONTEND, ToolTeam.MOBILE, ToolTeam.QA],
+        status: ToolStatus.APPROVED,
+        requestedById: toolRequesterId,
+        decidedById: toolDeciderId,
+        decidedAt: hoursAgo(900),
+      },
+      {
+        name: 'Docker',
+        website: 'https://www.docker.com',
+        description: 'Package apps in containers that run the same from local to production',
+        gettingStarted:
+          '1. Install Docker Desktop\n2. Run docker compose up from the project root\n3. Check GUIDE.md for required env vars',
+        categories: [ToolCategory.DEPLOYMENT],
+        teams: [ToolTeam.BACKEND, ToolTeam.FRONTEND, ToolTeam.MOBILE],
+        status: ToolStatus.APPROVED,
+        requestedById: toolRequesterId,
+        decidedById: toolDeciderId,
+        decidedAt: hoursAgo(1100),
+      },
+      // ── Monitoring ─────────────────────────────────────────────────────
+      {
+        name: 'Sentry',
+        website: 'https://sentry.io',
+        description: 'Real-time error tracking for backend and frontend with full stack traces',
+        gettingStarted:
+          '1. Create a project in Sentry\n2. Add the DSN to environment variables\n3. Install @sentry/node or @sentry/nextjs',
+        categories: [ToolCategory.MONITORING],
+        teams: [ToolTeam.BACKEND, ToolTeam.FRONTEND, ToolTeam.MOBILE],
+        status: ToolStatus.APPROVED,
+        requestedById: toolRequesterId,
+        decidedById: toolDeciderId,
+        decidedAt: hoursAgo(300),
+      },
+      // ── Database ───────────────────────────────────────────────────────
+      {
+        name: 'TablePlus',
+        website: 'https://tableplus.com',
+        description: 'GUI for PostgreSQL: browse tables, run SQL, inspect live data',
+        gettingStarted:
+          '1. Install the app\n2. Create a connection from DATABASE_URL in .env\n3. Browse tables or run queries',
+        categories: [ToolCategory.DATABASE],
+        teams: [ToolTeam.BACKEND],
+        status: ToolStatus.APPROVED,
+        requestedById: toolRequesterId,
+        decidedById: toolDeciderId,
+        decidedAt: hoursAgo(400),
+      },
+      // ── AI Coding (company-specific setup) ──────────────────────────────
+      {
+        name: 'Cursor',
+        website: 'https://cursor.com',
+        description:
+          'VS Code-based editor with project rules and AI that understands the whole codebase',
+        gettingStarted:
+          '1. Download from cursor.com\n2. Open the repo as a folder\n3. Use Ctrl+K for inline edits and Ctrl+L for chat\n4. Follow the repo .cursor/rules — do not invent process outside them',
+        categories: [ToolCategory.AI_CODING],
+        teams: [ToolTeam.FRONTEND, ToolTeam.BACKEND, ToolTeam.MOBILE, ToolTeam.QA],
+        status: ToolStatus.APPROVED,
+        requestedById: toolRequesterId,
+        decidedById: toolDeciderId,
+        decidedAt: hoursAgo(200),
+      },
+      // ── Security ───────────────────────────────────────────────────────
+      {
+        name: 'Infisical',
+        website: 'https://infisical.com',
+        description:
+          'Secrets manager for the team — env vars and credentials live here, never in git or chat',
+        gettingStarted:
+          '1. Sign in with your work account\n2. Open the project workspace for your system\n3. Pull secrets locally with the Infisical CLI or sync into your .env\n4. Never paste production secrets into Slack, email, or tickets',
+        categories: [ToolCategory.SECURITY],
+        teams: [
+          ToolTeam.FRONTEND,
+          ToolTeam.BACKEND,
+          ToolTeam.MOBILE,
+          ToolTeam.QA,
+          ToolTeam.PROJECT_MANAGEMENT,
+        ],
+        status: ToolStatus.APPROVED,
+        requestedById: toolRequesterId,
+        decidedById: toolDeciderId,
+        decidedAt: hoursAgo(100),
+      },
+      // ── Pending / under review ──────────────────────────────────────────
+      {
+        name: 'Vercel',
+        website: 'https://vercel.com',
+        description: 'Fast Next.js hosting with preview deployments on every pull request',
+        gettingStarted:
+          '1. Connect the GitHub repo\n2. Set environment variables in the Vercel dashboard\n3. Every push to main deploys automatically',
+        categories: [ToolCategory.DEPLOYMENT],
+        teams: [ToolTeam.FRONTEND, ToolTeam.PROJECT_MANAGEMENT],
+        status: ToolStatus.REQUESTED,
+        requestedById: toolRequesterId,
+        decidedById: null,
+        decidedAt: null,
+      },
+    ],
+  });
+
+  await prisma.hubGuide.createMany({
+    data: [
+      {
+        title: 'مسار التذكرة',
+        summary: 'من إنشاء الطلب حتى اعتماد المختبر أو إعادة العمل',
+        steps: [
+          'تُنشأ التذكرة وتُرسل للمراجعة',
+          'يعتمدها رئيس البرمجة قبل أي تنفيذ',
+          'ينفّذ المطوّر العمل ويسلّمه للاختبار',
+          'إن ظهر خلل: سجّل خطأ واربطه بالتذكرة',
+          'يراجع المختبر النتيجة — يعتمدها أو يرفضها لإعادة العمل',
+          'قبل دمج أي كود: يراجعه المدير أو زميل — لا دمج بلا مراجعة',
+        ],
+        sortOrder: 0,
+        createdById: headAll.id,
+        updatedById: headAll.id,
+      },
+      {
+        title: 'قواعد عامة للمطوّرين',
+        summary: 'سلوك يومي متفق عليه في كل أنظمة ومشاريع الشركة',
+        steps: [
+          'إذا صرت بلا عمل (idle) — تواصل مع مديرك فوراً لطلب مهمة',
+          'قبل يوم إجازة أو غياب: سلّم حالة التذاكر المفتوحة ومن يستطيع المتابعة',
+          'الأسرار في Infisical فقط — لا ترفعها في الكود أو المحادثات',
+          'لا تدفع مباشرةً إلى main — كل تغيير يمر بطلب دمج',
+          'كل طلب دمج يراجعه المدير أو زميل قبل الدمج — لا استثناء',
+          'أداة جديدة يعتمدها الفريق؟ أضفها من تبويب الأدوات في دليل العمل',
+          'لديك شكوى أو تحسين أو استفسار؟ سجّله في تبويب الشكاوى والتحسينات',
+        ],
+        sortOrder: 1,
+        createdById: headAll.id,
+        updatedById: headAll.id,
+      },
+    ],
+  });
+
+  await prisma.feedback.createMany({
+    data: [
+      {
+        title: 'We need a clearer communication channel',
+        body: 'Daily questions are split across email and chat groups. We need one agreed channel.',
+        kind: FeedbackKind.IMPROVEMENT,
+        status: FeedbackStatus.OPEN,
+        proposedSolution: 'One agreed channel for the programming department',
+        createdById: developerAll.id,
+        assigneeId: headAll.id,
+      },
+      {
+        title: 'Payroll statement inquiry',
+        body: 'Last month’s payslip did not arrive and I need clarification before end of week.',
+        kind: FeedbackKind.INQUIRY,
+        status: FeedbackStatus.OPEN,
+        createdById: developerAll.id,
+        assigneeId: null,
+      },
+    ],
   });
 
   const accounts = loginAccounts();

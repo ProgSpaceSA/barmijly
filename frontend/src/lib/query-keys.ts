@@ -105,6 +105,32 @@ export const qk = {
     openCount: () => ["requirements", "open-count"] as const,
   },
 
+  /**
+   * The dev-hub tools catalogue. A decision moves a row between the catalogue
+   * and the pending queue, so both read off this one prefix rather than two
+   * keys that would leave the queue showing a tool already approved.
+   */
+  tools: {
+    all: ["tools"] as const,
+    list: (filters: Record<string, string>) => ["tools", "list", filters] as const,
+    pendingCount: () => ["tools", "pending-count"] as const,
+  },
+
+  /**
+   * Complaints and improvements on the hub. A status change moves a row
+   * between the inbox badge and the list, so both read off this prefix.
+   */
+  feedback: {
+    all: ["feedback"] as const,
+    list: (filters: Record<string, string>) => ["feedback", "list", filters] as const,
+    inboxCount: () => ["feedback", "inbox-count"] as const,
+  },
+
+  guides: {
+    all: ["guides"] as const,
+    list: () => ["guides", "list"] as const,
+  },
+
   users: {
     all: ["users"] as const,
     list: () => ["users", "list"] as const,

@@ -1,13 +1,38 @@
-import { IsOptional, IsEnum, IsUUID, IsString, IsBoolean } from 'class-validator';
+import { IsOptional, IsEnum, IsUUID, IsString, IsBoolean, IsArray, ArrayMaxSize } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { TicketStatus, TicketType, Priority } from '@prisma/client';
 import { Transform } from 'class-transformer';
+
+function splitStatuses({ value }: { value: unknown }): TicketStatus[] | undefined {
+  if (value == null || value === '') return undefined;
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(',')
+      : [];
+  const parts = raw
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter(Boolean);
+  return parts.length ? [...new Set(parts)] as TicketStatus[] : undefined;
+}
 
 export class FilterTicketsDto {
   @ApiPropertyOptional({ enum: TicketStatus })
   @IsOptional()
   @IsEnum(TicketStatus)
   status?: TicketStatus;
+
+  @ApiPropertyOptional({
+    enum: TicketStatus,
+    isArray: true,
+    description: 'Comma-separated TicketStatus values (e.g. NEW,AWAITING_APPROVAL). Ignored when overdue=true.',
+  })
+  @IsOptional()
+  @Transform(splitStatuses)
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsEnum(TicketStatus, { each: true })
+  statuses?: TicketStatus[];
 
   @ApiPropertyOptional({ enum: TicketType })
   @IsOptional()

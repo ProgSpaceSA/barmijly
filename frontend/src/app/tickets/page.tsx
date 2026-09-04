@@ -12,9 +12,23 @@ import { useDebouncedSearch } from "@/hooks/useDebouncedValue";
 import { useAuthStore, type UserRole } from "@/store/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { TICKET_MINE_LABEL, TICKET_STATUS_LABELS } from "@/lib/constants";
+import {
+  TICKET_CREATED_BY_ME_LABEL,
+  TICKET_MINE_LABEL,
+  TICKET_STATUS_LABELS,
+} from "@/lib/constants";
 import { ticketStatusFilterKeys } from "@/lib/permissions";
-import { Plus, Search, User } from "lucide-react";
+import {
+  TICKET_OVERDUE_KEY,
+  canFilterCreatedByMe,
+  emptyTicketListView,
+  statusesParamToKey,
+  ticketListDefaultView,
+  ticketListQuery,
+  ticketStatusShortcuts,
+  type TicketListView,
+} from "@/lib/ticket-list-filters";
+import { PenLine, Plus, Search, User } from "lucide-react";
 import api from "@/lib/api";
 import { qk } from "@/lib/query-keys";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
@@ -28,9 +42,33 @@ function statusFilterPills(role: UserRole | undefined) {
   ).map(([key, label]) => ({ key, label }));
   return [
     { key: "", label: "الكل" },
+    ...ticketStatusShortcuts(role).map(({ key, label }) => ({ key, label })),
     ...statuses,
-    { key: "OVERDUE", label: "متأخرة" },
+    { key: TICKET_OVERDUE_KEY, label: "متأخرة" },
   ];
+}
+
+function viewFromSearchParams(params: URLSearchParams, role: UserRole | undefined): { hasIntent: boolean; view: TicketListView } {
+  const overdue = params.get("overdue") === "true";
+  const mine = params.get("mine") === "true";
+  const developerId = params.get("developerId") ?? "";
+  const status = params.get("status") ?? "";
+  const statuses = params.get("statuses") ?? "";
+  const hasIntent = overdue || mine || Boolean(developerId) || Boolean(status) || Boolean(statuses);
+  const activeStatus = overdue
+    ? TICKET_OVERDUE_KEY
+    : statuses
+      ? statusesParamToKey(statuses, role)
+      : status;
+  return {
+    hasIntent,
+    view: {
+      ...emptyTicketListView(),
+      activeStatus,
+      mineOnly: mine,
+      developerId: mine ? "" : developerId,
+    },
+  };
 }
 
 function FilterPill({ label, active, onClick, icon, ariaLabel }: { label: string; active: boolean; onClick: () => void; icon?: React.ReactNode; ariaLabel?: string }) {
@@ -38,6 +76,7 @@ function FilterPill({ label, active, onClick, icon, ariaLabel }: { label: string
     <button
       onClick={onClick}
       aria-label={ariaLabel}
+      aria-pressed={active}
       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap"
       style={{
         background: active ? "var(--card)" : "transparent",
@@ -53,27 +92,19 @@ function FilterPill({ label, active, onClick, icon, ariaLabel }: { label: string
 function TicketsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const overdueOnLoad = searchParams.get("overdue") === "true";
-  const mineOnLoad = searchParams.get("mine") === "true";
-  const developerOnLoad = searchParams.get("developerId") ?? "";
   const { user } = useAuthStore();
-  const [filters, setFilters] = useState<Record<string, string>>(() => {
-    const initial: Record<string, string> = {};
-    if (overdueOnLoad) initial.overdue = "true";
-    if (mineOnLoad) initial.mine = "true";
-    else if (developerOnLoad) initial.developerId = developerOnLoad;
-    return initial;
-  });
-  const [activeStatus, setActiveStatus] = useState(() =>
-    overdueOnLoad ? "OVERDUE" : ""
-  );
-  const [activeCompany, setActiveCompany] = useState("");
-  const [mineOnly, setMineOnly] = useState(mineOnLoad);
-  const [developerId, setDeveloperId] = useState(mineOnLoad ? "" : developerOnLoad);
-  const { data, isLoading } = useTickets(filters);
+  const role = user?.role;
+  const urlParsed = viewFromSearchParams(searchParams, role);
+  const [override, setOverride] = useState<TicketListView | null>(null);
+  const [searchFilters, setSearchFilters] = useState<Record<string, string>>({});
+  const view = override ?? (urlParsed.hasIntent ? urlParsed.view : ticketListDefaultView(role));
+  const filtersReady = urlParsed.hasIntent || Boolean(role);
+  const filters = { ...ticketListQuery(view, role, user?.id), ...searchFilters };
+  const { data, isLoading, isPending } = useTickets(filters, { enabled: filtersReady });
 
-  const isDeveloper = user?.role === "DEVELOPER";
+  const isDeveloper = role === "DEVELOPER";
   const canFilterByDeveloper = !isDeveloper;
+  const showCreatedByMe = canFilterCreatedByMe(role);
 
   const { data: companies } = useQuery({
     queryKey: qk.companies.list(),
@@ -97,47 +128,50 @@ function TicketsPageContent() {
     enabled: isDeveloper,
   });
 
-  const canCreate = user?.role && !["SENIOR_MANAGEMENT", "DEVELOPER", "QA"].includes(user.role);
+  const canCreate = role && !["SENIOR_MANAGEMENT", "DEVELOPER", "QA"].includes(role);
+  const showSkeleton = !filtersReady || isLoading || isPending;
 
-  const setFilter = (key: string, val: string) => {
-    setFilters(prev =>
-      val ? { ...prev, [key]: val } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== key))
-    );
+  const dropPage = (prev: Record<string, string>) => {
+    const next = { ...prev };
+    delete next.page;
+    return next;
   };
 
   const { search, onSearchChange } = useDebouncedSearch((value) =>
-    setFilter("search", value),
+    setSearchFilters((prev) => {
+      const next = dropPage(prev);
+      if (value) next.search = value;
+      else delete next.search;
+      return next;
+    }),
   );
 
   const setStatusFilter = (status: string) => {
-    setActiveStatus(status);
-    setFilters(prev => {
-      const next: Record<string, string> = { ...prev };
-      delete next.status;
-      delete next.overdue;
-      if (status === "OVERDUE") next.overdue = "true";
-      else if (status) next.status = status;
-      return next;
-    });
+    setOverride({ ...view, activeStatus: status });
+    setSearchFilters(dropPage);
   };
 
   const setCompanyFilter = (companyId: string) => {
-    setActiveCompany(companyId);
-    setFilter("companyId", companyId);
+    setOverride({ ...view, activeCompany: companyId });
+    setSearchFilters(dropPage);
   };
 
-  const setAssignmentFilter = (next: { mine?: boolean; developerId?: string }) => {
-    const mine = Boolean(next.mine);
-    const nextDeveloperId = next.developerId ?? "";
-    setMineOnly(mine);
-    setDeveloperId(nextDeveloperId);
-    setFilters(prev => {
-      const updated: Record<string, string> = { ...prev };
-      if (mine) updated.mine = "true";
-      else delete updated.mine;
-      if (nextDeveloperId) updated.developerId = nextDeveloperId;
-      else delete updated.developerId;
-      return updated;
+  const setAssignmentFilter = (next: { mine?: boolean; created?: boolean; developerId?: string }) => {
+    setOverride({
+      ...view,
+      mineOnly: Boolean(next.mine),
+      createdOnly: Boolean(next.created),
+      developerId: next.developerId ?? "",
+    });
+    setSearchFilters(dropPage);
+  };
+
+  const setPage = (page: string) => {
+    setSearchFilters((prev) => {
+      const next = { ...prev };
+      if (page && page !== "1") next.page = page;
+      else delete next.page;
+      return next;
     });
   };
 
@@ -182,12 +216,12 @@ function TicketsPageContent() {
             <CodeComment>الشركات</CodeComment>
           </p>
           <div className="brm-pill-rail flex flex-wrap gap-1.5 p-1 rounded-xl w-fit max-w-full" style={{ background: "var(--muted)" }}>
-            <FilterPill label="الكل" active={activeCompany === ""} onClick={() => setCompanyFilter("")} />
+            <FilterPill label="الكل" active={view.activeCompany === ""} onClick={() => setCompanyFilter("")} />
             {companyList.map((c: any) => (
               <FilterPill
                 key={c.id}
                 label={c.name}
-                active={activeCompany === c.id}
+                active={view.activeCompany === c.id}
                 onClick={() => setCompanyFilter(c.id)}
                 icon={<CompanyLogo company={c} size="xs" />}
               />
@@ -202,8 +236,8 @@ function TicketsPageContent() {
           <CodeComment>الحالة</CodeComment>
         </p>
         <div className="brm-pill-rail flex flex-wrap gap-1.5 p-1 rounded-xl w-fit max-w-full" style={{ background: "var(--muted)" }}>
-          {statusFilterPills(user?.role).map(({ key, label }) => (
-            <FilterPill key={key} label={label} active={activeStatus === key} onClick={() => setStatusFilter(key)} />
+          {statusFilterPills(role).map(({ key, label }) => (
+            <FilterPill key={key || "all"} label={label} active={view.activeStatus === key} onClick={() => setStatusFilter(key)} />
           ))}
         </div>
       </div>
@@ -214,13 +248,21 @@ function TicketsPageContent() {
           <CodeComment>الإسناد</CodeComment>
         </p>
         <div className="brm-pill-rail flex flex-wrap gap-1.5 p-1 rounded-xl w-fit max-w-full" style={{ background: "var(--muted)" }} role="group" aria-label="الإسناد">
-          <FilterPill label="الكل" ariaLabel="كل التذاكر" active={!mineOnly && !developerId} onClick={() => setAssignmentFilter({})} />
+          <FilterPill label="الكل" ariaLabel="كل التذاكر" active={!view.mineOnly && !view.createdOnly && !view.developerId} onClick={() => setAssignmentFilter({})} />
           <FilterPill
             label={TICKET_MINE_LABEL}
-            active={mineOnly}
+            active={view.mineOnly}
             onClick={() => setAssignmentFilter({ mine: true })}
             icon={<User className="w-3 h-3" />}
           />
+          {showCreatedByMe && (
+            <FilterPill
+              label={TICKET_CREATED_BY_ME_LABEL}
+              active={view.createdOnly}
+              onClick={() => setAssignmentFilter({ created: true })}
+              icon={<PenLine className="w-3 h-3" />}
+            />
+          )}
           {canFilterByDeveloper && developerList.map((dev) => {
             const name = [dev.firstName, dev.lastName].filter(Boolean).join(" ");
             return (
@@ -228,7 +270,7 @@ function TicketsPageContent() {
                 key={dev.id}
                 label={name}
                 ariaLabel={`التذاكر المُسندة إلى ${name}`}
-                active={developerId === dev.id}
+                active={view.developerId === dev.id}
                 onClick={() => setAssignmentFilter({ developerId: dev.id })}
               />
             );
@@ -236,7 +278,7 @@ function TicketsPageContent() {
         </div>
       </div>
 
-      {!isLoading && (
+      {!showSkeleton && (
         <p className="mb-4 flex items-baseline gap-2">
           <span className="text-xl font-bold tabular-nums" style={{ color: "var(--foreground)" }}>
             {data?.total ?? 0}
@@ -245,7 +287,7 @@ function TicketsPageContent() {
         </p>
       )}
 
-      {isLoading ? (
+      {showSkeleton ? (
         <SkeletonList count={6} />
       ) : !data?.data?.length ? (
         <EmptyState
@@ -267,7 +309,7 @@ function TicketsPageContent() {
                   key={p}
                   variant={String(p) === (filters.page || "1") ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setFilter("page", String(p))}
+                  onClick={() => setPage(String(p))}
                 >
                   {p}
                 </Button>

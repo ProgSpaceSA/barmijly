@@ -61,6 +61,14 @@ const EXPECTED: Record<Action, UserRole[]> = {
   'requirement:triage': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
   'requirement:promote': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
 
+  // ---- dev hub ----------------------------------------------------------
+  'tool:read': [UserRole.TICKET_REQUESTER, UserRole.SYSTEM_OWNER, UserRole.DEVELOPER, UserRole.QA, UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
+  'tool:request': [UserRole.DEVELOPER, UserRole.QA, UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
+  'tool:manage': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
+  'feedback:read': [UserRole.TICKET_REQUESTER, UserRole.SYSTEM_OWNER, UserRole.DEVELOPER, UserRole.QA, UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
+  'feedback:create': [UserRole.TICKET_REQUESTER, UserRole.SYSTEM_OWNER, UserRole.DEVELOPER, UserRole.QA, UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
+  'feedback:triage': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
+
   // ---- people -----------------------------------------------------------
   'user:read': [UserRole.PROGRAMMING_HEAD, UserRole.SENIOR_MANAGEMENT],
   'user:read-directory': [UserRole.PROJECT_MANAGER, UserRole.PROGRAMMING_HEAD],

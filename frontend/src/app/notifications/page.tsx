@@ -32,6 +32,7 @@ import {
   RefreshCw,
   TriangleAlert,
   UserPlus,
+  Wrench,
   XCircle,
   CircleHelp,
   type LucideIcon,
@@ -88,6 +89,8 @@ function requirementLabel(requirement?: NotificationItem["requirement"]) {
 function notificationHref(n: NotificationItem): string | null {
   if (n.ticketId) return `/tickets/${n.ticketId}`;
   if (n.requirementId) return `/requirements/${n.requirementId}`;
+  if (n.type === "TOOL_REQUESTED" || n.type === "TOOL_DECIDED") return "/hub";
+  if (n.type === "FEEDBACK_CREATED" || n.type === "FEEDBACK_UPDATED") return "/hub?tab=feedback";
   return null;
 }
 
@@ -104,6 +107,10 @@ const TYPE_META: Record<string, { color: string; icon: LucideIcon }> = {
   EXECUTION_COMPLETED: { color: "#10B981", icon: CheckCircle2 },
   CLOSURE_APPROVAL_REQUESTED: { color: "#14B8A6", icon: ClipboardCheck },
   TASK_ASSIGNED: { color: "#6366F1", icon: ListTodo },
+  TOOL_REQUESTED: { color: "#6366F1", icon: Wrench },
+  TOOL_DECIDED: { color: "#10B981", icon: CheckCircle2 },
+  FEEDBACK_CREATED: { color: "#F59E0B", icon: CircleHelp },
+  FEEDBACK_UPDATED: { color: "#8B5CF6", icon: RefreshCw },
 };
 
 const DEFAULT_META = { color: "#6366F1", icon: Bell };

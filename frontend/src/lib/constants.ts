@@ -21,6 +21,12 @@ export const NAV_UNREAD_LABEL = "إشعار غير مقروء";
 /** Tickets list — assignment filter (ticket assigned to me, or a task assigned to me). */
 export const TICKET_MINE_LABEL = "تذاكري";
 
+/** Tickets list — tickets the caller filed. */
+export const TICKET_CREATED_BY_ME_LABEL = "أنشأتها";
+
+/** Tickets list — combined statuses this role is expected to act on. */
+export const TICKET_ACTION_INBOX_LABEL = "تحتاج إجراء";
+
 function arabicDays(n: number): string {
   if (n === 1) return "يوم";
   if (n === 2) return "يومان";
@@ -494,6 +500,10 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   CLOSURE_APPROVAL_REQUESTED: "اعتماد الإغلاق",
   TASK_ASSIGNED: "مهمة جديدة",
   BUG_ASSIGNED: "خطأ",
+  TOOL_REQUESTED: "طلب أداة",
+  TOOL_DECIDED: "قرار أداة",
+  FEEDBACK_CREATED: "شكوى أو تحسين",
+  FEEDBACK_UPDATED: "تحديث طلب",
 };
 
 /** Heading shown on the notification row. Distinct from the type chip. */
@@ -512,6 +522,10 @@ export const NOTIFICATION_TITLES: Record<string, string> = {
   CLOSURE_APPROVAL_REQUESTED: "مطلوب اعتماد الإغلاق",
   TASK_ASSIGNED: "تم تكليفك بمهمة جديدة",
   BUG_ASSIGNED: "خطأ على تذكرتك",
+  TOOL_REQUESTED: "طلب أداة جديد بانتظار القرار",
+  TOOL_DECIDED: "تحديث على طلب أداة",
+  FEEDBACK_CREATED: "شكوى أو تحسين جديد",
+  FEEDBACK_UPDATED: "تحديث على شكوى أو تحسين",
 };
 
 /** English titles stored before in-app copy switched to Arabic. */
@@ -1242,3 +1256,177 @@ export const MEETING_LABELS = {
   copiedCode: "تم نسخ الرقم",
   copyFailed: "تعذر نسخ الرقم",
 } as const;
+
+export const TOOL_CATEGORY_LABELS: Record<string, string> = {
+  AI_CODING: "AI Coding",
+  TESTING: "Testing",
+  DESIGN: "Design",
+  DEPLOYMENT: "Deployment",
+  MONITORING: "Monitoring",
+  DATABASE: "Database",
+  COMMUNICATION: "Communication",
+  SECURITY: "Security",
+  OTHER: "Other",
+};
+
+export const TOOL_TEAM_LABELS: Record<string, string> = {
+  FRONTEND: "Frontend",
+  BACKEND: "Backend",
+  MOBILE: "Mobile",
+  QA: "QA",
+  PROJECT_MANAGEMENT: "Project Management",
+};
+
+export const TOOL_STATUS_LABELS: Record<string, string> = {
+  REQUESTED: "بانتظار القرار",
+  APPROVED: "معتمدة",
+  DECLINED: "مرفوضة",
+  RETIRED: "متوقفة",
+};
+
+export const TOOL_STATUS_COLORS: Record<string, string> = {
+  REQUESTED: "bg-amber-100 text-amber-700",
+  APPROVED: "bg-emerald-100 text-emerald-700",
+  DECLINED: "bg-red-100 text-red-700",
+  RETIRED: "bg-slate-100 text-slate-600",
+};
+
+export const HUB_LABELS = {
+  hubTitle: "دليل العمل",
+  hubDescription: "أدوات قسم التطوير ودورة العمل المتفق عليها",
+  tabTools: "الأدوات",
+  tabGuides: "دورة العمل",
+  tabFeedback: "الشكاوى والتحسينات",
+  pendingHub: "بانتظارك في دليل العمل",
+
+  newTool: "طلب أداة",
+  searchTools: "بحث في الأدوات...",
+  toolCount: "أداة",
+  filterCategory: "التصنيف",
+  filterStatus: "الحالة",
+  filterAll: "الكل",
+  noTools: "لا توجد أدوات",
+  noToolsHint: "اطلب أول أداة ليراها بقية الفريق",
+  visitSite: "زيارة الموقع",
+  gettingStarted: "خطوات البدء",
+  showSteps: "عرض خطوات البدء",
+  hideSteps: "إخفاء الخطوات",
+  requestedBy: "أضافها",
+  decidedBy: "اعتمدها",
+  declineReason: "سبب الرفض",
+  whenToUse: "متى تُستخدم",
+  sectionNewlyAdded: "جديدة",
+  sectionNewlyAddedHint: "بانتظار قرار الاعتماد",
+  guidesIntro: "قواعد العمل المتفق عليها لكل أنظمة ومشاريع الشركة",
+  expandGuide: "عرض الخطوات",
+  collapseGuide: "إخفاء الخطوات",
+  toolCountInSection: "أداة",
+  newGuide: "إضافة قسم",
+  editGuide: "تعديل القسم",
+  deleteGuide: "حذف القسم",
+  deleteGuideConfirm: "حذف قسم دورة العمل هذا؟",
+  guideTitle: "العنوان",
+  guideSummary: "الملخص",
+  guideSteps: "الخطوات",
+  guideStepsHint: "أضف خطوة واحدة على الأقل — تظهر مرقّمة في المعاينة",
+  guideStepN: "خطوة",
+  addGuideStep: "إضافة خطوة",
+  removeGuideStep: "حذف الخطوة",
+  noGuides: "لا توجد أقسام بعد",
+  guideCreated: "تمت إضافة القسم",
+  guideUpdated: "تم تحديث القسم",
+  guideDeleted: "تم حذف القسم",
+
+  total: "الإجمالي",
+  approved: "معتمدة",
+  awaitingDecision: "بانتظار القرار",
+
+  toolName: "اسم الأداة",
+  toolWebsite: "الموقع",
+  toolWebsiteHint: "رابط كامل يبدأ بـ https://",
+  toolDescription: "الوصف",
+  toolDescriptionHint: "سطر أو سطران: ما الذي تحلّه هذه الأداة؟",
+  toolGettingStarted: "خطوات البدء",
+  toolGettingStartedHint: "ثلاث أو أربع خطوات قصيرة تكفي زميلاً ليبدأ",
+  toolCategories: "التصنيفات",
+  toolCategoriesHint: "اختر تصنيفاً واحداً على الأقل",
+  toolTeams: "الفريق المستهدف",
+  toolTeamsHint: "Frontend / Backend / Mobile / QA / إدارة المشاريع — اختر فريقاً واحداً على الأقل",
+  filterTeam: "الفريق",
+  editTool: "تعديل الأداة",
+
+  approve: "اعتماد",
+  decline: "رفض",
+  retire: "إيقاف",
+  declineTitle: "رفض الأداة",
+  retireTitle: "إيقاف الأداة",
+  declineNote: "السبب",
+  declineNoteHint: "يبقى السبب ظاهراً حتى لا يتكرر الطلب نفسه",
+  approveConfirm: "اعتماد الأداة",
+
+  toolRequested: "أُرسل الطلب للمراجعة",
+  toolUpdated: "تم تحديث الأداة",
+  toolApproved: "تم اعتماد الأداة",
+  toolDeclined: "تم رفض الأداة",
+  toolRetired: "تم إيقاف الأداة",
+
+  newFeedback: "تقديم طلب",
+  searchFeedback: "بحث في الطلبات...",
+  filterKind: "النوع",
+  filterAssignee: "المسؤول",
+  filterMine: "المسندة إليّ",
+  unassigned: "عام",
+  unassignedHint: "بدون مسؤول معيّن — تصل للإدارة",
+  noFeedback: "لا توجد طلبات",
+  noFeedbackHint: "قدّم شكوى أو تحسيناً أو استفساراً",
+  feedbackTitle: "العنوان",
+  feedbackTitleHint: "جملة واحدة تصف المطلوب",
+  feedbackBody: "تفاصيل الطلب",
+  feedbackBodyHint: "ما الذي يحدث، ولماذا يهم، ومن يتأثر",
+  feedbackKind: "النوع",
+  feedbackAssignee: "المسؤول",
+  proposedSolution: "الحل المقترح",
+  proposedSolutionHint: "اختياري — ماذا تقترح؟",
+  resolutionNote: "ملاحظة الإغلاق",
+  resolutionNoteHint: "ما الذي تم فعله، أو لماذا أُغلق",
+  submittedBy: "قدّمها",
+  assignedTo: "المسؤول",
+  showDetails: "عرض التفاصيل",
+  hideDetails: "إخفاء التفاصيل",
+  feedbackCreated: "تم تقديم الطلب",
+  feedbackUpdated: "تم تحديث الطلب",
+
+  save: "حفظ",
+  saving: "جارٍ الحفظ...",
+  cancel: "إلغاء",
+  confirm: "تأكيد",
+  optional: "اختياري",
+  loadFailed: "تعذر تحميل البيانات",
+} as const;
+
+export const FEEDBACK_KIND_LABELS: Record<string, string> = {
+  IMPROVEMENT: "تحسين",
+  COMPLAINT: "شكوى",
+  INQUIRY: "استفسار",
+};
+
+export const FEEDBACK_KIND_COLORS: Record<string, string> = {
+  IMPROVEMENT: "bg-indigo-100 text-indigo-700",
+  COMPLAINT: "bg-amber-100 text-amber-700",
+  INQUIRY: "bg-sky-100 text-sky-700",
+};
+
+export const FEEDBACK_STATUS_LABELS: Record<string, string> = {
+  OPEN: "مفتوحة",
+  IN_PROGRESS: "قيد المتابعة",
+  RESOLVED: "مُنجزة",
+  CLOSED: "مغلقة",
+};
+
+export const FEEDBACK_STATUS_COLORS: Record<string, string> = {
+  OPEN: "bg-amber-100 text-amber-700",
+  IN_PROGRESS: "bg-indigo-100 text-indigo-700",
+  RESOLVED: "bg-emerald-100 text-emerald-700",
+  CLOSED: "bg-slate-100 text-slate-600",
+};
+

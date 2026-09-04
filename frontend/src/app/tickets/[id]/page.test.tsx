@@ -40,7 +40,14 @@ vi.mock('@/components/tickets/CommentThread', () => ({
   CommentThread: () => null,
 }));
 
+vi.mock('@/components/shared/AttachmentImage', () => ({
+  AttachmentImage: ({ attachmentId, alt, className }: { attachmentId: string; alt: string; className?: string }) => (
+    <img alt={alt} className={className} data-attachment-id={attachmentId} />
+  ),
+}));
+
 import TicketDetailPage from './page';
+import { FILE_PICK_LABELS } from '@/lib/constants';
 
 const params = Object.assign(Promise.resolve({ id: 'ticket-1' }), {
   status: 'fulfilled',
@@ -179,6 +186,39 @@ describe('TicketDetailPage', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'تعديل قالب الفاتورة' })).toBeInTheDocument();
     });
+  });
+
+  it('renders the cover through the authorised attachment, not a public /uploads URL', async () => {
+    mockGet.mockImplementation((url: unknown) => {
+      const path = String(url);
+      if (path.startsWith('/tickets/ticket-1/tasks')) return Promise.resolve({ data: [] });
+      if (path.startsWith('/tickets/ticket-1/assignees')) return Promise.resolve({ data: [] });
+      if (path.startsWith('/tickets/ticket-1')) {
+        return Promise.resolve({
+          data: {
+            ...ticket,
+            coverImageUrl: '/uploads/cover.png',
+            attachments: [
+              {
+                id: 'att-cover',
+                url: '/uploads/cover.png',
+                fileName: 'غلاف.png',
+                mimeType: 'image/png',
+                commentId: null,
+              },
+            ],
+          },
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+
+    await renderPage();
+
+    const cover = await screen.findByRole('img', { name: FILE_PICK_LABELS.coverAlt });
+    expect(cover).toHaveAttribute('data-attachment-id', 'att-cover');
+    expect(document.querySelector('img[src*="/uploads/"]')).toBeNull();
+    expect(screen.queryByRole('img', { name: 'cover' })).toBeNull();
   });
 
   it('shows company and project on separate sidebar rows, with plan fields after ticket metadata', async () => {

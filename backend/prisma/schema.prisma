@@ -80,6 +80,10 @@ enum NotificationType {
   TEST_CASE_FAILED
   REQUIREMENT_RAISED
   REQUIREMENT_ASSIGNED
+  TOOL_REQUESTED
+  TOOL_DECIDED
+  FEEDBACK_CREATED
+  FEEDBACK_UPDATED
 }
 
 enum TaskStatus {
@@ -243,6 +247,12 @@ model User {
   requirementsOwned        Requirement[]              @relation("RequirementOwner")
   requirementsDecided      Requirement[]              @relation("RequirementDecider")
   requirementStatusChanges RequirementStatusHistory[] @relation("RequirementStatusChanger")
+  toolsRequested           Tool[]                     @relation("ToolRequester")
+  toolsDecided             Tool[]                     @relation("ToolDecider")
+  feedbackCreated          Feedback[]                 @relation("FeedbackAuthor")
+  feedbackAssigned         Feedback[]                 @relation("FeedbackAssignee")
+  hubGuidesCreated         HubGuide[]                 @relation("HubGuideAuthor")
+  hubGuidesUpdated         HubGuide[]                 @relation("HubGuideEditor")
 }
 
 model UserSystem {
@@ -953,4 +963,133 @@ model RequirementStatusHistory {
   createdAt     DateTime           @default(now())
 
   @@index([requirementId, createdAt])
+}
+
+/// Where a tool sits in the dev section's kit. The only tag in v1 — role and
+/// project tags can be added later without moving anything that exists.
+enum ToolCategory {
+  AI_CODING
+  TESTING
+  DESIGN
+  DEPLOYMENT
+  MONITORING
+  DATABASE
+  COMMUNICATION
+  SECURITY
+  OTHER
+}
+
+/// A tool is REQUESTED until leadership rules on it. DECLINED rows stay on the
+/// board with their reason: dropping them is what makes the same suggestion
+/// come back every few months. RETIRED mirrors the archive-never-delete rule
+/// tickets follow.
+enum ToolStatus {
+  REQUESTED
+  APPROVED
+  DECLINED
+  RETIRED
+}
+
+/// Who the tool is for. A tool can target more than one team.
+enum ToolTeam {
+  FRONTEND
+  BACKEND
+  MOBILE
+  QA
+  PROJECT_MANAGEMENT
+}
+
+/// A tool the dev section uses, or has been asked to use.
+///
+/// Not scoped to a company or a system: the kit is the same whichever project
+/// a developer is on, which is the whole point of keeping one catalogue.
+model Tool {
+  id             String         @id @default(uuid())
+  name           String
+  website        String
+  description    String
+  /// Three or four lines on getting started. Markdown, rendered read-only.
+  gettingStarted String
+  categories     ToolCategory[]
+  /// Frontend / backend / mobile / QA / PM — who should care about this tool.
+  teams          ToolTeam[]
+  status         ToolStatus     @default(REQUESTED)
+
+  requestedById String
+  requestedBy   User   @relation("ToolRequester", fields: [requestedById], references: [id])
+
+  decidedById  String?
+  decidedBy    User?     @relation("ToolDecider", fields: [decidedById], references: [id])
+  decidedAt    DateTime?
+  /// Why it was declined or retired. Required on decline.
+  decisionNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([requestedById])
+}
+
+/// Improvement, complaint, or inquiry. Not a ticket: no company/system, and a
+/// salary question must not appear on a public board. Visibility is the author,
+/// the named responsible person, and leadership.
+enum FeedbackKind {
+  IMPROVEMENT
+  COMPLAINT
+  INQUIRY
+}
+
+enum FeedbackStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model Feedback {
+  id               String         @id @default(uuid())
+  title            String
+  body             String
+  kind             FeedbackKind
+  status           FeedbackStatus @default(OPEN)
+  /// Optional. What the author would do about it.
+  proposedSolution String?
+  /// Optional. What was done, or why it was closed.
+  resolutionNote   String?
+
+  createdById String
+  createdBy   User @relation("FeedbackAuthor", fields: [createdById], references: [id])
+
+  /// Null means general — leadership's inbox, not a named person.
+  assigneeId String?
+  assignee   User?   @relation("FeedbackAssignee", fields: [assigneeId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([kind])
+  @@index([createdById])
+  @@index([assigneeId])
+}
+
+/// Company-wide workflow rules shown on the hub's «دورة العمل» tab.
+/// Not company-scoped: one ordered list for every SANAM system and project.
+model HubGuide {
+  id        String   @id @default(uuid())
+  title     String
+  summary   String
+  steps     String[]
+  sortOrder Int      @default(0)
+
+  createdById String?
+  createdBy   User?   @relation("HubGuideAuthor", fields: [createdById], references: [id])
+  updatedById String?
+  updatedBy   User?   @relation("HubGuideEditor", fields: [updatedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sortOrder])
 }

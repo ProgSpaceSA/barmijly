@@ -1681,6 +1681,40 @@ describe('TicketsService', () => {
     });
   });
 
+  describe('findAll — statuses filter', () => {
+    it('keeps tickets in any of the listed statuses', async () => {
+      await service.findAll(asUser(UserRole.PROGRAMMING_HEAD), {
+        statuses: [TicketStatus.NEW, TicketStatus.AWAITING_APPROVAL],
+      } as any);
+
+      const where = prisma.ticket.findMany.mock.calls[0][0].where;
+      expect(where.status).toEqual({ in: [TicketStatus.NEW, TicketStatus.AWAITING_APPROVAL] });
+    });
+
+    it('lets overdue win over statuses', async () => {
+      await service.findAll(asUser(UserRole.PROGRAMMING_HEAD), {
+        overdue: true,
+        statuses: [TicketStatus.NEW],
+      } as any);
+
+      const where = prisma.ticket.findMany.mock.calls[0][0].where;
+      expect(where.status).toEqual({
+        notIn: [TicketStatus.CLOSED, TicketStatus.COMPLETED, TicketStatus.REJECTED],
+      });
+      expect(where.estimatedDeadline).toEqual({ lt: expect.any(Date) });
+    });
+
+    it('prefers statuses over a single status', async () => {
+      await service.findAll(asUser(UserRole.PROGRAMMING_HEAD), {
+        status: TicketStatus.APPROVED,
+        statuses: [TicketStatus.NEW, TicketStatus.AWAITING_APPROVAL],
+      } as any);
+
+      const where = prisma.ticket.findMany.mock.calls[0][0].where;
+      expect(where.status).toEqual({ in: [TicketStatus.NEW, TicketStatus.AWAITING_APPROVAL] });
+    });
+  });
+
   describe('findAll — mine filter', () => {
     const assignedToMe = (id: string) => ({
       OR: [

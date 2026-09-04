@@ -1,6 +1,4 @@
 # To migrate
 
-- [ ] `cd backend && npx prisma migrate deploy` — Apply the meetings and requirements migration
-- [ ] Deploy order: DB migrate → backend → frontend — `TicketComment.ticketId` becomes nullable and the new pages call `/meetings` and `/requirements`
-- [ ] `cd backend && npx prisma migrate deploy` — Add `TicketTask.order` / `isBlocking`; the migration backfills `order` from `createdAt`
-- [ ] Deploy order: DB migrate → backend → frontend — the task list sorts on `order` and reads `blockedBy` from `POST /tasks/:id/reorder`
+- [ ] `cd backend && npx prisma migrate deploy` — Tool + Feedback + HubGuide tables, SECURITY category, ToolTeam on tools, enums, and TOOL_*/FEEDBACK_* notification types (دليل العمل)
+- [ ] Deploy backend before frontend — `/tools`, `/feedback`, and `/guides` endpoints are required by the `/hub` page; tools now require `teams`

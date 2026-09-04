@@ -174,7 +174,7 @@ Each has `GET`, `POST`, `PATCH :id`, `PATCH :id/deactivate`. Systems also have `
 | PATCH | `/tickets/:id/archive` | Manager / Head | Archive (soft) |
 | PATCH | `/tickets/:id/reopen` | Manager / Head | Reopen closed/rejected ticket |
 | POST | `/tickets/:id/duplicate` | Any | Clone ticket as new draft |
-| GET | `/tickets` | Role-filtered | List tickets with filters + pagination (`status`, `companyId`, `developerId`, `search`, `overdue=true`, `mine=true`, …). `mine=true` keeps tickets the caller is assigned to, or that have at least one task assigned to them. `developerId` keeps tickets with an active assignment to that developer |
+| GET | `/tickets` | Role-filtered | List tickets with filters + pagination (`status`, `statuses` comma-separated, `companyId`, `developerId`, `search`, `overdue=true`, `mine=true`, …). `mine=true` keeps tickets the caller is assigned to, or that have at least one task assigned to them. `developerId` keeps tickets with an active assignment to that developer. `statuses` keeps tickets in any of the listed statuses; `overdue=true` wins over `status` / `statuses` |
 | GET | `/tickets/my-created` | Signed in | Dashboard activity queue: tickets the user filed or owns, plus the statuses their role must act on (same buckets as the daily digest) |
 | GET | `/tickets/:id` | Role-filtered | Ticket detail with full history |
 

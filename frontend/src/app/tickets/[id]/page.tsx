@@ -25,7 +25,7 @@ import { AttachmentImage } from "@/components/shared/AttachmentImage";
 import { FileDropZone } from "@/components/shared/FileDropZone";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserNameWithYou, personFullName } from "@/components/shared/UserNameWithYou";
-import { BLOCK_LABELS, COMMENT_LABELS, DEPENDENCY_LABELS, DIFFICULTY_LABELS, ESTIMATE_LABELS, TASK_STATUS_COLORS, TASK_STATUS_LABELS, FORCE_STATUS_LABELS, SELECT_PLACEHOLDERS, TASK_LABELS, TICKET_ACTION_CONFIRM, TICKET_STATUS_LABELS, TICKET_TYPE_LABELS, ASSIGNEE_LABELS, TESTING_LABELS, MEETING_LABELS } from "@/lib/constants";
+import { BLOCK_LABELS, COMMENT_LABELS, DEPENDENCY_LABELS, DIFFICULTY_LABELS, ESTIMATE_LABELS, FILE_PICK_LABELS, TASK_STATUS_COLORS, TASK_STATUS_LABELS, FORCE_STATUS_LABELS, SELECT_PLACEHOLDERS, TASK_LABELS, TICKET_ACTION_CONFIRM, TICKET_STATUS_LABELS, TICKET_TYPE_LABELS, ASSIGNEE_LABELS, TESTING_LABELS, MEETING_LABELS } from "@/lib/constants";
 import { canBlockTicket, canResumeTicket } from "@/lib/permissions";
 import { formatAbsoluteTime, parseTimestamp } from "@/lib/dates";
 import { format } from "date-fns";
@@ -1064,6 +1064,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     : false;
 
   const ticketAttachments = (ticket.attachments || []).filter((a: any) => !a.commentId);
+  const coverAttachment = ticketAttachments.find((a: any) => a.url === ticket.coverImageUrl);
   const imageAttachments  = ticketAttachments.filter((a: any) => isImg(a.mimeType));
   const fileAttachments   = ticketAttachments.filter((a: any) => !isImg(a.mimeType));
 
@@ -1080,11 +1081,15 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
           <ArrowRight className="w-4 h-4" /> رجوع
         </button>
 
-        {/* Cover Image */}
-        {ticket.coverImageUrl && (
+        {/* Cover is a ticket file — same authorised download as the other attachments. */}
+        {coverAttachment && (
           <div className="mb-5 rounded-2xl overflow-hidden" style={{ border: "1px solid var(--border)", cursor: "pointer" }}
-            onClick={() => setLightboxUrl(`${FILE_BASE}${ticket.coverImageUrl}`)}>
-            <img src={`${FILE_BASE}${ticket.coverImageUrl}`} alt="cover" className="w-full max-h-40 object-cover transition-opacity hover:opacity-95 sm:max-h-56" />
+            onClick={() => openAttachment(coverAttachment.id)}>
+            <AttachmentImage
+              attachmentId={coverAttachment.id}
+              alt={FILE_PICK_LABELS.coverAlt}
+              className="w-full max-h-40 object-cover transition-opacity hover:opacity-95 sm:max-h-56"
+            />
           </div>
         )}
 

@@ -26,6 +26,9 @@ import { BugsModule } from './bugs/bugs.module';
 import { MeetingAccessModule } from './meetings/meeting-access.module';
 import { MeetingsModule } from './meetings/meetings.module';
 import { RequirementsModule } from './requirements/requirements.module';
+import { ToolsModule } from './tools/tools.module';
+import { FeedbackModule } from './feedback/feedback.module';
+import { GuidesModule } from './guides/guides.module';
 
 @Module({
   imports: [
@@ -58,6 +61,9 @@ import { RequirementsModule } from './requirements/requirements.module';
     BugsModule,
     MeetingsModule,
     RequirementsModule,
+    ToolsModule,
+    FeedbackModule,
+    GuidesModule,
   ],
 })
 export class AppModule {}

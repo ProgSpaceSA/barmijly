@@ -2,15 +2,17 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { Search, Ticket as TicketIcon, LayoutDashboard, Users, Building2, Bug, CalendarDays, ClipboardList } from "lucide-react";
+import { Search, Ticket as TicketIcon, LayoutDashboard, Users, Building2, Bug, CalendarDays, ClipboardList, Wrench, MessageSquareWarning } from "lucide-react";
 import { usePermissions } from "@/hooks/usePermissions";
 import type { Action } from "@/lib/permissions";
-import { MEETING_LABELS, TESTING_LABELS } from "@/lib/constants";
+import { HUB_LABELS, MEETING_LABELS, TESTING_LABELS } from "@/lib/constants";
 import { BugEditorDialog } from "@/components/testing/BugEditorDialog";
 import { MeetingEditorDialog } from "@/components/meetings/MeetingEditorDialog";
 import { RequirementEditorDialog } from "@/components/meetings/RequirementEditorDialog";
+import { ToolEditorDialog } from "@/components/hub/ToolEditorDialog";
+import { FeedbackEditorDialog } from "@/components/hub/FeedbackEditorDialog";
 
-type PaletteDialog = "bug" | "meeting" | "requirement";
+type PaletteDialog = "bug" | "meeting" | "requirement" | "tool" | "feedback";
 
 interface Result {
   id: string;
@@ -43,6 +45,9 @@ const QUICK_LINKS: QuickLinkDef[] = [
   { id: "meetings", label: MEETING_LABELS.meetingsTitle, href: "/meetings", icon: <CalendarDays className="w-4 h-4" />, action: "meeting:read" },
   { id: "new-meeting", label: MEETING_LABELS.newMeeting, icon: <CalendarDays className="w-4 h-4" />, action: "meeting:manage", openDialog: "meeting" },
   { id: "new-requirement", label: MEETING_LABELS.newRequirement, icon: <ClipboardList className="w-4 h-4" />, action: "requirement:create", openDialog: "requirement" },
+  { id: "hub",     label: HUB_LABELS.hubTitle, href: "/hub",        icon: <Wrench className="w-4 h-4" />,          action: "tool:read" },
+  { id: "new-tool", label: HUB_LABELS.newTool, icon: <Wrench className="w-4 h-4" />, action: "tool:request", openDialog: "tool" },
+  { id: "new-feedback", label: HUB_LABELS.newFeedback, icon: <MessageSquareWarning className="w-4 h-4" />, action: "feedback:create", openDialog: "feedback" },
   { id: "users",   label: "المستخدمون",        href: "/users",      icon: <Users className="w-4 h-4" />,           action: "user:read" },
   { id: "co",      label: "الشركات والأنظمة",  href: "/companies",  icon: <Building2 className="w-4 h-4" />,       action: "structure:manage" },
 ];
@@ -207,6 +212,8 @@ export function CommandPalette() {
       {dialog === "bug" && <BugEditorDialog onClose={() => setDialog(null)} />}
       {dialog === "meeting" && <MeetingEditorDialog onClose={() => setDialog(null)} />}
       {dialog === "requirement" && <RequirementEditorDialog onClose={() => setDialog(null)} />}
+      {dialog === "tool" && <ToolEditorDialog onClose={() => setDialog(null)} />}
+      {dialog === "feedback" && <FeedbackEditorDialog onClose={() => setDialog(null)} />}
     </>
   );
 }
