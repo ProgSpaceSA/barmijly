@@ -95,6 +95,7 @@ export const TASK_LABELS = {
 
 /** Ticket create — cover image and attachment pickers. */
 export const FILE_PICK_LABELS = {
+  coverAlt: "صورة الغلاف",
   coverEmpty: "اضغط أو اسحب لرفع صورة الغلاف",
   coverHint: "PNG, JPG — حد أقصى 10 MB",
   attachEmpty: "اضغط أو اسحب لإضافة مرفق",
